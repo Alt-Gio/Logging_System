@@ -10,7 +10,6 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
-<<<<<<< HEAD
     "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
   },
@@ -37,7 +36,6 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-=======
     "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
   },
   "dependencies": {
@@ -55,7 +53,6 @@
   "seed": "ts-node prisma/seed.ts"
   },
   "devDependencies": {
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
     "@types/node": "^20.11.5",
     "@types/ping": "^0.4.4",
     "@types/react": "^18.2.48",
@@ -65,10 +62,7 @@
     "prisma": "^5.10.2",
     "tailwindcss": "^3.4.1",
     "ts-node": "^10.9.2",
-<<<<<<< HEAD
-=======
     "tsx": "^4.21.0",
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
     "typescript": "^5.3.3"
   }
 }
