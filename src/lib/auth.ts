@@ -1,4 +1,5 @@
 // src/lib/auth.ts
+<<<<<<< HEAD
 import bcrypt from 'bcryptjs'
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
@@ -42,11 +43,37 @@ export async function verifyToken(token: string): Promise<{ adminId: string; rol
   try {
     const { payload } = await jwtVerify(token, getJwtSecret())
     return { adminId: payload.sub as string, role: payload.role as string }
+=======
+import * as crypto from 'crypto'
+import { cookies } from 'next/headers'
+import { prisma } from './prisma'
+
+export function hashPassword(password: string): string {
+  return crypto.createHash('sha256').update(password).digest('hex')
+}
+
+export function generateToken(adminId: string): string {
+  const payload = `${adminId}:${Date.now()}:${process.env.JWT_SECRET || 'dict-secret-2026'}`
+  return Buffer.from(payload).toString('base64')
+}
+
+export function verifyToken(token: string): { adminId: string } | null {
+  try {
+    const decoded = Buffer.from(token, 'base64').toString('utf-8')
+    const [adminId, timestamp] = decoded.split(':')
+
+    // Token expires in 8 hours
+    const age = Date.now() - parseInt(timestamp)
+    if (age > 8 * 60 * 60 * 1000) return null
+
+    return { adminId }
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   } catch {
     return null
   }
 }
 
+<<<<<<< HEAD
 // ── Session (reads cookie, returns admin record) ──────────────────────────────
 export async function getSession() {
   try {
@@ -142,4 +169,20 @@ export function checkApiRateLimit(key: string, maxPerMin = 60): boolean {
   if (rec.count >= maxPerMin) return false
   rec.count++
   return true
+=======
+export async function getSession() {
+  const cookieStore = cookies()
+  const token = cookieStore.get('auth_token')?.value
+  if (!token) return null
+
+  const decoded = verifyToken(token)
+  if (!decoded) return null
+
+  const admin = await prisma.admin.findUnique({
+    where: { id: decoded.adminId },
+    select: { id: true, username: true, name: true, role: true },
+  })
+
+  return admin
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 }

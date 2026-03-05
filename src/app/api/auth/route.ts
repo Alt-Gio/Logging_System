@@ -1,6 +1,7 @@
 // src/app/api/auth/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+<<<<<<< HEAD
 import {
   hashPassword, verifyPassword, generateToken, verifyToken,
   checkLoginRateLimit, recordFailedLogin, clearLoginAttempts
@@ -79,6 +80,19 @@ export async function POST(req: NextRequest) {
   const token = await generateToken(admin.id, admin.role)
 
   await audit('LOGIN', { req, adminId: admin.id, detail: { username, success: true } })
+=======
+import { hashPassword, generateToken } from '@/lib/auth'
+
+export async function POST(req: NextRequest) {
+  const { username, password } = await req.json()
+
+  const admin = await prisma.admin.findUnique({ where: { username } })
+  if (!admin || admin.password !== hashPassword(password)) {
+    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+  }
+
+  const token = generateToken(admin.id)
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 
   const response = NextResponse.json({
     success: true,
@@ -87,23 +101,35 @@ export async function POST(req: NextRequest) {
 
   response.cookies.set('auth_token', token, {
     httpOnly: true,
+<<<<<<< HEAD
     secure:   process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge:   8 * 60 * 60,
     path:     '/',
+=======
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 8 * 60 * 60, // 8 hours
+    path: '/',
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   })
 
   return response
 }
 
+<<<<<<< HEAD
 export async function DELETE(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
   const adminId = req.headers.get('x-admin-id')
   await audit('LOGOUT', { req, adminId: adminId ?? undefined })
+=======
+export async function DELETE() {
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   const response = NextResponse.json({ success: true })
   response.cookies.delete('auth_token')
   return response
 }
+<<<<<<< HEAD
 
 // Seed first admin if none exist — only callable in dev or with SETUP_TOKEN
 export async function PUT(req: NextRequest) {
@@ -129,3 +155,5 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({ success: true, id: admin.id }, { status: 201 })
 }
+=======
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74

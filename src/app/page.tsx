@@ -54,10 +54,13 @@ type Settings = {
   wifiSsid: string; wifiPassword: string; wifiNote: string
   accessCode: string; officeOpen: string; officeClose: string
 }
+<<<<<<< HEAD
 type Announcement = {
   id: string; title: string; body: string
   type: 'INFO' | 'WARNING' | 'MAINTENANCE' | 'HOLIDAY'
 }
+=======
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function parseTime(hhmm: string) {
@@ -292,6 +295,7 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
   expectedOut: Date | null; photo: string | null; officeCloseStr: string
   showPrivacyModal: boolean; setShowPrivacyModal: (v: boolean) => void; onReset: () => void
 }) {
+<<<<<<< HEAD
   const [countdown, setCountdown] = useState(10)
   const [rating, setRating]       = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
@@ -300,6 +304,10 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
 
   useEffect(() => {
     if (paused) return
+=======
+  const [countdown, setCountdown] = useState(5)
+  useEffect(() => {
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
     const t = setInterval(() => {
       setCountdown(c => {
         if (c <= 1) { clearInterval(t); onReset(); return 0 }
@@ -307,6 +315,7 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
       })
     }, 1000)
     return () => clearInterval(t)
+<<<<<<< HEAD
   }, [onReset, paused])
 
   // Pause countdown when user is interacting with rating
@@ -327,12 +336,21 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
   const pct = (countdown / 10) * 100
   const stars = [1, 2, 3, 4, 5]
   const starLabels = ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent']
+=======
+  }, [onReset])
+
+  const pct = (countdown / 5) * 100
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 
   return (
     <div className="min-h-screen bg-[var(--bg-cream)] flex items-center justify-center p-4">
       {showPrivacyModal && <DataPrivacyModal onClose={() => setShowPrivacyModal(false)}/>}
       <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
+<<<<<<< HEAD
         {/* Photo + checkmark */}
+=======
+        {/* Animated check + photo */}
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
         <div className="relative inline-block mb-4">
           <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto">
             {photo
@@ -352,7 +370,11 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
         </div>
 
         <h2 className="font-display text-2xl font-bold text-[var(--dict-blue)] mb-1">You&apos;re Logged In!</h2>
+<<<<<<< HEAD
         <p className="text-gray-400 text-sm mb-5">Welcome, {submittedLog?.fullName as string}!</p>
+=======
+        <p className="text-gray-400 text-sm mb-5">Welcome, {submittedLog?.fullName as string}! Your visit has been recorded.</p>
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 
         <div className="bg-[var(--bg-cream)] rounded-xl p-4 space-y-2.5 mb-4">
           <SRow label="Time In" value={timeIn ? format(new Date(timeIn), 'hh:mm:ss a') : '—'}/>
@@ -365,6 +387,7 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
           ⏰ Please finish and step out by <strong>{officeCloseStr}</strong>
         </div>
 
+<<<<<<< HEAD
         {/* Satisfaction rating */}
         {!ratingSubmitted ? (
           <div className="mb-5 bg-blue-50 rounded-2xl px-4 py-4">
@@ -413,6 +436,21 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
 
         <button onClick={onReset} className="w-full py-3 rounded-xl bg-[var(--dict-blue)] text-white font-bold hover:bg-blue-800 transition-colors">
           New Entry
+=======
+        {/* Countdown bar */}
+        <div className="mb-4">
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-2 bg-[var(--dict-blue)] rounded-full transition-all duration-1000 ease-linear"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1.5">Returning to logbook in <strong className="text-[var(--dict-blue)]">{countdown}s</strong></p>
+        </div>
+
+        <button onClick={onReset} className="w-full py-3 rounded-xl bg-[var(--dict-blue)] text-white font-bold hover:bg-blue-800 transition-colors">
+          New Entry Now
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
         </button>
       </div>
     </div>
@@ -578,8 +616,11 @@ export default function LogbookPage() {
   const [customDuration, setCustomDuration] = useState('')
   const [showCustom, setShowCustom] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
+<<<<<<< HEAD
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [serviceType, setServiceType] = useState<'SELF_SERVICE' | 'STAFF_ASSISTED'>('SELF_SERVICE')
+=======
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 
   // PC terms checkboxes
   const [pcTerms, setPcTerms] = useState<boolean[]>(PC_TERMS.map(() => false))
@@ -587,7 +628,11 @@ export default function LogbookPage() {
   const [wifiTerms, setWifiTerms] = useState<boolean[]>(WIFI_TERMS.map(() => false))
 
   // Webcam
+<<<<<<< HEAD
   const videoRef = useRef<HTMLVideoElement | null>(null)
+=======
+  const videoRef = useRef<HTMLVideoElement>(null)
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [showConsentModal, setShowConsentModal] = useState(false)
@@ -621,6 +666,7 @@ export default function LogbookPage() {
     }).catch(() => setSettings({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00' }))
   }, [])
 
+<<<<<<< HEAD
   // ── Announcements ────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/announcements')
@@ -629,6 +675,8 @@ export default function LogbookPage() {
       .catch(() => {})
   }, [])
 
+=======
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   // ── Access code ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -761,7 +809,11 @@ export default function LogbookPage() {
     try {
       const res = await fetch('/api/logs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+<<<<<<< HEAD
         body: JSON.stringify({ fullName: form.fullName, agency: form.agency, purpose: form.purpose, equipmentUsed: form.equipmentUsed, pcId: selectedPcId || form.pcId || null, photoDataUrl: photo || null, plannedDurationHours: effectiveDuration, serviceType }),
+=======
+        body: JSON.stringify({ fullName: form.fullName, agency: form.agency, purpose: form.purpose, equipmentUsed: form.equipmentUsed, pcId: selectedPcId || form.pcId || null, photoDataUrl: photo || null, plannedDurationHours: effectiveDuration }),
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Submission failed')
@@ -1038,6 +1090,7 @@ export default function LogbookPage() {
       {AccessGate}
       {showPrivacyModal && <DataPrivacyModal onClose={() => setShowPrivacyModal(false)}/>}
 
+<<<<<<< HEAD
       {/* Announcements banner */}
       {announcements.length > 0 && accessGranted && (
         <div className="space-y-0">
@@ -1061,6 +1114,8 @@ export default function LogbookPage() {
         </div>
       )}
 
+=======
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
       {/* Consent Modal */}
       {showConsentModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">

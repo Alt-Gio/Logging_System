@@ -8,11 +8,16 @@ datasource db {
 }
 
 model LogEntry {
+<<<<<<< HEAD
   id                   String       @id @default(cuid())
+=======
+  id                   String    @id @default(cuid())
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   fullName             String
   agency               String
   purpose              String
   equipmentUsed        String[]
+<<<<<<< HEAD
   date                 DateTime     @default(now())
   timeIn               DateTime     @default(now())
   timeOut              DateTime?
@@ -28,15 +33,32 @@ model LogEntry {
   pc                   PC?          @relation(fields: [pcId], references: [id])
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+=======
+  date                 DateTime  @default(now())
+  timeIn               DateTime  @default(now())
+  timeOut              DateTime?
+  signature            String?
+  photoDataUrl         String?   @db.Text
+  plannedDurationHours Float     @default(1)
+  archived             Boolean   @default(false)
+  pcId                 String?
+  pc                   PC?       @relation(fields: [pcId], references: [id])
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 
   @@index([timeIn])
   @@index([pcId])
   @@index([archived])
+<<<<<<< HEAD
   @@index([serviceType])
+=======
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   @@map("log_entries")
 }
 
 model PC {
+<<<<<<< HEAD
   id         String     @id @default(cuid())
   name       String
   ipAddress  String     @unique
@@ -53,11 +75,30 @@ model PC {
   logs       LogEntry[]
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+=======
+  id         String    @id @default(cuid())
+  name       String
+  ipAddress  String    @unique
+  macAddress String?
+  location   String?
+  isActive   Boolean   @default(true)
+  lastSeen   DateTime?
+  status     PCStatus  @default(OFFLINE)
+  ssid       String?
+  specs      String?
+  icon       String?   @default("🖥️")
+  gridCol    Int?      @default(1)
+  gridRow    Int?      @default(1)
+  logs       LogEntry[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 
   @@map("pcs")
 }
 
 model Admin {
+<<<<<<< HEAD
   id           String     @id @default(cuid())
   username     String     @unique
   password     String
@@ -113,6 +154,16 @@ model Announcement {
 
   @@index([active])
   @@map("announcements")
+=======
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  name      String
+  role      Role     @default(STAFF)
+  createdAt DateTime @default(now())
+
+  @@map("admins")
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 }
 
 model Setting {
@@ -135,6 +186,7 @@ enum Role {
   ADMIN
   STAFF
 }
+<<<<<<< HEAD
 
 enum CameraType {
   MJPEG
@@ -154,3 +206,5 @@ enum AnnouncementType {
   MAINTENANCE
   HOLIDAY
 }
+=======
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74

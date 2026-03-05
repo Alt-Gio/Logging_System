@@ -4,7 +4,20 @@ buildCommand = "npm run build"
 
 [deploy]
 startCommand = "npm start"
+<<<<<<< HEAD
 healthcheckPath = "/api/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+=======
+healthcheckPath = "/api/stats"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "dict-logbook"
+
+[services.env]
+PORT = "3000"
+>>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
