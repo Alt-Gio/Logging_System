@@ -1,0 +1,50 @@
+{
+  "name": "dict-logbook",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
+    "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.2",
+    "@upstash/qstash": "^2.9.0",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.9.0",
+    "date-fns": "^3.3.1",
+    "jose": "^6.2.0",
+    "next": "14.1.0",
+    "next-pwa": "^5.6.0",
+    "node-fetch": "^3.3.2",
+    "ping": "^0.4.4",
+    "pusher": "^5.3.2",
+    "pusher-js": "^8.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
+  },
+  "prisma": {
+      "seed": "ts-node prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.11.5",
+    "@types/ping": "^0.4.4",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33",
+    "prisma": "^5.10.2",
+    "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

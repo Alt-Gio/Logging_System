@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_PUBLIC_URL")
+}
+
+model LogEntry {
+  id                   String       @id @default(cuid())
+  fullName             String
+  agency               String
+  purpose              String
+  equipmentUsed        String[]
+  date                 DateTime     @default(now())
+  timeIn               DateTime     @default(now())
+  timeOut              DateTime?
+  photoDataUrl         String?      @db.Text
+  photoUrl             String?
+  plannedDurationHours Float        @default(1)
+  archived             Boolean      @default(false)
+  // New fields
+  serviceType          ServiceType  @default(SELF_SERVICE)
+  staffNotes           String?      @db.Text
+  satisfactionRating   Int?         // 1–5
+  pcId                 String?
+  pc                   PC?          @relation(fields: [pcId], references: [id])
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([timeIn])
+  @@index([pcId])
+  @@index([archived])
+  @@index([serviceType])
+  @@map("log_entries")
+}
+
+model PC {
+  id         String     @id @default(cuid())
+  name       String
+  ipAddress  String     @unique
+  macAddress String?
+  location   String?
+  isActive   Boolean    @default(true)
+  lastSeen   DateTime?
+  status     PCStatus   @default(OFFLINE)
+  ssid       String?
+  specs      String?
+  icon       String?    @default("🖥️")
+  gridCol    Int?       @default(1)
+  gridRow    Int?       @default(1)
+  logs       LogEntry[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@map("pcs")
+}
+
+model Admin {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  password     String
+  name         String
+  role         Role       @default(STAFF)
+  lastLoginAt  DateTime?
+  logs         AdminLog[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("admins")
+}
+
+model AdminLog {
+  id        String   @id @default(cuid())
+  adminId   String?
+  admin     Admin?   @relation(fields: [adminId], references: [id])
+  action    String
+  target    String?
+  detail    String?  @db.Text
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([adminId])
+  @@map("admin_logs")
+}
+
+model Camera {
+  id        String     @id @default(cuid())
+  name      String
+  url       String
+  type      CameraType @default(MJPEG)
+  notes     String?
+  enabled   Boolean    @default(true)
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("cameras")
+}
+
+model Announcement {
+  id        String           @id @default(cuid())
+  title     String
+  body      String           @db.Text
+  type      AnnouncementType @default(INFO)
+  active    Boolean          @default(true)
+  expiresAt DateTime?
+  createdBy String?          // admin name
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([active])
+  @@map("announcements")
+}
+
+model Setting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+enum PCStatus {
+  ONLINE
+  OFFLINE
+  IN_USE
+  MAINTENANCE
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+enum CameraType {
+  MJPEG
+  SNAPSHOT
+  HLS
+  RTSP_PROXY
+}
+
+enum ServiceType {
+  SELF_SERVICE
+  STAFF_ASSISTED
+}
+
+enum AnnouncementType {
+  INFO
+  WARNING
+  MAINTENANCE
+  HOLIDAY
+}
