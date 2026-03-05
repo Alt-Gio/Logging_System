@@ -13,6 +13,9 @@
     "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
   },
+  "prisma": {
+    "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
+  },
   "dependencies": {
     "@prisma/client": "^5.10.2",
     "@upstash/qstash": "^2.9.0",
@@ -31,28 +34,8 @@
     "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
-  "prisma": {
-      "seed": "ts-node prisma/seed.ts"
-  },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.10.2",
-    "date-fns": "^3.3.1",
-    "next": "14.1.0",
-    "node-fetch": "^3.3.2",
-    "ping": "^0.4.4",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "xlsx": "^0.18.5",
-    "zod": "^3.22.4"
-  },
-  "prisma": {
-  "seed": "ts-node prisma/seed.ts"
-  },
-  "devDependencies": {
     "@types/node": "^20.11.5",
     "@types/ping": "^0.4.4",
     "@types/react": "^18.2.48",
