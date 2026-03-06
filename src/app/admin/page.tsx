@@ -1,9 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-<<<<<<< HEAD
 import { usePusher } from '@/lib/usePusher'
-=======
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, formatDistanceToNow, isToday, differenceInMinutes } from 'date-fns'
 
@@ -357,16 +354,10 @@ function EditPcModal({ pc, onSave, onClose }: {
 // ─── Main Admin Component ───────────────────────────────────────────────────────
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false)
-<<<<<<< HEAD
   const [currentAdmin, setCurrentAdmin] = useState<{id:string;name:string;role:string} | null>(null)
   const [loginForm, setLoginForm] = useState({ username: '', password: '' })
   const [loginError, setLoginError] = useState('')
   const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'security' | 'auditlog' | 'announcements' | 'analytics' | 'admins'>('dashboard')
-=======
-  const [loginForm, setLoginForm] = useState({ username: '', password: '' })
-  const [loginError, setLoginError] = useState('')
-  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'security'>('dashboard')
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [stats, setStats] = useState<Record<string, unknown> | null>(null)
@@ -388,7 +379,6 @@ export default function AdminPage() {
   const [scanResults, setScanResults] = useState<{ ip: string; alive: boolean; responseTime: number | null }[]>([])
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
-<<<<<<< HEAD
   // ── Pusher real-time + browser notifications ──────────────────────────────
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   useEffect(() => {
@@ -421,24 +411,13 @@ export default function AdminPage() {
     },
   })
 
-=======
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   // Grid floor plan settings
   const [gridCols, setGridCols] = useState(5)
   const [gridRowCount, setGridRowCount] = useState(4)
   const [showGridSettings, setShowGridSettings] = useState(false)
-<<<<<<< HEAD
   // Security / IP cameras — DB backed
   const [cameras, setCameras] = useState<{id:string;name:string;url:string;type:string;enabled:boolean;notes:string|null}[]>([])
   const [newCamera, setNewCamera] = useState({name:'',url:'',type:'MJPEG',notes:''})
-=======
-  // Security / IP cameras
-  const [cameras, setCameras] = useState<{id:string;name:string;url:string;type:'mjpeg'|'hls'|'snapshot'|'rtsp-proxy';enabled:boolean;notes:string}[]>(() => {
-    if (typeof window === 'undefined') return []
-    try { return JSON.parse(localStorage.getItem('dtc_cameras') || '[]') } catch { return [] }
-  })
-  const [newCamera, setNewCamera] = useState({name:'',url:'',type:'mjpeg' as 'mjpeg'|'hls'|'snapshot'|'rtsp-proxy',notes:''})
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   const [cameraRefreshKey, setCameraRefreshKey] = useState(0)
   const [expandedCam, setExpandedCam] = useState<string|null>(null)
 
@@ -462,7 +441,6 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-<<<<<<< HEAD
     // Verify session with server on every page load — don't just trust sessionStorage
     fetch('/api/auth', { credentials: 'include' })
       .then(r => r.json())
@@ -486,9 +464,6 @@ export default function AdminPage() {
           try { const a = sessionStorage.getItem('dict_admin_info'); if (a) setCurrentAdmin(JSON.parse(a)) } catch {}
         }
       })
-=======
-    if (typeof window !== 'undefined' && sessionStorage.getItem('dict_admin')) setAuthed(true)
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   }, [])
   useEffect(() => {
     if (!authed) return
@@ -532,7 +507,6 @@ export default function AdminPage() {
   const handleLogin = async () => {
     setLoginError('')
     const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginForm) })
-<<<<<<< HEAD
     if (r.ok) {
       const d = await r.json()
       sessionStorage.setItem('dict_admin', '1')
@@ -540,9 +514,6 @@ export default function AdminPage() {
       setCurrentAdmin(d.admin)
       setAuthed(true)
     }
-=======
-    if (r.ok) { sessionStorage.setItem('dict_admin', '1'); setAuthed(true) }
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
     else setLoginError('Invalid username or password')
   }
   const handleLogout = async () => {
@@ -610,7 +581,6 @@ export default function AdminPage() {
     setDraggingId(null); setDragOverId(null); fetchPcs()
   }
 
-<<<<<<< HEAD
   // Camera helpers — DB backed
   const fetchCameras = useCallback(async () => {
     try { const r = await fetch('/api/cameras'); setCameras(await r.json()) } catch {}
@@ -632,25 +602,6 @@ export default function AdminPage() {
     if (!cam) return
     await fetch(`/api/cameras/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled: !cam.enabled }) })
     fetchCameras()
-=======
-  // Camera helpers
-  const saveCameras = (cams: typeof cameras) => {
-    setCameras(cams)
-    try { localStorage.setItem('dtc_cameras', JSON.stringify(cams)) } catch {}
-  }
-  const addCamera = () => {
-    if (!newCamera.name || !newCamera.url) return
-    const cam = { id: Date.now().toString(), ...newCamera, enabled: true }
-    saveCameras([...cameras, cam])
-    setNewCamera({ name:'', url:'', type:'mjpeg', notes:'' })
-  }
-  const removeCamera = (id: string) => {
-    saveCameras(cameras.filter(c => c.id !== id))
-    if (expandedCam === id) setExpandedCam(null)
-  }
-  const toggleCamera = (id: string) => {
-    saveCameras(cameras.map(c => c.id === id ? { ...c, enabled: !c.enabled } : c))
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   }
 
   const s = stats as Record<string, unknown> | null
@@ -708,17 +659,10 @@ export default function AdminPage() {
           </div>
           <div className="border-t border-white/15 flex items-center justify-between py-1">
             <nav className="flex gap-0.5 flex-wrap">
-<<<<<<< HEAD
               {(['dashboard','logs','pcs','network','security','auditlog','announcements','analytics','admins','settings'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all ${tab===t ? 'bg-white text-[var(--dict-blue)] shadow-sm' : 'text-blue-200 hover:text-white hover:bg-white/10'}`}>
                   {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='security'?'🔒 Security':t==='auditlog'?'📜 Audit':t==='announcements'?'📢 Notices':t==='analytics'?'📈 Analytics':t==='admins'?'👥 Admins':'📋 Logs'}
-=======
-              {(['dashboard','logs','pcs','network','security','settings'] as const).map(t => (
-                <button key={t} onClick={() => setTab(t)}
-                  className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all ${tab===t ? 'bg-white text-[var(--dict-blue)] shadow-sm' : 'text-blue-200 hover:text-white hover:bg-white/10'}`}>
-                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='security'?'🔒 Security':'📋 Logs'}
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
                 </button>
               ))}
             </nav>
@@ -1564,7 +1508,6 @@ export default function AdminPage() {
             </div>
           </div>
         )}
-<<<<<<< HEAD
         {/* ══════════════════════════════════════════════════════════ AUDIT LOG */}
         {tab === 'auditlog' && (
           <AuditLogTab/>
@@ -1578,14 +1521,11 @@ export default function AdminPage() {
         {tab === 'admins' && (
           <AdminsTab currentAdminId={currentAdmin?.id ?? ''}/>
         )}
-=======
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
       </main>
     </div>
   )
 }
 
-<<<<<<< HEAD
 
 
 // ── AnnouncementsTab ──────────────────────────────────────────────────────────
@@ -2107,8 +2047,6 @@ function AuditLogTab() {
   )
 }
 
-=======
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 function Spinner() {
   return (
     <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">

@@ -1,5 +1,4 @@
 // src/lib/auth.ts
-<<<<<<< HEAD
 import bcrypt from 'bcryptjs'
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
@@ -43,7 +42,6 @@ export async function verifyToken(token: string): Promise<{ adminId: string; rol
   try {
     const { payload } = await jwtVerify(token, getJwtSecret())
     return { adminId: payload.sub as string, role: payload.role as string }
-=======
 import * as crypto from 'crypto'
 import { cookies } from 'next/headers'
 import { prisma } from './prisma'
@@ -67,13 +65,11 @@ export function verifyToken(token: string): { adminId: string } | null {
     if (age > 8 * 60 * 60 * 1000) return null
 
     return { adminId }
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
   } catch {
     return null
   }
 }
 
-<<<<<<< HEAD
 // ── Session (reads cookie, returns admin record) ──────────────────────────────
 export async function getSession() {
   try {
@@ -169,7 +165,6 @@ export function checkApiRateLimit(key: string, maxPerMin = 60): boolean {
   if (rec.count >= maxPerMin) return false
   rec.count++
   return true
-=======
 export async function getSession() {
   const cookieStore = cookies()
   const token = cookieStore.get('auth_token')?.value
@@ -184,5 +179,4 @@ export async function getSession() {
   })
 
   return admin
->>>>>>> 41c2fab67e2056a336b2c8168d30a3e8d0f6ab74
 }
