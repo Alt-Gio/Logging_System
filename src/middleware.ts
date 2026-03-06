@@ -20,6 +20,7 @@ const PUBLIC_POST_ONLY = [
 const PUBLIC_PAGES = [
   '/',          // client logbook
   '/print',     // print report (read-only)
+  '/admin',     // admin page renders its own login form — auth checked client-side
 ]
 
 // Security headers applied to every response
@@ -106,10 +107,8 @@ export async function middleware(req: NextRequest) {
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
     }
-    // Redirect browser to login (admin page handles its own login UI)
-    const url = req.nextUrl.clone()
-    url.pathname = '/admin'
-    return NextResponse.redirect(url)
+    // Non-API pages without token: let through (page handles its own auth UI)
+    return res
   }
 
   const decoded = await verifyToken(token)
@@ -117,10 +116,9 @@ export async function middleware(req: NextRequest) {
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 }))
     }
-    const url = req.nextUrl.clone()
-    url.pathname = '/admin'
-    const r = NextResponse.redirect(url)
+    const r = NextResponse.next()
     r.cookies.delete('auth_token')
+    addSecurityHeaders(r)
     return r
   }
 
