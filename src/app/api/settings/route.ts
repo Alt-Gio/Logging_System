@@ -9,6 +9,8 @@ const DEFAULTS = {
   wifiSsid: 'DICT-DTC-Free', wifiPassword: '',
   wifiNote: 'Free public WiFi for DTC clients',
   accessCode: '1234', officeOpen: '08:00', officeClose: '17:00',
+  bgImageUrl: '', interactiveBannerUrl: '',
+  googleSheetId: '', googleServiceKey: '',
 }
 
 export async function GET() {

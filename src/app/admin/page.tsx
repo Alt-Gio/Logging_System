@@ -451,7 +451,28 @@ export default function AdminPage() {
     const r = await fetch('/api/pcs'); if (r.ok) setPcs(await r.json())
   }, [])
   const fetchSettings = async () => {
-    const r = await fetch('/api/settings'); if (r.ok) setSettings(await r.json())
+    const r = await fetch('/api/settings')
+    if (r.ok) {
+      const data = await r.json()
+      // Merge with defaults — API may not return all keys (e.g. bgImageUrl when unset)
+      setSettings(s => ({
+        ...s,
+        wifiSsid: data.wifiSsid ?? s.wifiSsid,
+        wifiPassword: data.wifiPassword ?? s.wifiPassword,
+        wifiNote: data.wifiNote ?? s.wifiNote,
+        accessCode: data.accessCode ?? s.accessCode,
+        officeOpen: data.officeOpen ?? s.officeOpen,
+        officeClose: data.officeClose ?? s.officeClose,
+        bgImageUrl: data.bgImageUrl ?? s.bgImageUrl,
+        interactiveBannerUrl: data.interactiveBannerUrl ?? s.interactiveBannerUrl,
+        googleSheetId: data.googleSheetId ?? s.googleSheetId,
+        googleServiceKey: data.googleServiceKey ?? s.googleServiceKey,
+      }))
+      // Apply bg immediately on admin page too
+      if (data.bgImageUrl) {
+        applyBgToPage(data.bgImageUrl)
+      }
+    }
   }
 
 
@@ -467,6 +488,11 @@ export default function AdminPage() {
     return () => clearInterval(t)
   }, [isSignedIn, fetchStats, fetchPcs, fetchLogs])
   useEffect(() => { if (isSignedIn && tab === 'logs') fetchLogs() }, [isSignedIn, tab, fetchLogs])
+
+  // ── Apply background CSS variable whenever settings.bgImageUrl changes ───────
+  useEffect(() => {
+    applyBgToPage(settings.bgImageUrl || '')
+  }, [settings.bgImageUrl]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived data ──────────────────────────────────────────────────────────────
   const todayLogs = useMemo(() => allLogs.filter(l => isToday(new Date(l.timeIn))), [allLogs])
@@ -556,8 +582,19 @@ export default function AdminPage() {
     setSheetSyncing(false)
   }
 
+  // ── Apply background CSS variable instantly on this page ─────────────────
+  const applyBgToPage = (url: string) => {
+    let el = document.getElementById('dtc-admin-bg') as HTMLStyleElement | null
+    if (!el) { el = document.createElement('style'); el.id = 'dtc-admin-bg'; document.head.appendChild(el) }
+    el.textContent = url
+      ? `:root { --bg-image: url('${url.replace(/'/g, "\\'")}') }`
+      : `:root { --bg-image: url('/Bg.png') }`
+  }
+
   const saveSettings = async () => {
     await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) })
+    // Apply BG immediately so admin sees the change without page reload
+    applyBgToPage(settings.bgImageUrl || '')
     setSettingsSaved(true); try { localStorage.removeItem('dtc_settings_cache') } catch {}
     setTimeout(() => setSettingsSaved(false), 3000)
   }
@@ -1312,7 +1349,7 @@ export default function AdminPage() {
 
                   {/* URL input */}
                   <div className="flex gap-2 mb-4">
-                    <input value={settings.bgImageUrl.startsWith('data:') ? '' : settings.bgImageUrl}
+                    <input value={(settings.bgImageUrl||'').startsWith('data:') ? '' : settings.bgImageUrl}
                       onChange={e => setSettings(s=>({...s,bgImageUrl:e.target.value}))}
                       placeholder="Or paste image URL (https://...)"
                       className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] font-mono"/>
@@ -1329,7 +1366,7 @@ export default function AdminPage() {
                     <div className="absolute inset-0 bg-indigo-100/50 backdrop-blur-sm"/>
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="glass rounded-xl px-6 py-2 text-sm font-semibold text-gray-700 shadow">
-                        {settings.bgImageUrl ? (settings.bgImageUrl.startsWith('data:') ? '📁 Uploaded file' : '🔗 URL') : '🖼 Default /Bg.png'}
+                        {settings.bgImageUrl ? ((settings.bgImageUrl||'').startsWith('data:') ? '📁 Uploaded file' : '🔗 URL') : '🖼 Default /Bg.png'}
                       </div>
                     </div>
                   </div>
@@ -1375,7 +1412,7 @@ export default function AdminPage() {
                   </label>
 
                   <div className="flex gap-2 mb-4">
-                    <input value={settings.interactiveBannerUrl?.startsWith('data:') ? '' : (settings.interactiveBannerUrl||'')}
+                    <input value={(settings.interactiveBannerUrl||'').startsWith('data:') ? '' : (settings.interactiveBannerUrl||'')}
                       onChange={e => setSettings(s=>({...s,interactiveBannerUrl:e.target.value}))}
                       placeholder="Or paste image URL — leave blank to use /interactive-banner.jpg"
                       className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-amber-400 font-mono"/>

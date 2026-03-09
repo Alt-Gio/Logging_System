@@ -791,15 +791,18 @@ export default function LogbookPage() {
 
   // ── Apply dynamic background from settings ──────────────────────────────────
   useEffect(() => {
-    if (!settings?.bgImageUrl) return
-    // Inject as CSS variable to override globals.css fallback
     let styleEl = document.getElementById('dtc-dynamic-bg') as HTMLStyleElement | null
     if (!styleEl) {
       styleEl = document.createElement('style')
       styleEl.id = 'dtc-dynamic-bg'
       document.head.appendChild(styleEl)
     }
-    styleEl.textContent = `:root { --bg-image: url('${settings.bgImageUrl.replace(/'/g, "\\'")}') }`
+    if (settings?.bgImageUrl) {
+      styleEl.textContent = `:root { --bg-image: url('${settings.bgImageUrl.replace(/'/g, "\\'")}') }`
+    } else {
+      // Reset to default — globals.css var(--bg-image) picks up /Bg.png
+      styleEl.textContent = `:root { --bg-image: url('/Bg.png') }`
+    }
   }, [settings?.bgImageUrl])
 
   // ── Announcements ────────────────────────────────────────────────────────────

@@ -35,7 +35,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           />
         </head>
         <body>
-          {/* BgStyle loads the custom background URL from DB at request-time (not build-time) */}
+          {/*
+            BgStyle is a server component that reads the custom bgImageUrl from DB
+            at *request time* (not build time), injecting it as a CSS variable.
+            This prevents flash: the background is set before the page renders.
+            Client-side useEffect in each page also updates it live after settings save.
+          */}
           <BgStyle/>
           {children}
         </body>
@@ -44,9 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   )
 }
 
-// ── Server component that injects dynamic CSS variable for background ─────────
-// Imported inline to keep layout.tsx a single file.
-// Uses React's cache + prisma only at request time, never at build time.
+// ── Server component — injects dynamic BG CSS at request time ─────────────────
 import { cache } from 'react'
 
 const getBgUrl = cache(async (): Promise<string> => {
@@ -61,12 +64,15 @@ const getBgUrl = cache(async (): Promise<string> => {
 
 async function BgStyle() {
   const url = await getBgUrl()
-  if (!url) return null
-  const safe = url.replace(/'/g, "\\'").replace(/\\/g, '\\\\')
+  // Always inject a style tag — either the custom URL or explicitly the default /Bg.png
+  // This ensures the CSS variable is always defined on first paint
+  const safeUrl = url
+    ? url.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    : '/Bg.png'
   return (
     <style
       // eslint-disable-next-line react/no-danger
-      dangerouslySetInnerHTML={{ __html: `:root{--bg-image:url('${safe}')}` }}
+      dangerouslySetInnerHTML={{ __html: `:root{--bg-image:url('${safeUrl}')}` }}
     />
   )
 }
