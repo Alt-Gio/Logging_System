@@ -614,7 +614,8 @@ export default function AdminPage() {
             </nav>
             <div className="flex items-center gap-3">
               <a href="/admin/invite" className="text-xs text-blue-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors">✉️ Invite Staff</a>
-              <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'w-8 h-8' } }}/>
+              <a href="/admin/auth-guide" className="text-xs text-blue-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors">🔐 Auth Guide</a>
+              <UserButton afterSignOutUrl="/sign-in" appearance={{ elements: { avatarBox: 'w-8 h-8' } }}/>
             </div>
           </div>
         </div>
