@@ -13,19 +13,15 @@
     "db:seed": "tsx prisma/seed.ts",
     "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "dependencies": {
-    "@clerk/nextjs": "^4.31.8",
+    "@clerk/nextjs": "5.7.5",
     "@prisma/client": "^5.10.2",
     "@upstash/qstash": "^2.9.0",
     "bcryptjs": "^3.0.3",
-    "clerk": "^0.8.3",
     "cloudinary": "^2.9.0",
     "date-fns": "^3.3.1",
     "jose": "^6.2.0",
-    "next": "^14.2.35",
+    "next": "14.1.0",
     "next-pwa": "^5.6.0",
     "node-fetch": "^3.3.2",
     "ping": "^0.4.4",
@@ -47,7 +43,6 @@
     "prisma": "^5.10.2",
     "tailwindcss": "^3.4.1",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
     "typescript": "^5.3.3"
   }
 }

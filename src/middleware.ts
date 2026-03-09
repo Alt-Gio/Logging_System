@@ -1,4 +1,5 @@
-// Required Railway env vars:
+// Clerk v5 middleware
+// Required env vars:
 // NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY
 // NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 // NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
@@ -35,7 +36,7 @@ const isAdminRoute = createRouteMatcher([
   '/api/invitations(.*)',
 ])
 
-function securityHeaders(res: NextResponse) {
+function applySecurityHeaders(res: NextResponse) {
   res.headers.set('X-Content-Type-Options', 'nosniff')
   res.headers.set('X-Frame-Options', 'SAMEORIGIN')
   res.headers.set('X-XSS-Protection', '1; mode=block')
@@ -67,12 +68,10 @@ export default clerkMiddleware((auth, req) => {
     return NextResponse.next()
   }
 
-  // Public routes — always allow
   if (isPublicRoute(req)) {
-    return securityHeaders(NextResponse.next())
+    return applySecurityHeaders(NextResponse.next())
   }
 
-  // Protected routes — require Clerk session
   if (isAdminRoute(req)) {
     const { userId } = auth()
     if (!userId) {
@@ -85,7 +84,7 @@ export default clerkMiddleware((auth, req) => {
     }
   }
 
-  return securityHeaders(NextResponse.next())
+  return applySecurityHeaders(NextResponse.next())
 })
 
 export const config = {
