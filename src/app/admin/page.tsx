@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useUser, UserButton, SignOutButton } from '@clerk/nextjs'
 import { usePusher } from '@/lib/usePusher'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, formatDistanceToNow, isToday, differenceInMinutes } from 'date-fns'
@@ -74,7 +75,7 @@ function LogCard({ log, onEdit, onCheckout, compact = false }: {
   const isOverdue = isActive && new Date() > expectedOut
   return (
     <div onClick={() => onEdit(log)}
-      className="bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer group">
+      className="glass rounded-xl border border-gray-100 p-4 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer group">
       <div className="flex items-start gap-3">
         <Avatar name={log.fullName} photo={log.photoDataUrl} size={compact ? 'sm' : 'md'}/>
         <div className="flex-1 min-w-0">
@@ -145,7 +146,7 @@ function EditLogModal({ log, onSave, onClose, onCheckout }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="glass rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="bg-[var(--dict-blue)] px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -273,7 +274,7 @@ function EditPcModal({ pc, onSave, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div className="glass rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div className="bg-[var(--dict-blue)] px-6 py-4 flex items-center justify-between">
           <h3 className="font-display font-bold text-white text-lg">Edit Workstation — {pc.name}</h3>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/30">✕</button>
@@ -353,11 +354,9 @@ function EditPcModal({ pc, onSave, onClose }: {
 
 // ─── Main Admin Component ───────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [authed, setAuthed] = useState(false)
-  const [currentAdmin, setCurrentAdmin] = useState<{id:string;name:string;role:string} | null>(null)
-  const [loginForm, setLoginForm] = useState({ username: '', password: '' })
-  const [loginError, setLoginError] = useState('')
-  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'security' | 'auditlog' | 'announcements' | 'analytics' | 'admins'>('dashboard')
+  const { user, isLoaded: clerkLoaded, isSignedIn } = useUser()
+  const currentAdmin = isSignedIn ? { id: user?.id ?? '', name: user?.fullName ?? user?.username ?? 'Admin', role: 'SUPER_ADMIN' } : null
+  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'auditlog' | 'announcements' | 'analytics' | 'admins'>('dashboard')
   const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [stats, setStats] = useState<Record<string, unknown> | null>(null)
@@ -440,38 +439,14 @@ export default function AdminPage() {
     const r = await fetch('/api/settings'); if (r.ok) setSettings(await r.json())
   }
 
+
   useEffect(() => {
-    // Verify session with server on every page load — don't just trust sessionStorage
-    fetch('/api/auth', { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => {
-        if (d.authenticated) {
-          setAuthed(true)
-          setCurrentAdmin(d.admin)
-          sessionStorage.setItem('dict_admin', '1')
-          sessionStorage.setItem('dict_admin_info', JSON.stringify(d.admin))
-        } else {
-          // Token expired or invalid
-          sessionStorage.removeItem('dict_admin')
-          sessionStorage.removeItem('dict_admin_info')
-          setAuthed(false)
-        }
-      })
-      .catch(() => {
-        // Network error — trust sessionStorage as fallback for offline resilience
-        if (typeof window !== 'undefined' && sessionStorage.getItem('dict_admin')) {
-          setAuthed(true)
-          try { const a = sessionStorage.getItem('dict_admin_info'); if (a) setCurrentAdmin(JSON.parse(a)) } catch {}
-        }
-      })
-  }, [])
-  useEffect(() => {
-    if (!authed) return
+    if (!isSignedIn) return
     fetchStats(); fetchPcs(); fetchSettings(); fetchLogs()
     const t = setInterval(() => { fetchStats(); fetchPcs() }, 30000)
     return () => clearInterval(t)
-  }, [authed, fetchStats, fetchPcs, fetchLogs])
-  useEffect(() => { if (authed && tab === 'logs') fetchLogs() }, [authed, tab, fetchLogs])
+  }, [isSignedIn, fetchStats, fetchPcs, fetchLogs])
+  useEffect(() => { if (isSignedIn && tab === 'logs') fetchLogs() }, [isSignedIn, tab, fetchLogs])
 
   // ── Derived data ──────────────────────────────────────────────────────────────
   const todayLogs = useMemo(() => allLogs.filter(l => isToday(new Date(l.timeIn))), [allLogs])
@@ -504,21 +479,7 @@ export default function AdminPage() {
   }, [allLogs])
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
-  const handleLogin = async () => {
-    setLoginError('')
-    const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginForm) })
-    if (r.ok) {
-      const d = await r.json()
-      sessionStorage.setItem('dict_admin', '1')
-      sessionStorage.setItem('dict_admin_info', JSON.stringify(d.admin))
-      setCurrentAdmin(d.admin)
-      setAuthed(true)
-    }
-    else setLoginError('Invalid username or password')
-  }
-  const handleLogout = async () => {
-    await fetch('/api/auth', { method: 'DELETE' }); sessionStorage.removeItem('dict_admin'); setAuthed(false)
-  }
+
   const handleCheckout = async (logId: string) => {
     await fetch(`/api/logs/${logId}/timeout`, { method: 'PATCH' })
     fetchLogs(); fetchStats(); fetchPcs()
@@ -606,36 +567,21 @@ export default function AdminPage() {
 
   const s = stats as Record<string, unknown> | null
 
-  // ── LOGIN ──────────────────────────────────────────────────────────────────────
-  if (!authed) {
+  // ── CLERK AUTH GATE ───────────────────────────────────────────────────────────
+  if (!clerkLoaded) {
     return (
-      <div className="min-h-screen bg-[var(--dict-blue)] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-[var(--dict-blue)] flex items-center justify-center mx-auto mb-3 shadow-lg">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-              </svg>
-            </div>
-            <h1 className="font-display font-bold text-xl text-[var(--dict-blue)]">Staff Portal</h1>
-            <p className="text-sm text-gray-400">DTC Region V · Administration</p>
-          </div>
-          <div className="space-y-3">
-            <input type="text" value={loginForm.username} onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))} placeholder="Username"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-            <input type="password" value={loginForm.password} onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder="Password"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-            {loginError && <p className="text-red-500 text-sm bg-red-50 rounded-xl px-3 py-2">{loginError}</p>}
-            <button onClick={handleLogin} className="w-full py-3 bg-[var(--dict-blue)] text-white rounded-xl font-semibold hover:bg-blue-800">Login</button>
-          </div>
-          <div className="mt-4 text-center"><a href="/" className="text-xs text-gray-400 hover:text-gray-600">← Back to Logbook</a></div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[var(--dict-blue)] border-t-transparent rounded-full animate-spin"/>
       </div>
     )
   }
+  if (!isSignedIn) {
+    if (typeof window !== 'undefined') window.location.href = '/sign-in?redirect_url=/admin'
+    return null
+  }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-cream)]">
+    <div className="min-h-screen" style={{position:"relative",zIndex:1,fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
       {/* Edit Log Modal */}
       {editLog && <EditLogModal log={editLog} onSave={handleSaveLog} onClose={() => setEditLog(null)} onCheckout={handleCheckout}/>}
       {/* Edit PC Modal */}
@@ -659,19 +605,22 @@ export default function AdminPage() {
           </div>
           <div className="border-t border-white/15 flex items-center justify-between py-1">
             <nav className="flex gap-0.5 flex-wrap">
-              {(['dashboard','logs','pcs','network','security','auditlog','announcements','analytics','admins','settings'] as const).map(t => (
+              {(['dashboard','logs','pcs','network','auditlog','announcements','analytics','admins','settings'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all ${tab===t ? 'bg-white text-[var(--dict-blue)] shadow-sm' : 'text-blue-200 hover:text-white hover:bg-white/10'}`}>
-                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='security'?'🔒 Security':t==='auditlog'?'📜 Audit':t==='announcements'?'📢 Notices':t==='analytics'?'📈 Analytics':t==='admins'?'👥 Admins':'📋 Logs'}
+                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='auditlog'?'📜 Audit':t==='announcements'?'📢 Notices':t==='analytics'?'📈 Analytics':t==='admins'?'👥 Admins':'📋 Logs'}
                 </button>
               ))}
             </nav>
-            <button onClick={handleLogout} className="text-xs text-blue-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors">Sign Out →</button>
+            <div className="flex items-center gap-3">
+              <a href="/admin/invite" className="text-xs text-blue-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors">✉️ Invite Staff</a>
+              <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'w-8 h-8' } }}/>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6" style={{position:"relative",zIndex:1}}>
 
         {/* ══════════════════════════════════════════════════════════ DASHBOARD */}
         {tab === 'dashboard' && s && (
@@ -730,7 +679,7 @@ export default function AdminPage() {
               {/* PC status + usage charts */}
               <div className="space-y-4">
                 {/* PC status */}
-                <div className="bg-white rounded-2xl shadow-sm p-5">
+                <div className="glass rounded-2xl shadow-sm p-5">
                   <h3 className="font-display font-semibold text-gray-800 mb-3">Workstation Status</h3>
                   <div className="space-y-2">
                     {(['ONLINE', 'IN_USE', 'OFFLINE', 'MAINTENANCE'] as PCStatus[]).map(st => {
@@ -752,7 +701,7 @@ export default function AdminPage() {
 
                 {/* Equipment usage chart */}
                 {equipmentFreq.length > 0 && (
-                  <div className="bg-white rounded-2xl shadow-sm p-5">
+                  <div className="glass rounded-2xl shadow-sm p-5">
                     <BarChart data={equipmentFreq} title="Equipment Usage" color="bg-[var(--dict-blue)]"/>
                   </div>
                 )}
@@ -761,10 +710,10 @@ export default function AdminPage() {
 
             {/* Report charts row */}
             <div className="grid md:grid-cols-2 gap-5">
-              <div className="bg-white rounded-2xl shadow-sm p-5">
+              <div className="glass rounded-2xl shadow-sm p-5">
                 <BarChart data={purposeFreq} title="Purpose / Service Frequency" color="bg-emerald-500"/>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm p-5">
+              <div className="glass rounded-2xl shadow-sm p-5">
                 <BarChart data={agencyFreq} title="Agency / Organization Frequency" color="bg-purple-500"/>
               </div>
             </div>
@@ -775,7 +724,7 @@ export default function AdminPage() {
         {tab === 'logs' && (
           <div className="space-y-4">
             {/* Filters */}
-            <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="glass rounded-2xl shadow-sm p-4">
               <div className="flex flex-wrap gap-3 items-center">
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or agency..."
                   className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm flex-1 min-w-48 outline-none focus:border-[var(--dict-blue)]"/>
@@ -815,7 +764,7 @@ export default function AdminPage() {
         {tab === 'pcs' && (
           <div className="space-y-5">
             {/* Add PC */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="glass rounded-2xl p-5">
               <h3 className="font-display font-semibold text-gray-700 mb-3">Add Workstation</h3>
               <div className="flex flex-wrap gap-3">
                 <input value={newPc.name} onChange={e=>setNewPc(f=>({...f,name:e.target.value}))} placeholder="Name (PC-09)"
@@ -873,7 +822,7 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <div className="col-span-2 flex items-end">
-                    <div className="bg-white rounded-xl px-4 py-2 border border-blue-200 text-xs text-blue-600">
+                    <div className="glass rounded-xl px-4 py-2 border border-blue-200 text-xs text-blue-600">
                       Grid: <strong>{gridCols} × {gridRowCount}</strong> = {gridCols * gridRowCount} cells total · {pcs.length} stations placed
                     </div>
                   </div>
@@ -882,7 +831,7 @@ export default function AdminPage() {
             )}
 
             {/* Floor Plan Grid */}
-            <div className="bg-white rounded-2xl shadow-sm p-5">
+            <div className="glass rounded-2xl shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="font-display font-semibold text-gray-700">Floor Plan</h3>
@@ -1022,7 +971,7 @@ export default function AdminPage() {
             {/* LEFT COL */}
             <div className="space-y-5">
               {/* Ping single IP */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <div className="glass rounded-2xl p-5">
                 <h3 className="font-display font-semibold text-gray-700 mb-1 flex items-center gap-2">
                   <span className="w-7 h-7 rounded-lg bg-blue-100 text-[var(--dict-blue)] flex items-center justify-center text-sm">🔍</span>
                   Ping IP Address
@@ -1062,7 +1011,7 @@ export default function AdminPage() {
               </div>
 
               {/* Subnet scanner */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <div className="glass rounded-2xl p-5">
                 <h3 className="font-display font-semibold text-gray-700 mb-1 flex items-center gap-2">
                   <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm">🌐</span>
                   Subnet Scanner
@@ -1128,7 +1077,7 @@ export default function AdminPage() {
             {/* RIGHT COL */}
             <div className="space-y-5">
               {/* Live station status */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <div className="glass rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-display font-semibold text-gray-700 flex items-center gap-2">
                     <span className="w-7 h-7 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm">📡</span>
@@ -1181,209 +1130,6 @@ export default function AdminPage() {
         )}
 
         {/* ══════════════════════════════════════════════════════════ SECURITY */}
-        {tab === 'security' && (
-          <div className="space-y-5">
-            {/* Header */}
-            <div className="bg-[var(--dict-blue)] text-white rounded-2xl p-5">
-              <h2 className="font-display font-bold text-xl">Security & IP Camera Monitor</h2>
-              <p className="text-blue-200 text-sm mt-0.5">Connect and monitor IP cameras for the DTC premises. Supports MJPEG streams, HLS, and snapshot URLs.</p>
-            </div>
-
-            {/* Add camera form */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <h3 className="font-display font-semibold text-gray-700 mb-4">Add IP Camera</h3>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 block mb-1">Camera Name</label>
-                  <input value={newCamera.name} onChange={e=>setNewCamera(f=>({...f,name:e.target.value}))}
-                    placeholder="e.g. Front Entrance, Server Room"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 block mb-1">Stream Type</label>
-                  <select value={newCamera.type} onChange={e=>setNewCamera(f=>({...f,type:e.target.value as typeof newCamera.type}))}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
-                    <option value="mjpeg">MJPEG Stream (most IP cams)</option>
-                    <option value="snapshot">JPEG Snapshot (auto-refresh)</option>
-                    <option value="hls">HLS Stream (m3u8)</option>
-                    <option value="rtsp-proxy">RTSP via Proxy URL</option>
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-semibold text-gray-500 block mb-1">Stream / Snapshot URL</label>
-                  <input value={newCamera.url} onChange={e=>setNewCamera(f=>({...f,url:e.target.value}))}
-                    placeholder="http://192.168.1.200/video.cgi  or  http://192.168.1.200/snapshot.jpg"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-[var(--dict-blue)]"/>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-semibold text-gray-500 block mb-1">Notes (optional)</label>
-                  <input value={newCamera.notes} onChange={e=>setNewCamera(f=>({...f,notes:e.target.value}))}
-                    placeholder="Location, orientation, brand/model..."
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-                </div>
-              </div>
-
-              {/* URL format guide */}
-              <div className="mt-4 bg-blue-50 rounded-xl p-4">
-                <p className="text-xs font-semibold text-blue-700 mb-2">Common URL Formats:</p>
-                <div className="grid sm:grid-cols-2 gap-1.5">
-                  {[
-                    {label:'Generic MJPEG',url:'http://[IP]/video.cgi'},
-                    {label:'Hikvision MJPEG',url:'http://[IP]/Streaming/Channels/1/httppreview'},
-                    {label:'Dahua Snapshot',url:'http://[IP]/cgi-bin/snapshot.cgi'},
-                    {label:'Tapo (requires proxy)',url:'rtsp://[user]:[pass]@[IP]:554/stream1'},
-                    {label:'Generic Snapshot',url:'http://[IP]/snapshot.jpg'},
-                    {label:'HLS stream',url:'http://[IP]/live/stream.m3u8'},
-                  ].map(u=>(
-                    <div key={u.label} className="flex items-center gap-2">
-                      <span className="text-blue-400 text-xs font-semibold w-32 flex-shrink-0">{u.label}</span>
-                      <code className="text-blue-600 text-xs font-mono">{u.url}</code>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <button onClick={addCamera}
-                className="mt-4 px-6 py-2.5 bg-[var(--dict-blue)] text-white rounded-xl font-semibold text-sm hover:bg-blue-800 disabled:opacity-50"
-                disabled={!newCamera.name||!newCamera.url}>
-                + Add Camera
-              </button>
-            </div>
-
-            {/* Camera grid */}
-            {cameras.length === 0
-              ? (
-                <div className="bg-white rounded-2xl p-12 shadow-sm text-center">
-                  <div className="text-6xl mb-4">📷</div>
-                  <p className="text-gray-400 font-semibold">No cameras added yet</p>
-                  <p className="text-sm text-gray-300 mt-1">Add an IP camera above to start monitoring</p>
-                </div>
-              )
-              : (
-                <div>
-                  {/* Refresh button */}
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm text-gray-500">{cameras.filter(c=>c.enabled).length} of {cameras.length} cameras active</p>
-                    <button onClick={()=>setCameraRefreshKey(k=>k+1)}
-                      className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 text-sm text-gray-600 hover:border-blue-300 shadow-sm">
-                      🔄 Refresh Snapshots
-                    </button>
-                  </div>
-                  <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {cameras.map(cam=>(
-                      <div key={cam.id} className={`bg-white rounded-2xl shadow-sm overflow-hidden border-2 transition-all ${cam.enabled?'border-gray-100':'border-gray-200 opacity-60'}`}>
-                        {/* Camera feed */}
-                        <div className="bg-gray-900 relative" style={{aspectRatio:'16/9'}}>
-                          {cam.enabled
-                            ? cam.type==='mjpeg'
-                              ? <img key={cameraRefreshKey}
-                                  src={cam.url} alt={cam.name}
-                                  className="w-full h-full object-cover"
-                                  onError={e=>{(e.target as HTMLImageElement).src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect fill="%23111"/><text x="50%" y="50%" fill="%23666" text-anchor="middle" font-size="14" dy=".3em">Stream unavailable</text></svg>'}}
-                                />
-                              : cam.type==='snapshot'
-                              ? <img key={`${cameraRefreshKey}-${cam.id}`}
-                                  src={`${cam.url}?t=${cameraRefreshKey}`} alt={cam.name}
-                                  className="w-full h-full object-cover"
-                                  onError={e=>{(e.target as HTMLImageElement).src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect fill="%23111"/><text x="50%" y="50%" fill="%23666" text-anchor="middle" font-size="14" dy=".3em">Snapshot unavailable</text></svg>'}}
-                                />
-                              : cam.type==='hls'
-                              ? <div className="w-full h-full flex flex-col items-center justify-center">
-                                  <div className="text-4xl mb-2">📺</div>
-                                  <p className="text-gray-400 text-xs">HLS stream</p>
-                                  <a href={cam.url} target="_blank" rel="noreferrer" className="mt-2 text-xs text-blue-400 underline">Open in player</a>
-                                </div>
-                              : <div className="w-full h-full flex flex-col items-center justify-center">
-                                  <div className="text-4xl mb-2">📡</div>
-                                  <p className="text-gray-400 text-xs text-center px-4">RTSP proxy stream<br/><span className="font-mono text-[10px] break-all">{cam.url}</span></p>
-                                </div>
-                            : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <div className="text-center">
-                                  <div className="text-4xl mb-2 opacity-30">📷</div>
-                                  <p className="text-gray-600 text-sm">Camera disabled</p>
-                                </div>
-                              </div>
-                            )
-                          }
-                          {/* Overlay: name + status dot */}
-                          <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1">
-                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cam.enabled?'bg-red-500 animate-pulse':'bg-gray-500'}`}/>
-                            <span className="text-white text-xs font-semibold">{cam.name}</span>
-                          </div>
-                          {/* Fullscreen button */}
-                          <button onClick={()=>setExpandedCam(expandedCam===cam.id?null:cam.id)}
-                            className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors text-sm">
-                            {expandedCam===cam.id?'⊠':'⊞'}
-                          </button>
-                        </div>
-
-                        {/* Expanded view */}
-                        {expandedCam===cam.id && cam.enabled && cam.type!=='hls' && cam.type!=='rtsp-proxy' && (
-                          <div className="bg-gray-900 border-t border-gray-800" style={{aspectRatio:'16/9'}}>
-                            <img key={`expanded-${cameraRefreshKey}`}
-                              src={cam.type==='snapshot'?`${cam.url}?t=${cameraRefreshKey}-exp`:cam.url}
-                              alt={cam.name} className="w-full h-full object-contain"/>
-                          </div>
-                        )}
-
-                        {/* Info panel */}
-                        <div className="p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-semibold text-gray-800 text-sm">{cam.name}</p>
-                              {cam.notes && <p className="text-xs text-gray-400">{cam.notes}</p>}
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
-                              cam.type==='mjpeg'?'bg-blue-50 text-blue-600 border-blue-200':
-                              cam.type==='snapshot'?'bg-green-50 text-green-600 border-green-200':
-                              cam.type==='hls'?'bg-purple-50 text-purple-600 border-purple-200':
-                              'bg-amber-50 text-amber-600 border-amber-200'
-                            }`}>{cam.type.toUpperCase()}</span>
-                          </div>
-                          <p className="font-mono text-[10px] text-gray-300 truncate">{cam.url}</p>
-                          <div className="flex gap-2 pt-1">
-                            <button onClick={()=>toggleCamera(cam.id)}
-                              className={`flex-1 text-xs py-1.5 rounded-lg border font-semibold transition-colors ${
-                                cam.enabled?'border-orange-200 text-orange-600 hover:bg-orange-50':'border-green-200 text-green-600 hover:bg-green-50'
-                              }`}>
-                              {cam.enabled?'⏸ Disable':'▶ Enable'}
-                            </button>
-                            <a href={cam.url} target="_blank" rel="noreferrer"
-                              className="text-xs py-1.5 px-3 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
-                              ↗ Open
-                            </a>
-                            <button onClick={()=>removeCamera(cam.id)}
-                              className="text-xs py-1.5 px-2 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition-colors">
-                              🗑
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            }
-
-            {/* RTSP note */}
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-              <p className="text-sm font-semibold text-amber-800 mb-1">📋 About IP Camera Compatibility</p>
-              <p className="text-xs text-amber-700 leading-relaxed mb-2">
-                Browsers can only display <strong>MJPEG</strong> and <strong>JPEG snapshot</strong> streams directly.
-                <strong> RTSP streams</strong> (used by Hikvision, Dahua, Tapo, etc.) require a proxy or transcoder like
-                <strong> go2rtc</strong>, <strong>Frigate</strong>, or <strong>MediaMTX</strong> to convert to HLS/MJPEG for browser display.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {['go2rtc (lightweight proxy)','Frigate (NVR + AI detection)','MediaMTX (RTSP→HLS)','Tapo Care (cloud)','Reolink app'].map(t=>(
-                  <span key={t} className="text-xs bg-white border border-amber-200 text-amber-700 px-2.5 py-1 rounded-full">{t}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════ SETTINGS */}
         {tab === 'settings' && (
           <div className="grid lg:grid-cols-2 gap-5">
             {/* LEFT col */}
@@ -1395,7 +1141,7 @@ export default function AdminPage() {
               )}
 
               {/* Access code */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <div className="glass rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-8 h-8 rounded-lg bg-blue-100 text-[var(--dict-blue)] flex items-center justify-center">🔐</span>
                   <h3 className="font-display font-semibold text-gray-700">Daily Access Code</h3>
@@ -1417,7 +1163,7 @@ export default function AdminPage() {
               </div>
 
               {/* Office hours */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <div className="glass rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">⏰</span>
                   <h3 className="font-display font-semibold text-gray-700">Office Hours</h3>
@@ -1441,7 +1187,7 @@ export default function AdminPage() {
             {/* RIGHT col */}
             <div className="space-y-5">
               {/* WiFi */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <div className="glass rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">📶</span>
                   <h3 className="font-display font-semibold text-gray-700">WiFi Settings</h3>
@@ -1475,7 +1221,7 @@ export default function AdminPage() {
               </div>
 
               {/* Logo instructions */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <div className="glass rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">🖼</span>
                   <h3 className="font-display font-semibold text-gray-700">Header Logos</h3>
@@ -1569,7 +1315,7 @@ function AnnouncementsTab() {
   return (
     <div className="space-y-4">
       {/* Create form */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
+      <div className="glass rounded-2xl p-5">
         <h3 className="font-display font-semibold text-gray-700 mb-4">Post Announcement</h3>
         <div className="space-y-3">
           <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}
@@ -1596,7 +1342,7 @@ function AnnouncementsTab() {
       </div>
 
       {/* Active announcements */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
+      <div className="glass rounded-2xl p-5">
         <h3 className="font-display font-semibold text-gray-700 mb-3">Active Notices ({items.filter(i=>i.active).length})</h3>
         {items.length === 0
           ? <p className="text-sm text-gray-400 text-center py-6">No announcements yet</p>
@@ -1663,7 +1409,7 @@ function AnalyticsTab() {
   return (
     <div className="space-y-4">
       {/* Range selector */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm flex gap-2 flex-wrap">
+      <div className="glass rounded-2xl p-4 shadow-sm flex gap-2 flex-wrap">
         {(['today','week','month','year'] as const).map(r => (
           <button key={r} onClick={() => setRange(r)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${range===r ? 'bg-[var(--dict-blue)] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -1677,7 +1423,7 @@ function AnalyticsTab() {
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-2xl p-12 text-center text-gray-300 shadow-sm">Loading analytics...</div>
+        <div className="glass rounded-2xl p-12 text-center text-gray-300 shadow-sm">Loading analytics...</div>
       ) : (
         <>
           {/* Summary cards */}
@@ -1688,7 +1434,7 @@ function AnalyticsTab() {
               { label:'Avg Rating', value: summary.avgRating ? `${summary.avgRating}★` : '—', icon:'⭐', color:'text-yellow-600' },
               { label:'Ratings Given', value: summary.ratingCount ?? 0, icon:'📝', color:'text-green-600' },
             ].map(s => (
-              <div key={s.label} className="bg-white rounded-2xl p-4 shadow-sm text-center">
+              <div key={s.label} className="glass rounded-2xl p-4 shadow-sm text-center">
                 <div className="text-2xl mb-1">{s.icon}</div>
                 <div className={`text-2xl font-bold font-display ${s.color}`}>{String(s.value)}</div>
                 <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
@@ -1698,7 +1444,7 @@ function AnalyticsTab() {
 
           <div className="grid sm:grid-cols-2 gap-4">
             {/* Hourly heatmap */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="glass rounded-2xl p-5">
               <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Peak Hours</h3>
               <div className="space-y-1">
                 {Array.from({length:10}, (_,i)=>i+8).map(h => {
@@ -1722,7 +1468,7 @@ function AnalyticsTab() {
             </div>
 
             {/* Daily trend */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="glass rounded-2xl p-5">
               <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Daily Trend</h3>
               {dailyTrend.length === 0
                 ? <p className="text-xs text-gray-300 text-center py-8">No data</p>
@@ -1740,7 +1486,7 @@ function AnalyticsTab() {
             </div>
 
             {/* Purpose breakdown */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="glass rounded-2xl p-5">
               <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Top Purposes</h3>
               <div className="space-y-2">
                 {purposes.slice(0,8).map((p,i) => {
@@ -1762,7 +1508,7 @@ function AnalyticsTab() {
 
             {/* Equipment + Service Type + Ratings */}
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <div className="glass rounded-2xl p-5">
                 <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Services Used</h3>
                 <div className="space-y-1.5">
                   {equipment.slice(0,6).map(e => (
@@ -1775,7 +1521,7 @@ function AnalyticsTab() {
               </div>
 
               {ratingDist.length > 0 && (
-                <div className="bg-white rounded-2xl p-5 shadow-sm">
+                <div className="glass rounded-2xl p-5">
                   <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Satisfaction Distribution</h3>
                   <div className="space-y-1.5">
                     {[5,4,3,2,1].map(star => {
@@ -1797,7 +1543,7 @@ function AnalyticsTab() {
               )}
 
               {serviceTypes.length > 0 && (
-                <div className="bg-white rounded-2xl p-5 shadow-sm">
+                <div className="glass rounded-2xl p-5">
                   <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Service Type</h3>
                   <div className="space-y-1.5">
                     {serviceTypes.map(s => (
@@ -1880,7 +1626,7 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
   return (
     <div className="space-y-4">
       {/* Existing admins */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
+      <div className="glass rounded-2xl p-5">
         <h3 className="font-display font-semibold text-gray-700 mb-4">Admin Accounts ({admins.length})</h3>
         <div className="space-y-2">
           {admins.map(a => (
@@ -1918,7 +1664,7 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
       {/* Password change modal */}
       {pwdChange && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+          <div className="glass rounded-2xl shadow-2xl p-6 max-w-sm w-full">
             <h3 className="font-display font-bold text-lg mb-4">Change Password</h3>
             {pwdChange.id === currentAdminId && (
               <input type="password" placeholder="Current password *"
@@ -1946,7 +1692,7 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
       )}
 
       {/* Create new admin */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
+      <div className="glass rounded-2xl p-5">
         <h3 className="font-display font-semibold text-gray-700 mb-4">Create Admin Account</h3>
         <div className="grid sm:grid-cols-2 gap-3">
           <input value={newAdmin.name} onChange={e=>setNewAdmin(a=>({...a,name:e.target.value}))}
@@ -2000,7 +1746,7 @@ function AuditLogTab() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
+      <div className="glass rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-display font-semibold text-gray-700">Admin Activity Audit Trail</h3>

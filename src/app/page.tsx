@@ -104,7 +104,7 @@ function DataPrivacyModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       style={{ backdropFilter: 'blur(16px)', backgroundColor: 'rgba(0,20,80,0.65)' }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+      <div className="glass rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
         <div className="bg-[var(--dict-blue)] text-white rounded-t-2xl px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="font-display font-bold text-lg">Data Privacy Act of 2012</h3>
@@ -331,7 +331,7 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
   return (
     <div className="min-h-screen bg-[var(--bg-cream)] flex items-center justify-center p-4">
       {showPrivacyModal && <DataPrivacyModal onClose={() => setShowPrivacyModal(false)}/>}
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
+      <div className="glass rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
         {/* Photo + checkmark */}
         <div className="relative inline-block mb-4">
           <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto">
@@ -784,8 +784,8 @@ export default function LogbookPage() {
   // ════════════════════════════════════════════════════════════════════════════
   const AccessGate = settings && !accessGranted && (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backdropFilter: 'blur(24px)', backgroundColor: 'rgba(0,20,80,0.6)' }}>
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
+      style={{ backdropFilter: 'blur(28px)', WebkitBackdropFilter: 'blur(28px)', backgroundColor: 'rgba(0,15,60,0.65)' }}>
+      <div className="glass rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
         <div className="w-16 h-16 rounded-full bg-blue-50 border-2 border-blue-100 flex items-center justify-center mx-auto mb-4">
           <svg className="w-8 h-8 text-[var(--dict-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
@@ -865,7 +865,7 @@ export default function LogbookPage() {
   if (step === 'pc-select') {
     const expectedOut = addHours(now, effectiveDuration)
     return (
-      <div className="min-h-screen bg-[var(--bg-cream)] p-4 sm:p-6">
+      <div className="min-h-screen p-4 sm:p-6">
         <div className="max-w-3xl mx-auto space-y-4">
           {officeState === 'closing_soon' && (
             <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-3 flex items-center gap-3">
@@ -879,7 +879,7 @@ export default function LogbookPage() {
 
           {/* Progress indicator */}
           {hasBoth && (
-            <div className="bg-white rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
+            <div className="glass rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
               <div className="flex items-center gap-2 flex-1">
                 <div className="w-7 h-7 rounded-full bg-[var(--dict-blue)] text-white flex items-center justify-center text-xs font-bold">1</div>
                 <span className="text-sm font-semibold text-[var(--dict-blue)]">Choose PC</span>
@@ -892,7 +892,7 @@ export default function LogbookPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-2xl shadow-sm p-6">
+          <div className="glass rounded-2xl p-6">
             <div className="flex items-center justify-between mb-1">
               <h2 className="font-display text-xl font-bold text-[var(--dict-blue)]">Choose a Workstation</h2>
               <button onClick={pingAllPcs} disabled={pinging}
@@ -912,7 +912,7 @@ export default function LogbookPage() {
           </div>
 
           {/* Duration */}
-          <div className="bg-white rounded-2xl shadow-sm p-5">
+          <div className="glass rounded-2xl shadow-sm p-5">
             <h3 className="font-semibold text-gray-700 text-sm mb-1">How long will you use it?</h3>
             <p className="text-xs text-gray-400 mb-3">Office closes at <strong>{officeCloseStr}</strong> — max {maxDuration < 1 ? Math.round(maxDuration * 60) + 'min' : maxDuration + 'hr'} remaining</p>
             <DurationPicker now={now} maxDuration={maxDuration} officeCloseStr={officeCloseStr} usageDuration={usageDuration} setUsageDuration={setUsageDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} showCustom={showCustom} setShowCustom={setShowCustom}/>
@@ -959,11 +959,11 @@ export default function LogbookPage() {
   if ((step === 'internet-info') && settings) {
     const expectedOut = addHours(now, effectiveDuration)
     return (
-      <div className="min-h-screen bg-[var(--bg-cream)] p-4 sm:p-6">
+      <div className="min-h-screen p-4 sm:p-6">
         <div className="max-w-lg mx-auto space-y-4">
           {/* Progress if both */}
           {hasBoth && (
-            <div className="bg-white rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
+            <div className="glass rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
               <div className="flex items-center gap-2 flex-1 opacity-50">
                 <div className="w-7 h-7 rounded-full bg-green-500 text-white flex items-center justify-center text-xs font-bold">✓</div>
                 <span className="text-sm font-semibold text-gray-400">PC Selected</span>
@@ -982,7 +982,7 @@ export default function LogbookPage() {
             <p className="text-blue-200 text-sm">{settings.wifiNote}</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-6 flex flex-col items-center gap-4">
+          <div className="glass rounded-2xl shadow-sm p-6 flex flex-col items-center gap-4">
             <img src={wifiQrUrl(settings.wifiSsid, settings.wifiPassword)} alt="WiFi QR" className="w-44 h-44 rounded-xl border-4 border-gray-100"/>
             <p className="text-xs text-gray-400">Scan with your phone camera to connect instantly</p>
             <div className="w-full bg-[var(--bg-cream)] rounded-xl px-5 py-3 space-y-2">
@@ -1006,7 +1006,7 @@ export default function LogbookPage() {
 
           {/* Duration (only show if not both — if both, duration was set at PC step) */}
           {!hasBoth && (
-            <div className="bg-white rounded-2xl shadow-sm p-5">
+            <div className="glass rounded-2xl shadow-sm p-5">
               <h3 className="font-semibold text-gray-700 text-sm mb-1">How long will you use the WiFi?</h3>
               <p className="text-xs text-gray-400 mb-3">Must finish before {officeCloseStr}</p>
               <DurationPicker now={now} maxDuration={maxDuration} officeCloseStr={officeCloseStr} usageDuration={usageDuration} setUsageDuration={setUsageDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} showCustom={showCustom} setShowCustom={setShowCustom}/>
@@ -1034,7 +1034,7 @@ export default function LogbookPage() {
   // MAIN FORM
   // ════════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-[var(--bg-cream)]">
+    <div className="min-h-screen" style={{position:"relative",zIndex:1}}>
       {AccessGate}
       {showPrivacyModal && <DataPrivacyModal onClose={() => setShowPrivacyModal(false)}/>}
 
@@ -1064,7 +1064,7 @@ export default function LogbookPage() {
       {/* Consent Modal */}
       {showConsentModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-7 max-w-sm w-full">
+          <div className="glass rounded-2xl shadow-2xl p-7 max-w-sm w-full">
             <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
               <svg className="w-6 h-6 text-[var(--dict-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
@@ -1181,7 +1181,7 @@ export default function LogbookPage() {
         )}
 
         {/* Photo */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <div className="glass rounded-2xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between mb-3">
             <div><h3 className="font-semibold text-gray-700 text-sm">Client Photo</h3><p className="text-xs text-gray-400">Optional — for identification</p></div>
             {!photo && !cameraActive && (
@@ -1216,7 +1216,7 @@ export default function LogbookPage() {
         </div>
 
         {/* Form fields */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <div className="glass rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
 
           {/* Full Name */}
           <Field label="Full Name" required error={errors.fullName}>
@@ -1400,7 +1400,7 @@ export default function LogbookPage() {
             </div>
 
             {/* Offices card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="glass rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="bg-gray-50 border-b border-gray-100 px-4 py-3">
                 <h3 className="font-display font-semibold text-gray-700 text-sm">DTC Offices in Bicol Region</h3>
               </div>
@@ -1425,7 +1425,7 @@ export default function LogbookPage() {
             </div>
 
             {/* Contact card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-2">
+            <div className="glass rounded-2xl shadow-sm border border-gray-100 p-4 space-y-2">
               <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Contact Us</h3>
               {[
                 { icon: '📧', label: 'region5@dict.gov.ph' },
@@ -1448,6 +1448,7 @@ export default function LogbookPage() {
 
         </div>{/* end two-column flex */}
       </main>
+
     </div>
   )
 }

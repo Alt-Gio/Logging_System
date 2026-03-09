@@ -1,23 +1,32 @@
 'use client'
 import { useState } from 'react'
 
-function LogoImg({ src, alt, className, fallback }: {
-  src: string; alt: string; className: string; fallback: React.ReactNode
+function LogoImg({ src, alt, className, style, fallback }: {
+  src: string; alt: string; className?: string; style?: React.CSSProperties; fallback: React.ReactNode
 }) {
   const [err, setErr] = useState(false)
   if (err) return <>{fallback}</>
-  return <img src={src} alt={alt} className={className} onError={() => setErr(true)}/>
+  return <img src={src} alt={alt} className={className} style={style} onError={() => setErr(true)}/>
 }
 
 export function GovSeal({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
-  const sz = size === 'sm' ? 'w-9 h-9' : size === 'lg' ? 'w-12 h-12' : 'w-11 h-11'
+  const dim = size === 'sm' ? 36 : size === 'lg' ? 48 : 44
   return (
     <LogoImg
       src="/dict-seal.png" alt="DICT Seal"
-      className={`${sz} object-cover rounded-full flex-shrink-0 shadow-sm`}
+      style={{
+        width: dim, height: dim, objectFit: 'cover', borderRadius: '50%', flexShrink: 0,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.20)',
+        border: '2px solid rgba(255,255,255,0.25)',
+      }}
       fallback={
-        <div className={`${sz} rounded-full border-2 border-white/30 bg-white/10 flex items-center justify-center flex-shrink-0`}>
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div style={{
+          width: dim, height: dim, borderRadius: '50%',
+          border: '2px solid rgba(255,255,255,0.30)',
+          background: 'rgba(255,255,255,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.8)">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"/>
           </svg>
@@ -29,29 +38,33 @@ export function GovSeal({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
 
 export function GovHeaderLogos() {
   return (
-    <div className="hidden sm:flex items-center gap-3">
-      {/* ILCDB — rectangular logo */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} className="hidden sm:flex">
       <LogoImg
         src="/ilcdb-logo.png" alt="ILCDB"
-        className="h-10 object-contain rounded"
+        style={{ height: '40px', objectFit: 'contain', borderRadius: '6px' }}
         fallback={
-          <div className="bg-white/15 border border-white/25 rounded-lg px-2.5 py-1.5 text-center">
-            <div className="text-[#FCD116] font-display font-black text-sm leading-none">ILCDB</div>
-            <div className="text-white/70 text-[8px] leading-tight mt-0.5">ICT LITERACY &</div>
-            <div className="text-white/70 text-[8px] leading-tight">COMPETENCY DEV.</div>
+          <div style={{
+            background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)',
+            borderRadius: '10px', padding: '6px 10px', textAlign: 'center',
+          }}>
+            <div style={{ color: '#FCD116', fontWeight: 900, fontSize: '13px', lineHeight: 1 }}>ILCDB</div>
+            <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '7px', marginTop: '2px', lineHeight: 1.2 }}>ICT LITERACY &<br/>COMPETENCY DEV.</div>
           </div>
         }
       />
-      <div className="w-px h-10 bg-white/20"/>
-      {/* Bagong Pilipinas — circular seal */}
+      <div style={{ width: '1px', height: '36px', background: 'rgba(255,255,255,0.18)' }}/>
       <LogoImg
         src="/bagong-pilipinas.png" alt="Bagong Pilipinas"
-        className="w-11 h-11 object-cover rounded-full flex-shrink-0 shadow-sm"
+        style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '50%', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.15)', border: '2px solid rgba(255,255,255,0.20)' }}
         fallback={
-          <div className="w-11 h-11 rounded-full border-2 border-[#FCD116] bg-white/10 flex flex-col items-center justify-center flex-shrink-0">
-            <div className="text-[#FCD116] font-display font-black text-[8px] leading-none">BAGONG</div>
-            <div className="text-white font-display font-black text-[7px] leading-none">PILIPINAS</div>
-            <div className="text-[#FCD116] text-[9px] mt-0.5">🇵🇭</div>
+          <div style={{
+            width: '44px', height: '44px', borderRadius: '50%',
+            border: '2px solid #FCD116', background: 'rgba(255,255,255,0.10)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <div style={{ color: '#FCD116', fontWeight: 900, fontSize: '7px', lineHeight: 1 }}>BAGONG</div>
+            <div style={{ color: '#fff',    fontWeight: 900, fontSize: '6px', lineHeight: 1 }}>PILIPINAS</div>
+            <div style={{ fontSize: '10px', marginTop: '1px' }}>🇵🇭</div>
           </div>
         }
       />
