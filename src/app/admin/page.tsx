@@ -111,9 +111,17 @@ function LogCard({ log, onEdit, onCheckout, compact = false }: {
       </div>
       {isActive && (
         <div className="mt-3 pt-3 border-t border-gray-50 flex gap-2" onClick={e => e.stopPropagation()}>
-          <button onClick={() => onCheckout(log.id)}
-            className="flex-1 text-xs py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 font-semibold transition-colors">
-            ✓ Check Out
+          <button onClick={() => {
+              if (window.confirm(`Check out ${log.fullName} early?
+
+This marks their session as complete now.`)) onCheckout(log.id)
+            }}
+            className={`flex-1 text-xs py-1.5 rounded-lg border font-semibold transition-colors ${
+              isOverdue
+                ? 'bg-red-500 text-white border-red-500 hover:bg-red-600'
+                : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+            }`}>
+            {isOverdue ? '⚠ Force Check Out' : '🚪 Early Check-Out'}
           </button>
           <button onClick={() => onEdit(log)}
             className="text-xs py-1.5 px-3 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
@@ -357,7 +365,7 @@ export default function AdminPage() {
   const { user, isLoaded: clerkLoaded, isSignedIn } = useUser()
   const currentAdmin = isSignedIn ? { id: user?.id ?? '', name: user?.fullName ?? user?.username ?? 'Admin', role: 'SUPER_ADMIN' } : null
   const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'auditlog' | 'announcements' | 'analytics'>('dashboard')
-  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', googleSheetId: '', googleServiceKey: '' })
+  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [sheetSyncing, setSheetSyncing] = useState(false)
   const [sheetResult, setSheetResult] = useState<{ok:boolean;msg:string}|null>(null)
@@ -1271,60 +1279,139 @@ export default function AdminPage() {
             {/* ─── APPEARANCE ──────────────────────────────────────────── */}
             {settingsTab === 'appearance' && (
               <div className="space-y-5">
-                {/* Background image */}
+
+                {/* ── BACKGROUND IMAGE ── */}
                 <div className="glass rounded-2xl p-6 shadow-sm">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">🖼</span>
                     <h3 className="font-display font-semibold text-gray-700">Background Image</h3>
+                    <span className="ml-auto text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">Applies to both Admin & Front Page</span>
                   </div>
                   <p className="text-xs text-gray-400 mb-4">
-                    Paste a direct image URL to use as the background. Falls back to the hardcoded <code className="bg-gray-100 px-1 rounded">/Bg.png</code> if blank or unreachable.
+                    Upload a PNG/JPG file <strong>or</strong> paste an image URL. Falls back to <code className="bg-gray-100 px-1 rounded">/Bg.png</code> if blank.
                   </p>
-                  <input value={settings.bgImageUrl}
-                    onChange={e=>setSettings(s=>({...s,bgImageUrl:e.target.value}))}
-                    placeholder="https://example.com/background.jpg  (leave blank to use /Bg.png)"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] font-mono mb-4"/>
+
+                  {/* File upload */}
+                  <label className="flex items-center gap-3 w-full mb-3 cursor-pointer">
+                    <div className="flex-1 border-2 border-dashed border-gray-200 hover:border-[var(--dict-blue)] rounded-xl px-4 py-3 flex items-center gap-3 transition-colors">
+                      <span className="text-2xl">📁</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">Upload PNG / JPG</p>
+                        <p className="text-xs text-gray-400">Max 4MB. Stored in database, applies immediately.</p>
+                      </div>
+                    </div>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        const reader = new FileReader()
+                        reader.onload = ev => setSettings(s => ({ ...s, bgImageUrl: ev.target?.result as string }))
+                        reader.readAsDataURL(file)
+                      }}/>
+                  </label>
+
+                  {/* URL input */}
+                  <div className="flex gap-2 mb-4">
+                    <input value={settings.bgImageUrl.startsWith('data:') ? '' : settings.bgImageUrl}
+                      onChange={e => setSettings(s=>({...s,bgImageUrl:e.target.value}))}
+                      placeholder="Or paste image URL (https://...)"
+                      className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] font-mono"/>
+                    {settings.bgImageUrl && (
+                      <button onClick={() => setSettings(s=>({...s,bgImageUrl:''}))}
+                        className="px-3 py-2 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 text-sm">✕</button>
+                    )}
+                  </div>
 
                   {/* Live preview */}
                   <div className="relative rounded-2xl overflow-hidden h-40 border-2 border-dashed border-gray-200">
                     <div className="absolute inset-0"
-                      style={{
-                        backgroundImage: `url('${settings.bgImageUrl || "/Bg.png"}')`,
-                        backgroundSize:'cover', backgroundPosition:'center',
-                      }}/>
-                    <div className="absolute inset-0 bg-indigo-100/60 backdrop-blur-sm"/>
+                      style={{ backgroundImage:`url('${settings.bgImageUrl||"/Bg.png"}')`, backgroundSize:'cover', backgroundPosition:'center' }}/>
+                    <div className="absolute inset-0 bg-indigo-100/50 backdrop-blur-sm"/>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="glass rounded-xl px-6 py-3 text-sm font-semibold text-gray-700">Preview</div>
-                    </div>
-                    {!settings.bgImageUrl && (
-                      <div className="absolute bottom-2 left-2 right-2 text-center">
-                        <span className="text-[10px] text-gray-500 bg-white/80 rounded px-2 py-0.5">Using hardcoded /Bg.png</span>
+                      <div className="glass rounded-xl px-6 py-2 text-sm font-semibold text-gray-700 shadow">
+                        {settings.bgImageUrl ? (settings.bgImageUrl.startsWith('data:') ? '📁 Uploaded file' : '🔗 URL') : '🖼 Default /Bg.png'}
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3">
                     <p className="text-xs font-semibold text-blue-700 mb-1">📌 Fallback Chain</p>
                     <ol className="text-xs text-blue-600 space-y-0.5 list-decimal list-inside">
-                      <li>Custom URL set here (stored in DB, loads dynamically)</li>
+                      <li>Uploaded file or URL saved here → applied at page load via DB</li>
                       <li>Hardcoded <code>/Bg.png</code> in <code>globals.css</code> (always present)</li>
                       <li>Solid color <code>#eef2ff</code> if both fail</li>
                     </ol>
                   </div>
                 </div>
 
-                {/* Predefined backgrounds */}
+                {/* ── INTERACTIVE BANNER ── */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">✨</span>
+                    <h3 className="font-display font-semibold text-gray-700">Interactive Banner</h3>
+                    <span className="ml-auto text-[10px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full">Front Page Sidebar</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Shown below "What We Offer" on the client-facing page. Mouse-interactive 3D parallax effect. Name the file <code className="bg-gray-100 px-1 rounded">interactive-banner.jpg</code> or upload below.
+                  </p>
+
+                  {/* File upload */}
+                  <label className="flex items-center gap-3 w-full mb-3 cursor-pointer">
+                    <div className="flex-1 border-2 border-dashed border-amber-200 hover:border-amber-400 rounded-xl px-4 py-3 flex items-center gap-3 transition-colors">
+                      <span className="text-2xl">🎨</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">Upload Banner PNG / JPG</p>
+                        <p className="text-xs text-gray-400">Recommended: 380×220px or 16:9. Max 4MB.</p>
+                      </div>
+                    </div>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        const reader = new FileReader()
+                        reader.onload = ev => setSettings(s => ({ ...s, interactiveBannerUrl: ev.target?.result as string }))
+                        reader.readAsDataURL(file)
+                      }}/>
+                  </label>
+
+                  <div className="flex gap-2 mb-4">
+                    <input value={settings.interactiveBannerUrl?.startsWith('data:') ? '' : (settings.interactiveBannerUrl||'')}
+                      onChange={e => setSettings(s=>({...s,interactiveBannerUrl:e.target.value}))}
+                      placeholder="Or paste image URL — leave blank to use /interactive-banner.jpg"
+                      className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-amber-400 font-mono"/>
+                    {settings.interactiveBannerUrl && (
+                      <button onClick={() => setSettings(s=>({...s,interactiveBannerUrl:''}))}
+                        className="px-3 py-2 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 text-sm">✕</button>
+                    )}
+                  </div>
+
+                  {/* Preview */}
+                  {(settings.interactiveBannerUrl || true) && (
+                    <div className="relative rounded-2xl overflow-hidden h-32 border-2 border-dashed border-amber-200 bg-amber-50">
+                      <div className="absolute inset-0"
+                        style={{ backgroundImage:`url('${settings.interactiveBannerUrl||"/interactive-banner.jpg"}')`, backgroundSize:'cover', backgroundPosition:'center' }}/>
+                      <div className="absolute inset-0 bg-black/20"/>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="bg-white/80 backdrop-blur rounded-lg px-4 py-1.5 text-xs font-semibold text-gray-700">
+                          {settings.interactiveBannerUrl ? 'Banner Preview' : 'Using /interactive-banner.jpg'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick backgrounds */}
                 <div className="glass rounded-2xl p-6 shadow-sm">
                   <h3 className="font-display font-semibold text-gray-700 mb-3">Quick Backgrounds</h3>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                     {[
-                      { label:'Clear (default /Bg.png)', url:'' },
-                      { label:'DICT Blue Gradient', url:'https://images.unsplash.com/photo-1557683316-973673baf926?w=1920&q=80' },
+                      { label:'Default /Bg.png', url:'' },
+                      { label:'DICT Blue', url:'https://images.unsplash.com/photo-1557683316-973673baf926?w=1920&q=80' },
                       { label:'PH Mountains', url:'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=1920&q=80' },
-                      { label:'Manila Bay Sunset', url:'https://images.unsplash.com/photo-1533421644343-45b606750db8?w=1920&q=80' },
+                      { label:'Manila Bay', url:'https://images.unsplash.com/photo-1533421644343-45b606750db8?w=1920&q=80' },
                       { label:'Abstract Blue', url:'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=1920&q=80' },
-                      { label:'Government Building', url:'https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1920&q=80' },
-                      { label:'Tech / Circuit', url:'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1920&q=80' },
+                      { label:'Government', url:'https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1920&q=80' },
+                      { label:'Tech Circuit', url:'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1920&q=80' },
                       { label:'Clean White', url:'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1920&q=80' },
                     ].map(bg => (
                       <button key={bg.label} onClick={() => setSettings(s=>({...s,bgImageUrl:bg.url}))}
@@ -1343,7 +1430,7 @@ export default function AdminPage() {
 
                 <button onClick={saveSettings}
                   className="w-full py-4 bg-[var(--dict-blue)] text-white font-bold rounded-2xl hover:bg-blue-800 shadow-lg text-base flex items-center justify-center gap-2">
-                  💾 Save Appearance
+                  💾 Save Appearance (applies to Admin + Front Page)
                 </button>
               </div>
             )}

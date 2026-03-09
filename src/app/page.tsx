@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import OllamaAssistant from '@/components/OllamaAssistant'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, addHours, setHours, setMinutes, setSeconds } from 'date-fns'
 
@@ -53,6 +54,7 @@ type PC = {
 type Settings = {
   wifiSsid: string; wifiPassword: string; wifiNote: string
   accessCode: string; officeOpen: string; officeClose: string
+  bgImageUrl?: string; interactiveBannerUrl?: string
 }
 type Announcement = {
   id: string; title: string; body: string
@@ -285,6 +287,153 @@ function iCls(err: boolean) {
   }`
 }
 
+// ─── Interactive Banner (mouse-parallax 3D card) ─────────────────────────────
+function InteractiveBanner({ src }: { src: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [tilt, setTilt] = useState({ x: 0, y: 0 })
+  const [glare, setGlare] = useState({ x: 50, y: 50 })
+  const [hovered, setHovered] = useState(false)
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const px = (e.clientX - rect.left) / rect.width   // 0–1
+    const py = (e.clientY - rect.top)  / rect.height  // 0–1
+    // tilt: max ±18 degrees
+    setTilt({ x: (py - 0.5) * -18, y: (px - 0.5) * 18 })
+    setGlare({ x: px * 100, y: py * 100 })
+  }
+  const handleMouseLeave = () => {
+    setHovered(false)
+    setTilt({ x: 0, y: 0 })
+    setGlare({ x: 50, y: 50 })
+  }
+
+  return (
+    <div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        perspective: '800px',
+        cursor: 'crosshair',
+      }}
+      className="w-full rounded-2xl overflow-hidden"
+    >
+      <div style={{
+        transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale(${hovered ? 1.04 : 1})`,
+        transition: hovered ? 'transform 0.08s ease-out' : 'transform 0.4s ease-out',
+        transformStyle: 'preserve-3d',
+        position: 'relative',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        boxShadow: hovered
+          ? `0 20px 60px rgba(0,30,100,0.35), 0 0 0 1px rgba(255,255,255,0.1)`
+          : `0 4px 24px rgba(0,30,100,0.15)`,
+      }}>
+        {/* Banner image */}
+        <img
+          src={src}
+          alt="DTC Interactive Banner"
+          draggable={false}
+          style={{
+            width: '100%',
+            display: 'block',
+            userSelect: 'none',
+            minHeight: '120px',
+            objectFit: 'cover',
+          }}
+          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+
+        {/* Moving glare layer */}
+        <div
+          style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none',
+            background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,${hovered ? 0.22 : 0}) 0%, transparent 60%)`,
+            transition: hovered ? 'background 0.08s' : 'background 0.4s',
+            borderRadius: '16px',
+          }}
+        />
+
+        {/* Edge shimmer */}
+        {hovered && (
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: '16px', pointerEvents: 'none',
+            boxShadow: 'inset 0 0 0 1.5px rgba(255,255,255,0.25)',
+          }}/>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Session Auto-Timeout (client-side countdown) ─────────────────────────────
+function SessionTimer({
+  logId, plannedDurationHours, timeIn, officeCloseStr, onTimeout,
+}: {
+  logId: string; plannedDurationHours: number; timeIn: string
+  officeCloseStr: string; onTimeout: () => void
+}) {
+  const [minsLeft, setMinsLeft] = useState<number | null>(null)
+  const [warning, setWarning]   = useState(false)
+  const timedOut = useRef(false)
+
+  useEffect(() => {
+    const sessionEnd = new Date(new Date(timeIn).getTime() + plannedDurationHours * 3600000)
+
+    // Also compute office close time for today
+    const [ch, cm] = officeCloseStr.replace(' PM','').replace(' AM','').split(':').map(Number)
+    const isPM = officeCloseStr.includes('PM') && ch !== 12
+    const closeHour = isPM ? ch + 12 : ch
+    const closeToday = new Date(); closeToday.setHours(closeHour, cm, 0, 0)
+
+    // Effective end is the earlier of planned session end and office close
+    const effectiveEnd = sessionEnd < closeToday ? sessionEnd : closeToday
+
+    const tick = () => {
+      const now = new Date()
+      const msLeft = effectiveEnd.getTime() - now.getTime()
+      const mins = Math.ceil(msLeft / 60000)
+      setMinsLeft(mins)
+      setWarning(mins <= 10 && mins > 0)
+
+      if (msLeft <= 0 && !timedOut.current) {
+        timedOut.current = true
+        // PATCH the log entry to set timeOut = now
+        fetch(`/api/logs/${logId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeOut: new Date().toISOString() }),
+        }).catch(() => {})
+        onTimeout()
+      }
+    }
+
+    tick()
+    const t = setInterval(tick, 10000) // check every 10s
+    return () => clearInterval(t)
+  }, [logId, plannedDurationHours, timeIn, officeCloseStr, onTimeout])
+
+  if (minsLeft === null || minsLeft <= 0) return null
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 flex items-center gap-3 transition-all ${
+      warning ? 'bg-red-50 border-red-300 animate-pulse' : 'bg-amber-50 border-amber-200'
+    }`}>
+      <span className="text-xl">{warning ? '⚠️' : '⏱'}</span>
+      <div className="flex-1">
+        <p className={`font-bold text-sm ${warning ? 'text-red-700' : 'text-amber-700'}`}>
+          {warning ? `⚠ Time almost up — ${minsLeft} min${minsLeft !== 1 ? 's' : ''} left` : `Session ends in ${minsLeft} min${minsLeft !== 1 ? 's' : ''}`}
+        </p>
+        <p className="text-xs text-amber-600">You will be automatically checked out when time expires.</p>
+      </div>
+    </div>
+  )
+}
+
 // ─── Success Screen with 5-second countdown ──────────────────────────────────
 function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, officeCloseStr, showPrivacyModal, setShowPrivacyModal, onReset }: {
   submittedLog: Record<string, unknown> | null
@@ -297,6 +446,7 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
   const [hoverRating, setHoverRating] = useState(0)
   const [ratingSubmitted, setRatingSubmitted] = useState(false)
   const [paused, setPaused]       = useState(false)
+  const [autoTimedOut, setAutoTimedOut] = useState(false)
 
   useEffect(() => {
     if (paused) return
@@ -364,6 +514,25 @@ function SuccessScreen({ submittedLog, timeIn, pc, dur, expectedOut, photo, offi
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-700 mb-5">
           ⏰ Please finish and step out by <strong>{officeCloseStr}</strong>
         </div>
+
+        {/* Session auto-timeout widget */}
+        {!!submittedLog?.id && timeIn && (
+          <div className="mb-4">
+            <SessionTimer
+              logId={submittedLog.id as string}
+              plannedDurationHours={dur}
+              timeIn={timeIn}
+              officeCloseStr={officeCloseStr}
+              onTimeout={() => { setAutoTimedOut(true); setTimeout(onReset, 5000) }}
+            />
+            {autoTimedOut && (
+              <div className="mt-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-center">
+                <p className="text-sm font-bold text-red-700">⏰ Session Ended</p>
+                <p className="text-xs text-red-500 mt-0.5">You have been automatically checked out. Thank you for using DTC!</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Satisfaction rating */}
         {!ratingSubmitted ? (
@@ -618,8 +787,21 @@ export default function LogbookPage() {
     fetch('/api/settings').then(r => r.json()).then((s: Settings) => {
       setSettings(s)
       try { localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(s)) } catch {}
-    }).catch(() => setSettings({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00' }))
+    }).catch(() => setSettings({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '' }))
   }, [])
+
+  // ── Apply dynamic background from settings ──────────────────────────────────
+  useEffect(() => {
+    if (!settings?.bgImageUrl) return
+    // Inject as CSS variable to override globals.css fallback
+    let styleEl = document.getElementById('dtc-dynamic-bg') as HTMLStyleElement | null
+    if (!styleEl) {
+      styleEl = document.createElement('style')
+      styleEl.id = 'dtc-dynamic-bg'
+      document.head.appendChild(styleEl)
+    }
+    styleEl.textContent = `:root { --bg-image: url('${settings.bgImageUrl.replace(/'/g, "\\'")}') }`
+  }, [settings?.bgImageUrl])
 
   // ── Announcements ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1399,6 +1581,11 @@ export default function LogbookPage() {
               </div>
             </div>
 
+            {/* Interactive Banner */}
+            <InteractiveBanner
+              src={settings?.interactiveBannerUrl || '/interactive-banner.jpg'}
+            />
+
             {/* Offices card */}
             <div className="glass rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="bg-gray-50 border-b border-gray-100 px-4 py-3">
@@ -1448,6 +1635,16 @@ export default function LogbookPage() {
 
         </div>{/* end two-column flex */}
       </main>
+
+      {/* ── Ollama AI Assistant ── */}
+      <OllamaAssistant formCtx={{
+        step,
+        fullName:      form.fullName,
+        agency:        form.agency,
+        purpose:       form.purpose,
+        equipment:     form.equipmentUsed,
+        hasFilledName: form.fullName.trim().length > 1,
+      }} />
 
     </div>
   )

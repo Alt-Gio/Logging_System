@@ -63,9 +63,10 @@ export const SettingsSchema = z.object({
   accessCode:       z.string().min(4).max(10).optional(),
   officeOpen:       z.string().regex(/^\d{2}:\d{2}$/).optional(),
   officeClose:      z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  bgImageUrl:       z.string().max(2048).optional(),   // custom background URL
-  googleSheetId:    z.string().max(200).optional(),    // Google Sheet ID for export
-  googleServiceKey: z.string().max(8000).optional(),   // Service account JSON (stringified)
+  bgImageUrl:            z.string().max(5_000_000).optional(),   // custom background — URL or base64 data URI
+  interactiveBannerUrl:  z.string().max(5_000_000).optional(),   // interactive banner — URL or base64 data URI
+  googleSheetId:         z.string().max(200).optional(),
+  googleServiceKey:      z.string().max(8000).optional(),
 })
 
 export const AnnouncementSchema = z.object({
