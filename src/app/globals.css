@@ -28,9 +28,13 @@ html, body {
 }
 
 /* ── Background image (fixed, full-screen) ─────────────────────────────── */
+/* --bg-image can be overridden at runtime via a <style> tag injected by the settings API */
+:root {
+  --bg-image: url('/Bg.png'); /* hardcoded fallback — always present */
+}
 body {
   background-color: var(--bg-page);
-  background-image: url('/Bg.png');
+  background-image: var(--bg-image, url('/Bg.png'));
   background-size: cover;
   background-position: center center;
   background-attachment: fixed;

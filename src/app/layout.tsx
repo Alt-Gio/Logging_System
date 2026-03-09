@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { prisma } from '@/lib/prisma'
 import { ClerkProvider } from '@clerk/nextjs'
 import './globals.css'
 
@@ -15,7 +16,13 @@ export const viewport: Viewport = {
   initialScale: 1,
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Load custom bgImageUrl from DB (server-side — no flash, no client JS needed)
+  let bgImageUrl = ''
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: 'bgImageUrl' } })
+    if (row?.value) bgImageUrl = row.value
+  } catch {}
   return (
     <ClerkProvider
       signInUrl="/sign-in"
@@ -34,6 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
             rel="stylesheet"
           />
+        {bgImageUrl && (
+          <style dangerouslySetInnerHTML={{ __html: `:root { --bg-image: url('${bgImageUrl.replace(/'/g, "\\'")}') }` }}/>
+        )}
         </head>
         <body>{children}</body>
       </html>

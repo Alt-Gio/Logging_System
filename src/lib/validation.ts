@@ -57,12 +57,15 @@ export const CameraSchema = z.object({
 })
 
 export const SettingsSchema = z.object({
-  wifiSsid:    z.string().max(64).optional(),
-  wifiPassword:z.string().max(64).optional(),
-  wifiNote:    z.string().max(200).optional(),
-  accessCode:  z.string().min(4).max(10).optional(),
-  officeOpen:  z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  officeClose: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  wifiSsid:         z.string().max(64).optional(),
+  wifiPassword:     z.string().max(64).optional(),
+  wifiNote:         z.string().max(200).optional(),
+  accessCode:       z.string().min(4).max(10).optional(),
+  officeOpen:       z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  officeClose:      z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  bgImageUrl:       z.string().max(2048).optional(),   // custom background URL
+  googleSheetId:    z.string().max(200).optional(),    // Google Sheet ID for export
+  googleServiceKey: z.string().max(8000).optional(),   // Service account JSON (stringified)
 })
 
 export const AnnouncementSchema = z.object({

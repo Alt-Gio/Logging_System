@@ -3,8 +3,49 @@ const withPWA = require('next-pwa')({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
+  fallbacks: {
+    document: '/offline',
+  },
   runtimeCaching: [
     {
+      // API routes — NetworkFirst with 10s timeout, fallback to cache
+      urlPattern: /^\/api\/(settings|announcements|pcs|stats)/,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'dict-api-cache',
+        expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 },
+        networkTimeoutSeconds: 8,
+      },
+    },
+    {
+      // Logs API — StaleWhileRevalidate so offline still shows last known data
+      urlPattern: /^\/api\/logs/,
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'dict-logs-cache',
+        expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
+      },
+    },
+    {
+      // Static assets — CacheFirst
+      urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp|woff2?)$/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'dict-static-cache',
+        expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+      },
+    },
+    {
+      // Fonts — CacheFirst forever
+      urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'dict-font-cache',
+        expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+      },
+    },
+    {
+      // Everything else — NetworkFirst
       urlPattern: /^https?.*/,
       handler: 'NetworkFirst',
       options: {

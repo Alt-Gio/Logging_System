@@ -3,12 +3,21 @@
   "short_name": "DTC Logbook",
   "description": "Digital Transformation Center Region V — Client Logbook System",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f5f0e8",
   "theme_color": "#003082",
   "orientation": "portrait-primary",
+  "lang": "en-PH",
+  "categories": ["productivity", "government"],
+  "screenshots": [],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-  ]
+  ],
+  "shortcuts": [
+    { "name": "Admin Dashboard", "url": "/admin", "description": "Open the admin dashboard" },
+    { "name": "New Log Entry", "url": "/", "description": "Open client-facing logbook" }
+  ],
+  "prefer_related_applications": false
 }

@@ -20,6 +20,7 @@ export const EVENTS = {
   LOG_ARCHIVED:  'log:archived',   // soft-deleted
   PC_UPDATED:    'pc:updated',     // status/ping change
   SESSION_EXPIRY:'session:expiry', // auto-checkout fired
+  STATS_UPDATE:  'stats:update',   // broadcast live counts
 } as const
 
 // Convenience wrapper — fire and forget, never throws

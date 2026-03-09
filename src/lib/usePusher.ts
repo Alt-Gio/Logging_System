@@ -10,6 +10,7 @@ type PusherCallbacks = {
   onLogArchived?:  (data: unknown) => void
   onPcUpdated?:    (data: unknown) => void
   onSessionExpiry?:(data: unknown) => void
+  onStatsUpdate?:  (data: unknown) => void
 }
 
 export function usePusher(callbacks: PusherCallbacks) {
@@ -29,6 +30,7 @@ export function usePusher(callbacks: PusherCallbacks) {
     if (callbacks.onLogArchived)  channel.bind(EVENTS.LOG_ARCHIVED,  callbacks.onLogArchived)
     if (callbacks.onPcUpdated)    channel.bind(EVENTS.PC_UPDATED,    callbacks.onPcUpdated)
     if (callbacks.onSessionExpiry)channel.bind(EVENTS.SESSION_EXPIRY,callbacks.onSessionExpiry)
+    if (callbacks.onStatsUpdate)  channel.bind(EVENTS.STATS_UPDATE,  callbacks.onStatsUpdate)
 
     return () => {
       channel.unbind_all()

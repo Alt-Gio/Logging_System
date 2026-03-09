@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useUser, UserButton, SignOutButton } from '@clerk/nextjs'
+import { useUser, UserButton, SignOutButton, useClerk } from '@clerk/nextjs'
 import { usePusher } from '@/lib/usePusher'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, formatDistanceToNow, isToday, differenceInMinutes } from 'date-fns'
@@ -356,10 +356,14 @@ function EditPcModal({ pc, onSave, onClose }: {
 export default function AdminPage() {
   const { user, isLoaded: clerkLoaded, isSignedIn } = useUser()
   const currentAdmin = isSignedIn ? { id: user?.id ?? '', name: user?.fullName ?? user?.username ?? 'Admin', role: 'SUPER_ADMIN' } : null
-  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'auditlog' | 'announcements' | 'analytics' | 'admins'>('dashboard')
-  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00' })
+  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'auditlog' | 'announcements' | 'analytics'>('dashboard')
+  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', googleSheetId: '', googleServiceKey: '' })
   const [settingsSaved, setSettingsSaved] = useState(false)
+  const [sheetSyncing, setSheetSyncing] = useState(false)
+  const [sheetResult, setSheetResult] = useState<{ok:boolean;msg:string}|null>(null)
+  const [settingsTab, setSettingsTab] = useState<'general'|'appearance'|'integrations'|'staff'|'pwa'>('general')
   const [stats, setStats] = useState<Record<string, unknown> | null>(null)
+  const [liveStats, setLiveStats] = useState<{totalEntries:number;activeNow:number;pcsOnline:number;pcsInUse:number}|null>(null)
   const [allLogs, setAllLogs] = useState<Log[]>([])
   const [pcs, setPcs] = useState<PC[]>([])
   const [search, setSearch] = useState('')
@@ -403,6 +407,9 @@ export default function AdminPage() {
     onLogUpdated: () => { fetchLogs(); fetchPcs() },
     onLogArchived: () => { fetchLogs(); fetchStats() },
     onPcUpdated: () => { fetchPcs() },
+    onStatsUpdate: (data: unknown) => {
+      setLiveStats(data as {totalEntries:number;activeNow:number;pcsOnline:number;pcsInUse:number})
+    },
     onSessionExpiry: (data: unknown) => {
       const d = data as { fullName: string; pcName?: string }
       fetchLogs(); fetchPcs(); fetchStats()
@@ -430,7 +437,7 @@ export default function AdminPage() {
     if (dateFilter) p.set('date', dateFilter)
     p.set('limit', '200')
     const r = await fetch(`/api/logs?${p}`)
-    if (r.ok) { const d = await r.json(); setAllLogs(d.logs || []) }
+    if (r.ok) { const d = await r.json(); setAllLogs(Array.isArray(d) ? d : (d.logs || [])) }
   }, [search, dateFilter])
   const fetchPcs = useCallback(async () => {
     const r = await fetch('/api/pcs'); if (r.ok) setPcs(await r.json())
@@ -440,10 +447,15 @@ export default function AdminPage() {
   }
 
 
+  const fetchLiveStats = useCallback(async () => {
+    const r = await fetch('/api/stats/live')
+    if (r.ok) setLiveStats(await r.json())
+  }, [])
+
   useEffect(() => {
     if (!isSignedIn) return
-    fetchStats(); fetchPcs(); fetchSettings(); fetchLogs()
-    const t = setInterval(() => { fetchStats(); fetchPcs() }, 30000)
+    fetchStats(); fetchPcs(); fetchSettings(); fetchLogs(); fetchLiveStats()
+    const t = setInterval(() => { fetchStats(); fetchPcs(); fetchLiveStats() }, 15000)
     return () => clearInterval(t)
   }, [isSignedIn, fetchStats, fetchPcs, fetchLogs])
   useEffect(() => { if (isSignedIn && tab === 'logs') fetchLogs() }, [isSignedIn, tab, fetchLogs])
@@ -482,7 +494,7 @@ export default function AdminPage() {
 
   const handleCheckout = async (logId: string) => {
     await fetch(`/api/logs/${logId}/timeout`, { method: 'PATCH' })
-    fetchLogs(); fetchStats(); fetchPcs()
+    fetchLogs(); fetchStats(); fetchPcs(); fetchLiveStats()
   }
   const handleSaveLog = async (id: string, data: Partial<Log>) => {
     await fetch(`/api/logs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
@@ -524,6 +536,18 @@ export default function AdminPage() {
     if (r.ok) { const d = await r.json(); setScanResults(d.hosts || []) }
     await fetchPcs(); setScanning(false)
   }
+  const handleSheetSync = async (from?: string, to?: string) => {
+    setSheetSyncing(true); setSheetResult(null)
+    try {
+      const body = from && to ? { from, to } : {}
+      const r = await fetch('/api/sheets/sync', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+      const d = await r.json()
+      if (r.ok) setSheetResult({ ok:true, msg:`✅ Synced ${d.rowsWritten} rows to Google Sheets` })
+      else setSheetResult({ ok:false, msg:`❌ ${d.error}` })
+    } catch(e) { setSheetResult({ ok:false, msg:`❌ Network error` }) }
+    setSheetSyncing(false)
+  }
+
   const saveSettings = async () => {
     await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) })
     setSettingsSaved(true); try { localStorage.removeItem('dtc_settings_cache') } catch {}
@@ -605,16 +629,15 @@ export default function AdminPage() {
           </div>
           <div className="border-t border-white/15 flex items-center justify-between py-1">
             <nav className="flex gap-0.5 flex-wrap">
-              {(['dashboard','logs','pcs','network','auditlog','announcements','analytics','admins','settings'] as const).map(t => (
+              {(['dashboard','logs','pcs','network','auditlog','announcements','analytics','settings'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all ${tab===t ? 'bg-white text-[var(--dict-blue)] shadow-sm' : 'text-blue-200 hover:text-white hover:bg-white/10'}`}>
-                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='auditlog'?'📜 Audit':t==='announcements'?'📢 Notices':t==='analytics'?'📈 Analytics':t==='admins'?'👥 Admins':'📋 Logs'}
+                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='auditlog'?'📜 Audit':t==='announcements'?'📢 Notices':t==='analytics'?'📈 Analytics':'📋 Logs'}
                 </button>
               ))}
             </nav>
             <div className="flex items-center gap-3">
-              <a href="/admin/invite" className="text-xs text-blue-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors">✉️ Invite Staff</a>
-              <a href="/admin/auth-guide" className="text-xs text-blue-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors">🔐 Auth Guide</a>
+
               <UserButton afterSignOutUrl="/sign-in" appearance={{ elements: { avatarBox: 'w-8 h-8' } }}/>
             </div>
           </div>
@@ -630,16 +653,19 @@ export default function AdminPage() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label: "Today's Clients", value: todayLogs.length, icon: '👥', view: 'today' as DashView, bg: 'bg-[var(--dict-blue)] text-white', active: dashView === 'today' },
-                { label: 'Currently Active', value: activeLogs.length, icon: '🟢', view: 'active' as DashView, bg: 'bg-emerald-600 text-white', active: dashView === 'active' },
-                { label: 'Total Entries', value: s.total as number, icon: '📋', view: null, nav: 'logs' },
-                { label: 'PCs Online', value: (s.pcs as Record<string,number>)?.online || 0, icon: '🖥️', view: null, nav: 'pcs' },
+                { label: 'Active Now', value: liveStats?.activeNow ?? activeLogs.length, icon: '🟢', view: 'active' as DashView, bg: 'bg-emerald-600 text-white', active: dashView === 'active', live: true },
+                { label: 'Total Entries', value: liveStats?.totalEntries ?? (s.total as number) ?? 0, icon: '📋', view: null, nav: 'logs', live: true },
+                { label: 'PCs Online', value: (liveStats?.pcsOnline ?? (s.pcs as Record<string,number>)?.online ?? 0), icon: '🖥️', view: null, nav: 'pcs', live: true },
               ].map(c => (
                 <button key={c.label} onClick={() => {
                   if (c.view) setDashView(c.view)
                   else if (c.nav) setTab(c.nav as 'logs' | 'pcs')
                 }}
                   className={`${c.bg || 'bg-white'} rounded-2xl p-5 shadow-sm text-left hover:scale-[1.02] hover:shadow-md transition-all active:scale-[0.98] ${c.active ? 'ring-2 ring-offset-2 ring-[var(--dict-gold)]' : ''}`}>
-                  <div className="text-2xl mb-2">{c.icon}</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-2xl">{c.icon}</span>
+                    {(c as {live?:boolean}).live && <span className="flex items-center gap-1 text-[10px] text-white/60"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block"/>LIVE</span>}
+                  </div>
                   <div className="text-3xl font-display font-bold">{c.value}</div>
                   <div className={`text-sm mt-1 ${c.bg?.includes('text-white') ? 'text-white/70' : 'text-gray-500'}`}>{c.label}</div>
                   {c.view && <div className={`text-xs mt-1 ${c.active ? 'opacity-100' : 'opacity-60'}`}>{c.active ? '▼ Showing below' : 'Click to view'}</div>}
@@ -1132,129 +1158,376 @@ export default function AdminPage() {
 
         {/* ══════════════════════════════════════════════════════════ SECURITY */}
         {tab === 'settings' && (
-          <div className="grid lg:grid-cols-2 gap-5">
-            {/* LEFT col */}
-            <div className="space-y-5">
-              {settingsSaved && (
-                <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-3 flex items-center gap-2 text-green-700 text-sm font-semibold">
-                  ✅ Settings saved! Front page reloads fresh settings immediately.
-                </div>
-              )}
-
-              {/* Access code */}
-              <div className="glass rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-8 h-8 rounded-lg bg-blue-100 text-[var(--dict-blue)] flex items-center justify-center">🔐</span>
-                  <h3 className="font-display font-semibold text-gray-700">Daily Access Code</h3>
-                </div>
-                <p className="text-xs text-gray-400 mb-4">Change this daily. Clients must enter this before using the logbook. The hidden dot on the front page leads here.</p>
-                <div className="flex gap-3 items-stretch">
-                  <input type="text" value={settings.accessCode}
-                    onChange={e=>setSettings(s=>({...s,accessCode:e.target.value}))}
-                    maxLength={10}
-                    className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-3xl font-mono tracking-widest text-center outline-none focus:border-[var(--dict-blue)]"/>
-                  <div className="flex flex-col gap-2">
-                    <button onClick={()=>setSettings(s=>({...s,accessCode:Math.floor(1000+Math.random()*9000).toString()}))}
-                      className="px-4 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 font-medium">🎲 Random 4-digit</button>
-                    <button onClick={()=>setSettings(s=>({...s,accessCode:Math.floor(100000+Math.random()*900000).toString()}))}
-                      className="px-4 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 font-medium">🎲 Random 6-digit</button>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-300 mt-2 text-center">Current code: <strong className="font-mono text-gray-400">{settings.accessCode}</strong></p>
-              </div>
-
-              {/* Office hours */}
-              <div className="glass rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">⏰</span>
-                  <h3 className="font-display font-semibold text-gray-700">Office Hours</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mb-3">
-                  {[{label:'Opens at',key:'officeOpen',color:'text-green-600'},{label:'Closes at',key:'officeClose',color:'text-red-500'}].map(({label,key,color})=>(
-                    <div key={key}>
-                      <label className={`text-xs font-semibold ${color} block mb-1`}>{label}</label>
-                      <input type="time" value={(settings as Record<string,string>)[key]}
-                        onChange={e=>setSettings(s=>({...s,[key]:e.target.value}))}
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-[var(--dict-blue)]"/>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-xs text-gray-400">Logbook blocks access outside these hours and caps session duration automatically.</p>
-                </div>
-              </div>
+          <div className="space-y-5">
+            {/* Sub-nav */}
+            <div className="glass rounded-2xl p-1.5 flex gap-1 flex-wrap shadow-sm">
+              {([
+                ['general',      '⚙️', 'General'],
+                ['appearance',   '🎨', 'Appearance'],
+                ['integrations', '🔗', 'Integrations'],
+                ['staff',        '👥', 'Staff & Auth'],
+                ['pwa',          '📱', 'PWA & Offline'],
+              ] as const).map(([k,ic,lb]) => (
+                <button key={k} onClick={() => setSettingsTab(k)}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${settingsTab===k ? 'bg-[var(--dict-blue)] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  <span>{ic}</span><span>{lb}</span>
+                </button>
+              ))}
             </div>
 
-            {/* RIGHT col */}
-            <div className="space-y-5">
-              {/* WiFi */}
-              <div className="glass rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">📶</span>
-                  <h3 className="font-display font-semibold text-gray-700">WiFi Settings</h3>
-                </div>
-                <div className="space-y-3">
-                  {[
-                    {label:'Network Name (SSID)',key:'wifiSsid',ph:'DICT-DTC-Free',mono:true,type:'text'},
-                    {label:'Password (blank = open)',key:'wifiPassword',ph:'Leave blank for open network',mono:true,type:'text'},
-                    {label:'Description shown to clients',key:'wifiNote',ph:'Free public WiFi for DTC clients',mono:false,type:'text'},
-                  ].map(f=>(
-                    <div key={f.key}>
-                      <label className="text-xs font-semibold text-gray-500 block mb-1">{f.label}</label>
-                      <input type={f.type} value={(settings as Record<string,string>)[f.key]} placeholder={f.ph}
-                        onChange={e=>setSettings(s=>({...s,[f.key]:e.target.value}))}
-                        className={`w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] ${f.mono?'font-mono':''}`}/>
-                    </div>
-                  ))}
-                </div>
-                {settings.wifiSsid && (
-                  <div className="mt-4 bg-[var(--dict-blue)] rounded-2xl p-4 flex items-center gap-4">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(settings.wifiPassword?`WIFI:T:WPA;S:${settings.wifiSsid};P:${settings.wifiPassword};;`:`WIFI:T:nopass;S:${settings.wifiSsid};;;`)}`}
-                      className="w-20 h-20 rounded-xl border-4 border-white/30" alt="WiFi QR"/>
-                    <div className="text-white">
-                      <p className="font-display font-bold text-base">{settings.wifiSsid}</p>
-                      <p className="text-blue-200 text-sm">{settings.wifiPassword||'Open network'}</p>
-                      <p className="text-blue-300 text-xs mt-1">{settings.wifiNote}</p>
+            {settingsSaved && (
+              <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-3 flex items-center gap-2 text-green-700 text-sm font-semibold">
+                ✅ Settings saved! Changes take effect immediately.
+              </div>
+            )}
+
+            {/* ─── GENERAL ─────────────────────────────────────────────── */}
+            {settingsTab === 'general' && (
+              <div className="grid lg:grid-cols-2 gap-5">
+                {/* Access code */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-8 h-8 rounded-lg bg-blue-100 text-[var(--dict-blue)] flex items-center justify-center">🔐</span>
+                    <h3 className="font-display font-semibold text-gray-700">Daily Access Code</h3>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-4">Change this daily. Clients must enter this before using the logbook.</p>
+                  <div className="flex gap-3 items-stretch">
+                    <input type="text" value={settings.accessCode}
+                      onChange={e=>setSettings(s=>({...s,accessCode:e.target.value}))}
+                      maxLength={10}
+                      className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-3xl font-mono tracking-widest text-center outline-none focus:border-[var(--dict-blue)]"/>
+                    <div className="flex flex-col gap-2">
+                      <button onClick={()=>setSettings(s=>({...s,accessCode:Math.floor(1000+Math.random()*9000).toString()}))}
+                        className="px-4 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 font-medium">🎲 4-digit</button>
+                      <button onClick={()=>setSettings(s=>({...s,accessCode:Math.floor(100000+Math.random()*900000).toString()}))}
+                        className="px-4 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 font-medium">🎲 6-digit</button>
                     </div>
                   </div>
-                )}
-              </div>
-
-              {/* Logo instructions */}
-              <div className="glass rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">🖼</span>
-                  <h3 className="font-display font-semibold text-gray-700">Header Logos</h3>
                 </div>
-                <p className="text-xs text-gray-400 mb-3">Place these files in the <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">/public</code> folder of the project. The header will automatically display them.</p>
-                <div className="space-y-2">
-                  {[
-                    {file:'dict-seal.png',desc:'DICT official seal — shown left of title',status:true},
-                    {file:'ilcdb-logo.png',desc:'ILCDB logo — shown top right',status:true},
-                    {file:'bagong-pilipinas.png',desc:'Bagong Pilipinas seal — shown far right',status:false},
-                  ].map(l=>(
-                    <div key={l.file} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${l.status?'bg-green-400':'bg-gray-300'}`}/>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-mono text-xs font-bold text-gray-700">{l.file}</p>
-                        <p className="text-xs text-gray-400">{l.desc}</p>
+
+                {/* Office hours */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">⏰</span>
+                    <h3 className="font-display font-semibold text-gray-700">Office Hours</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    {([{label:'Opens at',key:'officeOpen',color:'text-green-600'},{label:'Closes at',key:'officeClose',color:'text-red-500'}] as const).map(({label,key,color})=>(
+                      <div key={key}>
+                        <label className={`text-xs font-semibold ${color} block mb-1`}>{label}</label>
+                        <input type="time" value={(settings as Record<string,string>)[key]}
+                          onChange={e=>setSettings(s=>({...s,[key]:e.target.value}))}
+                          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-[var(--dict-blue)]"/>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 text-center">Logbook blocks access outside these hours.</p>
                 </div>
-                <p className="text-xs text-gray-300 mt-3">Place the real logos from DICT official assets. Falls back to text if not found.</p>
-              </div>
-            </div>
 
-            {/* Save button — full width */}
-            <div className="lg:col-span-2">
-              <button onClick={saveSettings} className="w-full py-4 bg-[var(--dict-blue)] text-white font-bold rounded-2xl hover:bg-blue-800 shadow-lg shadow-blue-100 text-base flex items-center justify-center gap-2">
-                💾 Save All Settings
-              </button>
-            </div>
+                {/* WiFi */}
+                <div className="glass rounded-2xl p-6 shadow-sm lg:col-span-2">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">📶</span>
+                    <h3 className="font-display font-semibold text-gray-700">WiFi Settings</h3>
+                  </div>
+                  <div className="grid lg:grid-cols-2 gap-5">
+                    <div className="space-y-3">
+                      {([
+                        {label:'Network Name (SSID)',key:'wifiSsid',ph:'DICT-DTC-Free',mono:true},
+                        {label:'Password (blank = open)',key:'wifiPassword',ph:'Leave blank for open network',mono:true},
+                        {label:'Note shown to clients',key:'wifiNote',ph:'Free public WiFi for DTC clients',mono:false},
+                      ] as const).map(f=>(
+                        <div key={f.key}>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">{f.label}</label>
+                          <input value={(settings as Record<string,string>)[f.key]} placeholder={f.ph}
+                            onChange={e=>setSettings(s=>({...s,[f.key]:e.target.value}))}
+                            className={`w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] ${f.mono?'font-mono':''}`}/>
+                        </div>
+                      ))}
+                    </div>
+                    {settings.wifiSsid && (
+                      <div className="bg-[var(--dict-blue)] rounded-2xl p-5 flex items-center gap-4">
+                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(settings.wifiPassword?`WIFI:T:WPA;S:${settings.wifiSsid};P:${settings.wifiPassword};;`:`WIFI:T:nopass;S:${settings.wifiSsid};;;`)}`}
+                          className="w-20 h-20 rounded-xl border-4 border-white/30" alt="WiFi QR"/>
+                        <div className="text-white">
+                          <p className="font-display font-bold text-base">{settings.wifiSsid}</p>
+                          <p className="text-blue-200 text-sm">{settings.wifiPassword||'Open network'}</p>
+                          <p className="text-blue-300 text-xs mt-1">{settings.wifiNote}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-2">
+                  <button onClick={saveSettings}
+                    className="w-full py-4 bg-[var(--dict-blue)] text-white font-bold rounded-2xl hover:bg-blue-800 shadow-lg shadow-blue-100 text-base flex items-center justify-center gap-2">
+                    💾 Save General Settings
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ─── APPEARANCE ──────────────────────────────────────────── */}
+            {settingsTab === 'appearance' && (
+              <div className="space-y-5">
+                {/* Background image */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">🖼</span>
+                    <h3 className="font-display font-semibold text-gray-700">Background Image</h3>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Paste a direct image URL to use as the background. Falls back to the hardcoded <code className="bg-gray-100 px-1 rounded">/Bg.png</code> if blank or unreachable.
+                  </p>
+                  <input value={settings.bgImageUrl}
+                    onChange={e=>setSettings(s=>({...s,bgImageUrl:e.target.value}))}
+                    placeholder="https://example.com/background.jpg  (leave blank to use /Bg.png)"
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] font-mono mb-4"/>
+
+                  {/* Live preview */}
+                  <div className="relative rounded-2xl overflow-hidden h-40 border-2 border-dashed border-gray-200">
+                    <div className="absolute inset-0"
+                      style={{
+                        backgroundImage: `url('${settings.bgImageUrl || "/Bg.png"}')`,
+                        backgroundSize:'cover', backgroundPosition:'center',
+                      }}/>
+                    <div className="absolute inset-0 bg-indigo-100/60 backdrop-blur-sm"/>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="glass rounded-xl px-6 py-3 text-sm font-semibold text-gray-700">Preview</div>
+                    </div>
+                    {!settings.bgImageUrl && (
+                      <div className="absolute bottom-2 left-2 right-2 text-center">
+                        <span className="text-[10px] text-gray-500 bg-white/80 rounded px-2 py-0.5">Using hardcoded /Bg.png</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-blue-700 mb-1">📌 Fallback Chain</p>
+                    <ol className="text-xs text-blue-600 space-y-0.5 list-decimal list-inside">
+                      <li>Custom URL set here (stored in DB, loads dynamically)</li>
+                      <li>Hardcoded <code>/Bg.png</code> in <code>globals.css</code> (always present)</li>
+                      <li>Solid color <code>#eef2ff</code> if both fail</li>
+                    </ol>
+                  </div>
+                </div>
+
+                {/* Predefined backgrounds */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-700 mb-3">Quick Backgrounds</h3>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                    {[
+                      { label:'Clear (default /Bg.png)', url:'' },
+                      { label:'DICT Blue Gradient', url:'https://images.unsplash.com/photo-1557683316-973673baf926?w=1920&q=80' },
+                      { label:'PH Mountains', url:'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=1920&q=80' },
+                      { label:'Manila Bay Sunset', url:'https://images.unsplash.com/photo-1533421644343-45b606750db8?w=1920&q=80' },
+                      { label:'Abstract Blue', url:'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=1920&q=80' },
+                      { label:'Government Building', url:'https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1920&q=80' },
+                      { label:'Tech / Circuit', url:'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1920&q=80' },
+                      { label:'Clean White', url:'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1920&q=80' },
+                    ].map(bg => (
+                      <button key={bg.label} onClick={() => setSettings(s=>({...s,bgImageUrl:bg.url}))}
+                        className={`rounded-xl overflow-hidden border-2 transition-all hover:scale-105 ${settings.bgImageUrl===bg.url ? 'border-[var(--dict-blue)] shadow-md' : 'border-gray-200'}`}>
+                        <div className="h-16 relative">
+                          {bg.url
+                            ? <div className="absolute inset-0" style={{backgroundImage:`url(${bg.url})`,backgroundSize:'cover',backgroundPosition:'center'}}/>
+                            : <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"><span className="text-2xl">🏠</span></div>
+                          }
+                        </div>
+                        <div className="p-1.5 bg-white text-[10px] text-gray-500 font-medium truncate">{bg.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button onClick={saveSettings}
+                  className="w-full py-4 bg-[var(--dict-blue)] text-white font-bold rounded-2xl hover:bg-blue-800 shadow-lg text-base flex items-center justify-center gap-2">
+                  💾 Save Appearance
+                </button>
+              </div>
+            )}
+
+            {/* ─── INTEGRATIONS ────────────────────────────────────────── */}
+            {settingsTab === 'integrations' && (
+              <div className="space-y-5">
+                {/* Google Sheets */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-xl flex-shrink-0">📊</span>
+                    <div>
+                      <h3 className="font-display font-semibold text-gray-800">Google Sheets Integration</h3>
+                      <p className="text-xs text-gray-400">Push all log entries to a Google Spreadsheet with one click.</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Google Sheet ID</label>
+                      <input value={settings.googleSheetId}
+                        onChange={e=>setSettings(s=>({...s,googleSheetId:e.target.value}))}
+                        placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-[var(--dict-blue)]"/>
+                      <p className="text-xs text-gray-400 mt-1">From the sheet URL: <code className="bg-gray-100 px-1 rounded">spreadsheets/d/<strong>THIS_PART</strong>/edit</code></p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Service Account JSON Key</label>
+                      <textarea value={settings.googleServiceKey}
+                        onChange={e=>setSettings(s=>({...s,googleServiceKey:e.target.value}))}
+                        rows={5} placeholder={`Paste the full contents of your service-account-key.json here:
+{
+  "type": "service_account",
+  "project_id": "...",
+  "client_email": "...",
+  "private_key": "..."
+}`}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:border-[var(--dict-blue)] resize-none"/>
+                    </div>
+
+                    {sheetResult && (
+                      <div className={`p-3 rounded-xl border text-sm font-medium ${sheetResult.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                        {sheetResult.msg}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 flex-wrap">
+                      <button onClick={saveSettings}
+                        className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm hover:bg-gray-200 transition-colors">
+                        💾 Save Credentials
+                      </button>
+                      <button onClick={() => handleSheetSync()} disabled={sheetSyncing || !settings.googleSheetId}
+                        className="flex-[2] py-3 rounded-xl bg-green-600 text-white font-bold text-sm hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                        {sheetSyncing ? <><Spinner/>Syncing…</> : <>📊 Sync All Logs Now</>}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Setup guide */}
+                  <details className="mt-5">
+                    <summary className="text-xs font-semibold text-[var(--dict-blue)] cursor-pointer hover:underline">
+                      📖 How to set up Google Sheets integration →
+                    </summary>
+                    <div className="mt-3 space-y-2 text-xs text-gray-600 leading-relaxed">
+                      {[
+                        ['1','Go to Google Cloud Console → APIs & Services → Enable "Google Sheets API"'],
+                        ['2','Create a Service Account → download the JSON key file'],
+                        ['3','Open your target Google Sheet → Share → paste the service account email (Editor access)'],
+                        ['4','Copy the Sheet ID from the URL and paste above'],
+                        ['5','Paste the full JSON key contents above and click Save, then Sync'],
+                      ].map(([n,t])=>(
+                        <div key={n} className="flex gap-2">
+                          <span className="w-5 h-5 rounded-full bg-blue-100 text-[var(--dict-blue)] text-[10px] font-bold flex items-center justify-center flex-shrink-0">{n}</span>
+                          <span>{t}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+
+                {/* Future integrations placeholder */}
+                <div className="glass rounded-2xl p-5 border border-dashed border-gray-200">
+                  <div className="flex items-center gap-3 opacity-50">
+                    <span className="text-2xl">🔌</span>
+                    <div>
+                      <p className="font-semibold text-gray-700 text-sm">More Integrations Coming</p>
+                      <p className="text-xs text-gray-400">Google Data Studio, Power BI, email reports — planned.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ─── STAFF & AUTH ─────────────────────────────────────────── */}
+            {settingsTab === 'staff' && (
+              <AdminsTab currentAdminId={currentAdmin?.id ?? ''}/>
+            )}
+
+            {/* ─── PWA & OFFLINE ────────────────────────────────────────── */}
+            {settingsTab === 'pwa' && (
+              <div className="space-y-5">
+                {/* Install status */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl">📱</span>
+                    <div>
+                      <h3 className="font-display font-semibold text-gray-800">Progressive Web App</h3>
+                      <p className="text-xs text-gray-400">Install the logbook as a native-like app on any device.</p>
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {[
+                      { icon:'🔒', title:'HTTPS + TLS', desc:'Served securely over Railway\'s managed TLS.' },
+                      { icon:'📋', title:'Web Manifest', desc:'Full manifest.json with icons, shortcuts, and display mode.' },
+                      { icon:'⚡', title:'Service Worker', desc:'next-pwa generates a service worker with intelligent caching.' },
+                      { icon:'📦', title:'Offline Cache', desc:'Pages and API responses cached — dashboard works offline.' },
+                    ].map(f=>(
+                      <div key={f.title} className="flex items-start gap-3 p-3 rounded-xl bg-green-50 border border-green-100">
+                        <span className="text-lg flex-shrink-0">{f.icon}</span>
+                        <div>
+                          <p className="text-sm font-semibold text-green-800">{f.title}</p>
+                          <p className="text-xs text-green-600">{f.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Install instructions */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-700 mb-4">How to Install</h3>
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    {[
+                      { os:'🖥 Desktop (Chrome/Edge)', steps:['Open the logbook URL in Chrome or Edge','Look for the install icon (⊕) in the address bar','Click it and choose "Install"','The app opens in its own window'] },
+                      { os:'📱 Android (Chrome)', steps:['Open in Chrome mobile','Tap the ⋮ menu','Select "Add to Home Screen"','Follow the prompt'] },
+                      { os:'🍎 iPhone / iPad (Safari)', steps:['Open in Safari','Tap the Share button (□↑)','Scroll down to "Add to Home Screen"','Tap Add'] },
+                    ].map(item=>(
+                      <div key={item.os} className="bg-gray-50 rounded-xl p-4">
+                        <p className="font-semibold text-gray-700 text-sm mb-3">{item.os}</p>
+                        <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+                          {item.steps.map(s=><li key={s}>{s}</li>)}
+                        </ol>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cache info */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-700 mb-3">Cache Strategy</h3>
+                  <div className="space-y-2">
+                    {[
+                      { route:'/api/settings, /api/pcs, /api/stats', strategy:'NetworkFirst (8s timeout)', ttl:'24 hours', color:'bg-blue-50 border-blue-100' },
+                      { route:'/api/logs', strategy:'StaleWhileRevalidate', ttl:'24 hours', color:'bg-amber-50 border-amber-100' },
+                      { route:'Static assets (images, fonts)', strategy:'CacheFirst', ttl:'30 days', color:'bg-green-50 border-green-100' },
+                      { route:'All other pages', strategy:'NetworkFirst (10s)', ttl:'24 hours', color:'bg-gray-50 border-gray-100' },
+                    ].map(r=>(
+                      <div key={r.route} className={`p-3 rounded-xl border ${r.color} flex items-center gap-3`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono font-semibold text-gray-700 truncate">{r.route}</p>
+                          <p className="text-xs text-gray-500">{r.strategy} · TTL: {r.ttl}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Offline queue */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-700 mb-2">Offline Log Queue</h3>
+                  <p className="text-xs text-gray-400 mb-3">
+                    When the client-facing logbook submits an entry while offline, it is queued in localStorage and automatically synced when internet is restored.
+                  </p>
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                    <p className="text-xs text-indigo-700 font-semibold mb-1">Implementation</p>
+                    <p className="text-xs text-indigo-600">Handled by <code>/src/lib/offlineQueue.ts</code> — queues POST /api/logs payloads and re-submits on reconnect via the Navigator online event.</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
+        {/* ══════════════════════════════════════════════════════════ AUDIT LOG */}
         {/* ══════════════════════════════════════════════════════════ AUDIT LOG */}
         {tab === 'auditlog' && (
           <AuditLogTab/>
@@ -1265,9 +1538,7 @@ export default function AdminPage() {
         {tab === 'analytics' && (
           <AnalyticsTab/>
         )}
-        {tab === 'admins' && (
-          <AdminsTab currentAdminId={currentAdmin?.id ?? ''}/>
-        )}
+
       </main>
     </div>
   )
@@ -1564,157 +1835,215 @@ function AnalyticsTab() {
   )
 }
 
-// ── AdminsTab ─────────────────────────────────────────────────────────────────
+// ── AdminsTab — Clerk-based staff management ──────────────────────────────────
 function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
-  const [admins, setAdmins] = useState<{id:string;username:string;name:string;role:string;lastLoginAt:string|null;createdAt:string}[]>([])
-  const [newAdmin, setNewAdmin] = useState({ username:'', password:'', name:'', role:'STAFF' })
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState('')
-  const [pwdChange, setPwdChange] = useState<{id:string;old:string;new:string;confirm:string} | null>(null)
-  const [pwdError, setPwdError] = useState('')
-  const [pwdSaving, setPwdSaving] = useState(false)
+  const { user } = useUser()
+  const [invites, setInvites] = useState<{id:string;emailAddress:string|null;status:string;createdAt:string;url?:string}[]>([])
+  const [emails, setEmails] = useState('')
+  const [sending, setSending] = useState(false)
+  const [genLink, setGenLink] = useState(false)
+  const [success, setSuccess] = useState('')
+  const [err, setErr] = useState('')
+  const [copied, setCopied] = useState<string|null>(null)
+  const [mode, setMode] = useState<'email'|'link'>('email')
 
-  const load = () => fetch('/api/admins').then(r=>r.json()).then(d=>Array.isArray(d)?setAdmins(d):[]).catch(()=>{})
-  useEffect(() => { load() }, [])
+  const loadInvites = () =>
+    fetch('/api/invitations').then(r=>r.json()).then(d=>{ if(d.invitations) setInvites(d.invitations) }).catch(()=>{})
+  useEffect(() => { loadInvites() }, [])
 
-  const create = async () => {
-    setCreateError('')
-    if (!newAdmin.username || !newAdmin.password || !newAdmin.name) {
-      setCreateError('All fields required'); return
-    }
-    if (newAdmin.password.length < 8) {
-      setCreateError('Password must be at least 8 characters'); return
-    }
-    setCreating(true)
-    const r = await fetch('/api/admins', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(newAdmin),
-    })
-    const d = await r.json()
-    if (!r.ok) { setCreateError(d.error || 'Failed'); setCreating(false); return }
-    setNewAdmin({ username:'', password:'', name:'', role:'STAFF' })
-    load(); setCreating(false)
+  const sendInvites = async () => {
+    setErr(''); setSuccess('')
+    const list = emails.split(/[\n,;]/).map(e=>e.trim()).filter(Boolean)
+    if (!list.length) return setErr('Enter at least one email')
+    setSending(true)
+    try {
+      const r = await fetch('/api/invitations', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({emails:list}) })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error||'Failed')
+      setInvites(p=>[...d.invitations,...p]); setSuccess(`${d.invitations.length} invitation(s) sent!`); setEmails('')
+    } catch(e) { setErr((e as Error).message) }
+    setSending(false)
   }
 
-  const remove = async (id: string) => {
-    if (!confirm('Delete this admin account?')) return
-    await fetch(`/api/admins/${id}`, { method:'DELETE' })
-    load()
+  const generateLink = async () => {
+    setErr(''); setGenLink(true)
+    try {
+      const r = await fetch('/api/invitations/link', { method:'POST' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error||'Failed')
+      setInvites(p=>[d.invitation,...p]); setSuccess('Link generated — copy it below.')
+    } catch(e) { setErr((e as Error).message) }
+    setGenLink(false)
   }
 
-  const savePassword = async () => {
-    if (!pwdChange) return
-    setPwdError('')
-    if (pwdChange.new !== pwdChange.confirm) { setPwdError('Passwords do not match'); return }
-    if (pwdChange.new.length < 8) { setPwdError('Password must be 8+ characters'); return }
-    setPwdSaving(true)
-    const isSelf = pwdChange.id === currentAdminId
-    const body: Record<string,string> = { newPassword: pwdChange.new }
-    if (isSelf) body.oldPassword = pwdChange.old
-    const r = await fetch(`/api/admins/${pwdChange.id}`, {
-      method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
-    })
-    const d = await r.json()
-    if (!r.ok) { setPwdError(d.error || 'Failed'); setPwdSaving(false); return }
-    setPwdChange(null); setPwdSaving(false)
+  const revoke = async (id: string) => {
+    await fetch(`/api/invitations/${id}`, { method:'DELETE' })
+    setInvites(p=>p.filter(i=>i.id!==id))
   }
 
-  const roleColors: Record<string,string> = {
-    SUPER_ADMIN:'bg-red-100 text-red-700',
-    ADMIN:'bg-blue-100 text-blue-700',
-    STAFF:'bg-gray-100 text-gray-600',
+  const copy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text); setCopied(id); setTimeout(()=>setCopied(null), 2500)
   }
+
+  const pending  = invites.filter(i=>i.status==='pending').length
+  const accepted = invites.filter(i=>i.status==='accepted').length
 
   return (
-    <div className="space-y-4">
-      {/* Existing admins */}
+    <div className="space-y-5">
+      {/* Current user card */}
       <div className="glass rounded-2xl p-5">
-        <h3 className="font-display font-semibold text-gray-700 mb-4">Admin Accounts ({admins.length})</h3>
-        <div className="space-y-2">
-          {admins.map(a => (
-            <div key={a.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
-              <div className="w-9 h-9 rounded-full bg-[var(--dict-blue)] text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
-                {a.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-gray-800">{a.name}</p>
-                  {a.id === currentAdminId && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">You</span>}
-                </div>
-                <p className="text-xs text-gray-400">@{a.username}</p>
-              </div>
-              <span className={`text-[10px] px-2 py-1 rounded-full font-bold flex-shrink-0 ${roleColors[a.role]||roleColors.STAFF}`}>
-                {a.role.replace('_',' ')}
-              </span>
-              <div className="flex gap-1 flex-shrink-0">
-                <button onClick={() => { setPwdChange({id:a.id,old:'',new:'',confirm:''}); setPwdError('') }}
-                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-[var(--dict-blue)]">
-                  🔑 Password
-                </button>
-                {a.id !== currentAdminId && (
-                  <button onClick={() => remove(a.id)}
-                    className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-red-400 hover:border-red-300 hover:text-red-500">
-                    Delete
-                  </button>
-                )}
-              </div>
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--dict-blue)] to-blue-500 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0 shadow-md">
+            {(user?.fullName?.[0] ?? user?.username?.[0] ?? 'A').toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="font-bold text-gray-800 text-base">{user?.fullName ?? user?.username}</p>
+              <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">You · Admin</span>
             </div>
-          ))}
+            <p className="text-sm text-gray-400">{user?.primaryEmailAddress?.emailAddress}</p>
+            <p className="text-xs text-gray-300 mt-0.5">
+              Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'}) : '—'}
+            </p>
+          </div>
+          <a href="/admin/auth-guide" className="text-xs px-3 py-2 rounded-xl border border-blue-200 text-[var(--dict-blue)] bg-blue-50 hover:bg-blue-100 font-semibold transition-colors flex-shrink-0">
+            🔐 Auth Guide
+          </a>
         </div>
       </div>
 
-      {/* Password change modal */}
-      {pwdChange && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="glass rounded-2xl shadow-2xl p-6 max-w-sm w-full">
-            <h3 className="font-display font-bold text-lg mb-4">Change Password</h3>
-            {pwdChange.id === currentAdminId && (
-              <input type="password" placeholder="Current password *"
-                value={pwdChange.old}
-                onChange={e => setPwdChange(p => p ? {...p, old: e.target.value} : p)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] mb-3"/>
-            )}
-            <input type="password" placeholder="New password (8+ chars) *"
-              value={pwdChange.new}
-              onChange={e => setPwdChange(p => p ? {...p, new: e.target.value} : p)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] mb-3"/>
-            <input type="password" placeholder="Confirm new password *"
-              value={pwdChange.confirm}
-              onChange={e => setPwdChange(p => p ? {...p, confirm: e.target.value} : p)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] mb-3"/>
-            {pwdError && <p className="text-xs text-red-500 mb-3">{pwdError}</p>}
-            <div className="flex gap-2">
-              <button onClick={() => setPwdChange(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500">Cancel</button>
-              <button onClick={savePassword} disabled={pwdSaving} className="flex-[2] py-2.5 rounded-xl bg-[var(--dict-blue)] text-white font-bold text-sm hover:bg-blue-800 disabled:opacity-60">
-                {pwdSaving ? 'Saving...' : 'Change Password'}
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label:'Pending', value:pending,  icon:'⏳', color:'text-amber-600',  bg:'bg-amber-50  border-amber-200'  },
+          { label:'Accepted',value:accepted, icon:'✅', color:'text-green-600',  bg:'bg-green-50  border-green-200'  },
+          { label:'Total',   value:invites.length, icon:'📋', color:'text-blue-600', bg:'bg-blue-50 border-blue-200' },
+        ].map(s=>(
+          <div key={s.label} className={`glass rounded-2xl p-4 border ${s.bg} text-center`}>
+            <div className="text-xl mb-1">{s.icon}</div>
+            <div className={`text-2xl font-bold font-display ${s.color}`}>{s.value}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-5">
+        {/* Send invite form */}
+        <div className="glass rounded-2xl p-5">
+          <h3 className="font-display font-semibold text-gray-800 text-base mb-1">Invite Staff Member</h3>
+          <p className="text-xs text-gray-400 mb-4">Only invited accounts can sign up. Invitations are sent via Clerk.</p>
+
+          {/* Mode toggle */}
+          <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
+            {(['email','link'] as const).map(m=>(
+              <button key={m} onClick={()=>setMode(m)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${mode===m?'bg-white text-[var(--dict-blue)] shadow-sm':'text-gray-500'}`}>
+                {m==='email'?'📧 By Email':'🔗 One-time Link'}
               </button>
-            </div>
+            ))}
+          </div>
+
+          {mode==='email' ? (
+            <>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Email Addresses</label>
+              <textarea value={emails} onChange={e=>setEmails(e.target.value)} rows={4}
+                placeholder={"staff@dict.gov.ph\njuan@dict.gov.ph"}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono outline-none focus:border-[var(--dict-blue)] resize-none mb-1"/>
+              <p className="text-xs text-gray-400 mb-4">Separate with commas, semicolons, or new lines</p>
+              <button onClick={sendInvites} disabled={sending||!emails.trim()}
+                className="w-full py-3 rounded-xl bg-[var(--dict-blue)] text-white font-bold text-sm disabled:opacity-50 hover:bg-blue-800 transition-colors">
+                {sending?'Sending…':'✉️ Send Invitations'}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-sm text-blue-700">
+                Generate a <strong>7-day one-time link</strong>. Anyone with it can create a staff account.
+              </div>
+              <button onClick={generateLink} disabled={genLink}
+                className="w-full py-3 rounded-xl bg-[var(--dict-blue)] text-white font-bold text-sm disabled:opacity-50 hover:bg-blue-800 transition-colors">
+                {genLink?'Generating…':'🔗 Generate Link'}
+              </button>
+            </>
+          )}
+
+          {err     && <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">⚠️ {err}</div>}
+          {success && <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm">✅ {success}</div>}
+        </div>
+
+        {/* Invite list */}
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display font-semibold text-gray-800 text-base">All Invitations</h3>
+            <span className="text-xs text-gray-400">{invites.length} total</span>
+          </div>
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+            {invites.length===0
+              ? <p className="text-center text-gray-300 py-8 text-sm">No invitations yet</p>
+              : invites.map(inv=>{
+                const sm = inv.status==='accepted'
+                  ? {color:'text-green-700',bg:'bg-green-50 border-green-200',label:'Accepted'}
+                  : inv.status==='revoked'
+                  ? {color:'text-red-600',bg:'bg-red-50 border-red-200',label:'Revoked'}
+                  : {color:'text-amber-700',bg:'bg-amber-50 border-amber-200',label:'Pending'}
+                return (
+                  <div key={inv.id} className="p-3 rounded-xl border border-gray-100 bg-white/60">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-sm font-semibold text-gray-800 truncate flex-1">{inv.emailAddress??'🔗 Link invite'}</p>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border flex-shrink-0 ${sm.bg} ${sm.color}`}>{sm.label}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-2">{new Date(inv.createdAt).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</p>
+                    <div className="flex gap-2">
+                      {inv.url && (
+                        <button onClick={()=>copy(inv.url!,inv.id)}
+                          className="flex-1 text-xs py-1.5 rounded-lg border border-blue-200 text-[var(--dict-blue)] bg-blue-50 hover:bg-blue-100 font-semibold">
+                          {copied===inv.id?'✅ Copied!':'📋 Copy Link'}
+                        </button>
+                      )}
+                      {inv.status==='pending' && (
+                        <button onClick={()=>revoke(inv.id)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 font-semibold">
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            }
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Create new admin */}
+      {/* Clerk profile portal link */}
       <div className="glass rounded-2xl p-5">
-        <h3 className="font-display font-semibold text-gray-700 mb-4">Create Admin Account</h3>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <input value={newAdmin.name} onChange={e=>setNewAdmin(a=>({...a,name:e.target.value}))}
-            placeholder="Full name *" className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-          <input value={newAdmin.username} onChange={e=>setNewAdmin(a=>({...a,username:e.target.value}))}
-            placeholder="Username (a-z, 0-9, _) *" className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-          <input type="password" value={newAdmin.password} onChange={e=>setNewAdmin(a=>({...a,password:e.target.value}))}
-            placeholder="Password (8+ chars) *" className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-          <select value={newAdmin.role} onChange={e=>setNewAdmin(a=>({...a,role:e.target.value}))}
-            className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
-            <option value="STAFF">Staff</option>
-            <option value="ADMIN">Admin</option>
-            <option value="SUPER_ADMIN">Super Admin</option>
-          </select>
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-xl flex-shrink-0">🔐</div>
+          <div className="flex-1">
+            <h3 className="font-display font-semibold text-gray-800 mb-0.5">Clerk Profile Settings</h3>
+            <p className="text-xs text-gray-400">Update your name, email, password, or enable two-factor authentication via Clerk&apos;s secure portal.</p>
+          </div>
+          <UserButton
+            afterSignOutUrl="/sign-in"
+            appearance={{ elements: { avatarBox: 'w-10 h-10', userButtonPopoverCard: 'rounded-2xl shadow-2xl' } }}
+            showName
+          />
         </div>
-        {createError && <p className="text-xs text-red-500 mt-2">{createError}</p>}
-        <button onClick={create} disabled={creating}
-          className="mt-3 w-full py-2.5 rounded-xl bg-[var(--dict-blue)] text-white font-bold text-sm hover:bg-blue-800 disabled:opacity-50">
-          {creating ? 'Creating...' : '+ Create Account'}
-        </button>
-        <p className="text-[10px] text-gray-400 mt-2 text-center">Only Super Admin can create accounts</p>
+      </div>
+
+      {/* Auth guide cards */}
+      <div className="grid sm:grid-cols-3 gap-3">
+        {[
+          { href:'/admin/invite', icon:'✉️', title:'Full Invite Manager', desc:'Manage all invitations in a dedicated page with advanced controls.' },
+          { href:'/admin/auth-guide', icon:'📖', title:'Auth Guide', desc:'Step-by-step guide for staff on how to sign in, sign up, and reset passwords.' },
+          { href:'/sign-in', icon:'🔑', title:'Sign In Page', desc:'The staff login page. Share this URL with your team.' },
+        ].map(l=>(
+          <a key={l.href} href={l.href} className="glass rounded-2xl p-4 hover:border-blue-200 hover:shadow-md transition-all border border-white/70">
+            <div className="text-2xl mb-2">{l.icon}</div>
+            <p className="font-semibold text-gray-800 text-sm mb-1">{l.title}</p>
+            <p className="text-xs text-gray-400">{l.desc}</p>
+          </a>
+        ))}
       </div>
     </div>
   )
@@ -1722,70 +2051,154 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
 
 // ── AuditLogTab ──────────────────────────────────────────────────────────────
 function AuditLogTab() {
-  const [logs, setLogs] = useState<{id:string;action:string;target:string|null;detail:string|null;ip:string|null;createdAt:string;admin?:{username:string;name:string}|null}[]>([])
+  type AuditLog = {id:string;action:string;target:string|null;detail:string|null;ip:string|null;createdAt:string;admin?:{username:string;name:string}|null}
+  const [logs, setLogs]       = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
+  const [actionFilter, setActionFilter] = useState('')
+  const [search, setSearch]   = useState('')
 
-  useEffect(() => {
-    fetch('/api/admin-logs?limit=200')
-      .then(r => r.json())
-      .then(d => { setLogs(d); setLoading(false) })
-  }, [])
-
-  const ACTION_COLORS: Record<string, string> = {
-    LOGIN: 'bg-blue-100 text-blue-700',
-    CREATE_LOG: 'bg-green-100 text-green-700',
-    CHECKOUT: 'bg-teal-100 text-teal-700',
-    AUTO_CHECKOUT: 'bg-amber-100 text-amber-700',
-    EDIT_LOG: 'bg-yellow-100 text-yellow-700',
-    ARCHIVE_LOG: 'bg-red-100 text-red-700',
-    CHANGE_SETTING: 'bg-purple-100 text-purple-700',
-    CREATE_PC: 'bg-indigo-100 text-indigo-700',
-    EDIT_PC: 'bg-indigo-100 text-indigo-700',
-    CREATE_CAMERA: 'bg-pink-100 text-pink-700',
-    DELETE_CAMERA: 'bg-red-100 text-red-700',
+  const load = (action?: string) => {
+    setLoading(true)
+    const q = new URLSearchParams({ limit:'500' })
+    if (action) q.set('action', action)
+    fetch(`/api/admin-logs?${q}`)
+      .then(r=>r.json())
+      .then(d=>{ setLogs(Array.isArray(d)?d:[]); setLoading(false) })
+      .catch(()=>setLoading(false))
   }
+  useEffect(() => { load() }, [])
+
+  const ACTION_COLORS: Record<string,string> = {
+    LOGIN:'bg-blue-100 text-blue-700', LOGOUT:'bg-gray-100 text-gray-600',
+    CREATE_LOG:'bg-green-100 text-green-700', CHECKOUT:'bg-teal-100 text-teal-700',
+    AUTO_CHECKOUT:'bg-amber-100 text-amber-700', EDIT_LOG:'bg-yellow-100 text-yellow-700',
+    ARCHIVE_LOG:'bg-red-100 text-red-700', CHANGE_SETTING:'bg-purple-100 text-purple-700',
+    CREATE_PC:'bg-indigo-100 text-indigo-700', EDIT_PC:'bg-indigo-100 text-indigo-700',
+    DELETE_PC:'bg-red-100 text-red-700', CREATE_CAMERA:'bg-pink-100 text-pink-700',
+    DELETE_CAMERA:'bg-red-100 text-red-700', CREATE_ANNOUNCEMENT:'bg-cyan-100 text-cyan-700',
+  }
+  const ACTION_ICONS: Record<string,string> = {
+    LOGIN:'🔑', LOGOUT:'🚪', CREATE_LOG:'✅', CHECKOUT:'🏁', AUTO_CHECKOUT:'⏰',
+    EDIT_LOG:'✏️', ARCHIVE_LOG:'🗃', CHANGE_SETTING:'⚙️', CREATE_PC:'🖥️',
+    EDIT_PC:'🖊', DELETE_PC:'🗑', CREATE_CAMERA:'📷', DELETE_CAMERA:'🗑',
+    CREATE_ANNOUNCEMENT:'📢',
+  }
+
+  const ACTIONS = [...new Set(logs.map(l=>l.action))]
+
+  const visible = logs.filter(l => {
+    if (actionFilter && l.action !== actionFilter) return false
+    if (search) {
+      const s = search.toLowerCase()
+      return l.admin?.name?.toLowerCase().includes(s) ||
+             l.admin?.username?.toLowerCase().includes(s) ||
+             l.action.toLowerCase().includes(s) ||
+             l.detail?.toLowerCase().includes(s) ||
+             l.ip?.includes(s)
+    }
+    return true
+  })
+
+  const exportCsv = () => {
+    const rows = [['Time','Action','Admin','Detail','IP']]
+    visible.forEach(l => {
+      let det = l.detail || ''
+      try { const d = JSON.parse(det); det = Object.entries(d).map(([k,v])=>`${k}:${v}`).join('; ') } catch {}
+      rows.push([new Date(l.createdAt).toLocaleString(), l.action, l.admin?.name||'', det, l.ip||''])
+    })
+    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}))
+    a.download = `audit_${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+  }
+
+  // Summary counts
+  const totalToday = logs.filter(l => {
+    const d = new Date(l.createdAt); const n = new Date()
+    return d.getDate()===n.getDate()&&d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear()
+  }).length
 
   return (
     <div className="space-y-4">
-      <div className="glass rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-display font-semibold text-gray-700">Admin Activity Audit Trail</h3>
-            <p className="text-xs text-gray-400 mt-0.5">All admin actions are logged here for Data Privacy Act compliance. Last 200 entries.</p>
+      {/* Summary bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          {label:'Total Events', value:logs.length,      icon:'📋', color:'text-[var(--dict-blue)]'},
+          {label:'Today',        value:totalToday,        icon:'📅', color:'text-green-600'},
+          {label:'Unique Actions',value:ACTIONS.length,  icon:'🎯', color:'text-purple-600'},
+          {label:'Showing',      value:visible.length,   icon:'👁', color:'text-amber-600'},
+        ].map(s=>(
+          <div key={s.label} className="glass rounded-2xl p-4 text-center shadow-sm">
+            <div className="text-xl mb-1">{s.icon}</div>
+            <div className={`text-2xl font-bold font-display ${s.color}`}>{s.value}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
           </div>
-          <a href="/print" target="_blank" className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300">
-            🖨 Print Log
-          </a>
+        ))}
+      </div>
+
+      <div className="glass rounded-2xl p-5 shadow-sm">
+        {/* Header + filters */}
+        <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+          <div>
+            <h3 className="font-display font-semibold text-gray-800">Admin Activity Audit Trail</h3>
+            <p className="text-xs text-gray-400 mt-0.5">All admin actions logged for Data Privacy Act compliance.</p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={exportCsv} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-green-300 hover:text-green-600">
+              ⬇ CSV
+            </button>
+            <a href="/print" target="_blank" className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300">
+              🖨 Print
+            </a>
+          </div>
         </div>
+
+        {/* Search + filter */}
+        <div className="flex gap-3 mb-4 flex-wrap">
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Search admin, action, IP..."
+            className="flex-1 min-w-48 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+          <select value={actionFilter} onChange={e=>setActionFilter(e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]">
+            <option value="">All Actions</option>
+            {ACTIONS.map(a=><option key={a} value={a}>{a.replace(/_/g,' ')}</option>)}
+          </select>
+          {(search||actionFilter) && (
+            <button onClick={()=>{setSearch('');setActionFilter('')}}
+              className="text-xs px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50">
+              ✕ Clear
+            </button>
+          )}
+        </div>
+
         {loading
-          ? <p className="text-center py-8 text-gray-300">Loading...</p>
-          : logs.length === 0
-          ? <p className="text-center py-8 text-gray-300">No activity yet</p>
+          ? <div className="text-center py-12 text-gray-300"><div className="w-8 h-8 border-4 border-[var(--dict-blue)] border-t-transparent rounded-full animate-spin mx-auto mb-3"/><p>Loading audit trail...</p></div>
+          : visible.length === 0
+          ? <p className="text-center py-12 text-gray-300">No activity matches your filters</p>
           : (
-            <div className="space-y-2">
-              {logs.map(log => (
-                <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-bold flex-shrink-0 mt-0.5 ${ACTION_COLORS[log.action] || 'bg-gray-100 text-gray-600'}`}>
-                    {log.action.replace(/_/g,' ')}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    {log.target && <p className="text-xs font-mono text-gray-500 truncate">ID: {log.target}</p>}
-                    {log.detail && (() => {
-                      try {
-                        const d = JSON.parse(log.detail)
-                        return <p className="text-xs text-gray-500">{Object.entries(d).map(([k,v])=>`${k}: ${v}`).join(' · ')}</p>
-                      } catch {
-                        return <p className="text-xs text-gray-500">{log.detail}</p>
-                      }
-                    })()}
+            <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
+              {visible.map(log => {
+                let detail = log.detail || ''
+                try { const d = JSON.parse(detail); detail = Object.entries(d).map(([k,v])=>`${k}: ${v}`).join(' · ') } catch {}
+                return (
+                  <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50/80 transition-colors">
+                    <span className="text-base flex-shrink-0 mt-0.5">{ACTION_ICONS[log.action]||'📌'}</span>
+                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold flex-shrink-0 mt-0.5 whitespace-nowrap ${ACTION_COLORS[log.action]||'bg-gray-100 text-gray-600'}`}>
+                      {log.action.replace(/_/g,' ')}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      {log.target && <p className="text-[10px] font-mono text-gray-400 truncate">ID: {log.target}</p>}
+                      {detail && <p className="text-xs text-gray-600 mt-0.5">{detail}</p>}
+                    </div>
+                    <div className="text-right flex-shrink-0 min-w-24">
+                      {log.admin && <p className="text-xs font-semibold text-gray-700">{log.admin.name}</p>}
+                      <p className="text-[10px] text-gray-400 font-mono">{new Date(log.createdAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
+                      {log.ip && <p className="text-[10px] text-gray-300 font-mono">{log.ip}</p>}
+                    </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    {log.admin && <p className="text-xs font-semibold text-gray-600">{log.admin.name}</p>}
-                    <p className="text-[10px] text-gray-400 font-mono">{new Date(log.createdAt).toLocaleString()}</p>
-                    {log.ip && <p className="text-[10px] text-gray-300">{log.ip}</p>}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )
         }
