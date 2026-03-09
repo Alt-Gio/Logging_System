@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 // src/app/api/network/scan/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { scanRange, getLocalNetwork } from '@/lib/network-scanner'

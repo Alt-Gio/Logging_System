@@ -1,9 +1,12 @@
+'use client'
 export default function OfflinePage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center text-center p-8">
       <div className="glass rounded-3xl p-10 max-w-md w-full shadow-2xl">
         <div className="text-6xl mb-6">📡</div>
-        <h1 className="text-2xl font-bold text-gray-800 mb-3" style={{fontFamily:"'Sora',sans-serif"}}>You&apos;re Offline</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-3" style={{fontFamily:"'Sora',sans-serif"}}>
+          You&apos;re Offline
+        </h1>
         <p className="text-gray-500 text-sm mb-6 leading-relaxed">
           The DTC Logbook needs an internet connection to sync entries. Cached data is still available — reconnect to resume normal operation.
         </p>
@@ -15,8 +18,10 @@ export default function OfflinePage() {
             <li>• Dashboard shows last known data</li>
           </ul>
         </div>
-        <button onClick={() => window.location.reload()}
-          className="w-full py-3 bg-[#003082] text-white rounded-2xl font-bold text-sm hover:bg-blue-800 transition-colors">
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full py-3 bg-[#003082] text-white rounded-2xl font-bold text-sm hover:bg-blue-800 transition-colors"
+        >
           🔄 Try Again
         </button>
       </div>

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 // src/app/api/network/ping/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'

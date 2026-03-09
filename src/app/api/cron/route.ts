@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 // src/app/api/cron/route.ts
 // Called by QStash every 5 minutes to auto-checkout overdue sessions
 // Also accepts GET with ?secret=CRON_SECRET for manual triggers

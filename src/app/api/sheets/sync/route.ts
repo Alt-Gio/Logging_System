@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 // POST /api/sheets/sync — push log entries to connected Google Sheet
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'

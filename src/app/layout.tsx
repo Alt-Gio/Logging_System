@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next'
-import { prisma } from '@/lib/prisma'
 import { ClerkProvider } from '@clerk/nextjs'
 import './globals.css'
 
@@ -16,13 +15,7 @@ export const viewport: Viewport = {
   initialScale: 1,
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Load custom bgImageUrl from DB (server-side — no flash, no client JS needed)
-  let bgImageUrl = ''
-  try {
-    const row = await prisma.setting.findUnique({ where: { key: 'bgImageUrl' } })
-    if (row?.value) bgImageUrl = row.value
-  } catch {}
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider
       signInUrl="/sign-in"
@@ -34,19 +27,46 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <head>
           <link rel="apple-touch-icon" href="/icon-192.png"/>
           <meta name="mobile-web-app-capable" content="yes"/>
-          {/* Google Fonts — preloaded for performance */}
           <link rel="preconnect" href="https://fonts.googleapis.com"/>
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous"/>
           <link
             href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
             rel="stylesheet"
           />
-        {bgImageUrl && (
-          <style dangerouslySetInnerHTML={{ __html: `:root { --bg-image: url('${bgImageUrl.replace(/'/g, "\\'")}') }` }}/>
-        )}
         </head>
-        <body>{children}</body>
+        <body>
+          {/* BgStyle loads the custom background URL from DB at request-time (not build-time) */}
+          <BgStyle/>
+          {children}
+        </body>
       </html>
     </ClerkProvider>
+  )
+}
+
+// ── Server component that injects dynamic CSS variable for background ─────────
+// Imported inline to keep layout.tsx a single file.
+// Uses React's cache + prisma only at request time, never at build time.
+import { cache } from 'react'
+
+const getBgUrl = cache(async (): Promise<string> => {
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    const row = await prisma.setting.findUnique({ where: { key: 'bgImageUrl' } })
+    return row?.value ?? ''
+  } catch {
+    return ''
+  }
+})
+
+async function BgStyle() {
+  const url = await getBgUrl()
+  if (!url) return null
+  const safe = url.replace(/'/g, "\\'").replace(/\\/g, '\\\\')
+  return (
+    <style
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{ __html: `:root{--bg-image:url('${safe}')}` }}
+    />
   )
 }

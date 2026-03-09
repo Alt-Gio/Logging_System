@@ -1,6 +1,8 @@
+export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
+import { triggerEvent, EVENTS } from '@/lib/pusher'
 
 type EquipmentRow  = { equipmentUsed: string[] }
 type HourRow       = { hour: number; count: bigint }
