@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import OllamaAssistant from '@/components/OllamaAssistant'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, addHours, setHours, setMinutes, setSeconds } from 'date-fns'
 
@@ -1635,17 +1634,6 @@ export default function LogbookPage() {
 
         </div>{/* end two-column flex */}
       </main>
-
-      {/* ── Ollama AI Assistant ── */}
-      <OllamaAssistant formCtx={{
-        step,
-        fullName:      form.fullName,
-        agency:        form.agency,
-        purpose:       form.purpose,
-        equipment:     form.equipmentUsed,
-        hasFilledName: form.fullName.trim().length > 1,
-      }} />
-
     </div>
   )
 }
