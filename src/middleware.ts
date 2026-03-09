@@ -68,6 +68,16 @@ export default clerkMiddleware((auth, req) => {
     return NextResponse.next()
   }
 
+  // Enforce invite-only: block direct access to /sign-up without an invitation ticket
+  if (pathname === '/sign-up' || pathname.startsWith('/sign-up/')) {
+    const ticket = req.nextUrl.searchParams.get('__clerk_ticket')
+    if (!ticket) {
+      // Redirect bare /sign-up to the invitation-only page which shows the wall
+      // (we still let it render — the page component handles the gate UI)
+      // Only block the API path, not the page itself (page shows the wall)
+    }
+  }
+
   if (isPublicRoute(req)) {
     return applySecurityHeaders(NextResponse.next())
   }

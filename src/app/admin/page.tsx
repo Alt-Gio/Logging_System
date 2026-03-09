@@ -364,7 +364,7 @@ function EditPcModal({ pc, onSave, onClose }: {
 export default function AdminPage() {
   const { user, isLoaded: clerkLoaded, isSignedIn } = useUser()
   const currentAdmin = isSignedIn ? { id: user?.id ?? '', name: user?.fullName ?? user?.username ?? 'Admin', role: 'SUPER_ADMIN' } : null
-  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'auditlog' | 'announcements' | 'analytics'>('dashboard')
+  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'announcements' | 'analytics'>('dashboard')
   const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [sheetSyncing, setSheetSyncing] = useState(false)
@@ -674,10 +674,10 @@ export default function AdminPage() {
           </div>
           <div className="border-t border-white/15 flex items-center justify-between py-1">
             <nav className="flex gap-0.5 flex-wrap">
-              {(['dashboard','logs','pcs','network','auditlog','announcements','analytics','settings'] as const).map(t => (
+              {(['dashboard','logs','pcs','network','announcements','analytics','settings'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all ${tab===t ? 'bg-white text-[var(--dict-blue)] shadow-sm' : 'text-blue-200 hover:text-white hover:bg-white/10'}`}>
-                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='auditlog'?'📜 Audit':t==='announcements'?'📢 Notices':t==='analytics'?'📈 Analytics':'📋 Logs'}
+                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='announcements'?'📢 Notices':t==='analytics'?'📊 Analytics':'📋 Logs'}
                 </button>
               ))}
             </nav>
@@ -1651,11 +1651,6 @@ export default function AdminPage() {
             )}
           </div>
         )}
-        {/* ══════════════════════════════════════════════════════════ AUDIT LOG */}
-        {/* ══════════════════════════════════════════════════════════ AUDIT LOG */}
-        {tab === 'auditlog' && (
-          <AuditLogTab/>
-        )}
         {tab === 'announcements' && (
           <AnnouncementsTab/>
         )}
@@ -1770,191 +1765,6 @@ function AnnouncementsTab() {
           </div>
         }
       </div>
-    </div>
-  )
-}
-
-// ── AnalyticsTab ──────────────────────────────────────────────────────────────
-function AnalyticsTab() {
-  const [range, setRange] = useState<'today'|'week'|'month'|'year'>('week')
-  const [data, setData] = useState<Record<string,unknown> | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    fetch(`/api/stats?range=${range}`)
-      .then(r=>r.json())
-      .then(d=>{setData(d);setLoading(false)})
-      .catch(()=>setLoading(false))
-  }, [range])
-
-  type StatItem = { count: number }
-  const purposes = (data?.byPurpose as {purpose:string;count:number}[]) || []
-  const equipment = (data?.byEquipment as {equipment:string;count:number}[]) || []
-  const byHour = (data?.byHour as {hour:number;count:number}[]) || []
-  const dailyTrend = (data?.dailyTrend as {day:string;count:number}[]) || []
-  const summary = (data?.summary as Record<string,number|null>) || {}
-  const ratingDist = (data?.ratingDist as {rating:number;count:number}[]) || []
-  const serviceTypes = (data?.byServiceType as {type:string;count:number}[]) || []
-
-  const maxHour = Math.max(1, ...byHour.map(h=>h.count))
-  const maxDay  = Math.max(1, ...dailyTrend.map(d=>d.count))
-
-  const rangeLabel = { today:'Today', week:'This Week', month:'This Month', year:'This Year' }
-
-  return (
-    <div className="space-y-4">
-      {/* Range selector */}
-      <div className="glass rounded-2xl p-4 shadow-sm flex gap-2 flex-wrap">
-        {(['today','week','month','year'] as const).map(r => (
-          <button key={r} onClick={() => setRange(r)}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${range===r ? 'bg-[var(--dict-blue)] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {rangeLabel[r]}
-          </button>
-        ))}
-        <a href={`/api/logs/export?all=true`} target="_blank" rel="noreferrer"
-          className="ml-auto px-4 py-2 rounded-xl text-sm font-semibold bg-green-100 text-green-700 hover:bg-green-200 flex items-center gap-1.5">
-          ⬇ Export All CSV
-        </a>
-      </div>
-
-      {loading ? (
-        <div className="glass rounded-2xl p-12 text-center text-gray-300 shadow-sm">Loading analytics...</div>
-      ) : (
-        <>
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label:'Total Clients', value: summary.total ?? 0, icon:'👥', color:'text-[var(--dict-blue)]' },
-              { label:'Avg Duration', value: summary.avgDurationMins ? `${summary.avgDurationMins}m` : '—', icon:'⏱', color:'text-purple-600' },
-              { label:'Avg Rating', value: summary.avgRating ? `${summary.avgRating}★` : '—', icon:'⭐', color:'text-yellow-600' },
-              { label:'Ratings Given', value: summary.ratingCount ?? 0, icon:'📝', color:'text-green-600' },
-            ].map(s => (
-              <div key={s.label} className="glass rounded-2xl p-4 shadow-sm text-center">
-                <div className="text-2xl mb-1">{s.icon}</div>
-                <div className={`text-2xl font-bold font-display ${s.color}`}>{String(s.value)}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            {/* Hourly heatmap */}
-            <div className="glass rounded-2xl p-5">
-              <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Peak Hours</h3>
-              <div className="space-y-1">
-                {Array.from({length:10}, (_,i)=>i+8).map(h => {
-                  const entry = byHour.find(e=>e.hour===h)
-                  const count = entry?.count ?? 0
-                  const pct = Math.round((count / maxHour) * 100)
-                  return (
-                    <div key={h} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-14 flex-shrink-0 text-right">
-                        {h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h-12}:00 PM`}
-                      </span>
-                      <div className="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-5 bg-[var(--dict-blue)] rounded-full transition-all"
-                          style={{width:`${pct}%`, opacity: 0.3 + (pct/100)*0.7}}/>
-                      </div>
-                      <span className="text-xs text-gray-500 w-6 text-right">{count}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Daily trend */}
-            <div className="glass rounded-2xl p-5">
-              <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Daily Trend</h3>
-              {dailyTrend.length === 0
-                ? <p className="text-xs text-gray-300 text-center py-8">No data</p>
-                : <div className="flex items-end gap-1 h-32">
-                  {dailyTrend.slice(-14).map(d => (
-                    <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[9px] text-gray-400">{d.count}</span>
-                      <div className="w-full rounded-t bg-[var(--dict-blue)]"
-                        style={{height:`${Math.max(4, (d.count/maxDay)*100)}px`, opacity:0.5+(d.count/maxDay)*0.5}}/>
-                      <span className="text-[9px] text-gray-300 rotate-45 origin-left">{d.day.slice(5)}</span>
-                    </div>
-                  ))}
-                </div>
-              }
-            </div>
-
-            {/* Purpose breakdown */}
-            <div className="glass rounded-2xl p-5">
-              <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Top Purposes</h3>
-              <div className="space-y-2">
-                {purposes.slice(0,8).map((p,i) => {
-                  const max = purposes[0]?.count || 1
-                  return (
-                    <div key={p.purpose}>
-                      <div className="flex justify-between text-xs text-gray-600 mb-0.5">
-                        <span className="truncate max-w-[70%]">{p.purpose}</span>
-                        <span className="font-semibold">{p.count}</span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-2 bg-blue-400 rounded-full" style={{width:`${(p.count/max)*100}%`}}/>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Equipment + Service Type + Ratings */}
-            <div className="space-y-4">
-              <div className="glass rounded-2xl p-5">
-                <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Services Used</h3>
-                <div className="space-y-1.5">
-                  {equipment.slice(0,6).map(e => (
-                    <div key={e.equipment} className="flex justify-between text-xs">
-                      <span className="text-gray-600">{e.equipment}</span>
-                      <span className="font-semibold text-[var(--dict-blue)]">{e.count}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {ratingDist.length > 0 && (
-                <div className="glass rounded-2xl p-5">
-                  <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Satisfaction Distribution</h3>
-                  <div className="space-y-1.5">
-                    {[5,4,3,2,1].map(star => {
-                      const entry = ratingDist.find(r=>r.rating===star)
-                      const count = entry?.count ?? 0
-                      const total = ratingDist.reduce((a,r)=>a+r.count,0) || 1
-                      return (
-                        <div key={star} className="flex items-center gap-2">
-                          <span className="text-xs w-12 flex-shrink-0">{'⭐'.repeat(star)}</span>
-                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-3 bg-yellow-400 rounded-full" style={{width:`${(count/total)*100}%`}}/>
-                          </div>
-                          <span className="text-xs text-gray-500 w-6">{count}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {serviceTypes.length > 0 && (
-                <div className="glass rounded-2xl p-5">
-                  <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Service Type</h3>
-                  <div className="space-y-1.5">
-                    {serviceTypes.map(s => (
-                      <div key={s.type} className="flex justify-between text-xs">
-                        <span className="text-gray-600">{s.type === 'SELF_SERVICE' ? '🙋 Self-Service' : '👨‍💼 Staff-Assisted'}</span>
-                        <span className="font-semibold text-[var(--dict-blue)]">{s.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
     </div>
   )
 }
@@ -2173,159 +1983,616 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
   )
 }
 
-// ── AuditLogTab ──────────────────────────────────────────────────────────────
-function AuditLogTab() {
-  type AuditLog = {id:string;action:string;target:string|null;detail:string|null;ip:string|null;createdAt:string;admin?:{username:string;name:string}|null}
-  const [logs, setLogs]       = useState<AuditLog[]>([])
-  const [loading, setLoading] = useState(true)
-  const [actionFilter, setActionFilter] = useState('')
-  const [search, setSearch]   = useState('')
 
-  const load = (action?: string) => {
-    setLoading(true)
-    const q = new URLSearchParams({ limit:'500' })
-    if (action) q.set('action', action)
-    fetch(`/api/admin-logs?${q}`)
-      .then(r=>r.json())
-      .then(d=>{ setLogs(Array.isArray(d)?d:[]); setLoading(false) })
-      .catch(()=>setLoading(false))
-  }
-  useEffect(() => { load() }, [])
-
-  const ACTION_COLORS: Record<string,string> = {
-    LOGIN:'bg-blue-100 text-blue-700', LOGOUT:'bg-gray-100 text-gray-600',
-    CREATE_LOG:'bg-green-100 text-green-700', CHECKOUT:'bg-teal-100 text-teal-700',
-    AUTO_CHECKOUT:'bg-amber-100 text-amber-700', EDIT_LOG:'bg-yellow-100 text-yellow-700',
-    ARCHIVE_LOG:'bg-red-100 text-red-700', CHANGE_SETTING:'bg-purple-100 text-purple-700',
-    CREATE_PC:'bg-indigo-100 text-indigo-700', EDIT_PC:'bg-indigo-100 text-indigo-700',
-    DELETE_PC:'bg-red-100 text-red-700', CREATE_CAMERA:'bg-pink-100 text-pink-700',
-    DELETE_CAMERA:'bg-red-100 text-red-700', CREATE_ANNOUNCEMENT:'bg-cyan-100 text-cyan-700',
-  }
-  const ACTION_ICONS: Record<string,string> = {
-    LOGIN:'🔑', LOGOUT:'🚪', CREATE_LOG:'✅', CHECKOUT:'🏁', AUTO_CHECKOUT:'⏰',
-    EDIT_LOG:'✏️', ARCHIVE_LOG:'🗃', CHANGE_SETTING:'⚙️', CREATE_PC:'🖥️',
-    EDIT_PC:'🖊', DELETE_PC:'🗑', CREATE_CAMERA:'📷', DELETE_CAMERA:'🗑',
-    CREATE_ANNOUNCEMENT:'📢',
-  }
-
-  const ACTIONS = [...new Set(logs.map(l=>l.action))]
-
-  const visible = logs.filter(l => {
-    if (actionFilter && l.action !== actionFilter) return false
-    if (search) {
-      const s = search.toLowerCase()
-      return l.admin?.name?.toLowerCase().includes(s) ||
-             l.admin?.username?.toLowerCase().includes(s) ||
-             l.action.toLowerCase().includes(s) ||
-             l.detail?.toLowerCase().includes(s) ||
-             l.ip?.includes(s)
-    }
-    return true
-  })
-
-  const exportCsv = () => {
-    const rows = [['Time','Action','Admin','Detail','IP']]
-    visible.forEach(l => {
-      let det = l.detail || ''
-      try { const d = JSON.parse(det); det = Object.entries(d).map(([k,v])=>`${k}:${v}`).join('; ') } catch {}
-      rows.push([new Date(l.createdAt).toLocaleString(), l.action, l.admin?.name||'', det, l.ip||''])
-    })
-    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}))
-    a.download = `audit_${new Date().toISOString().slice(0,10)}.csv`
-    a.click()
-  }
-
-  // Summary counts
-  const totalToday = logs.filter(l => {
-    const d = new Date(l.createdAt); const n = new Date()
-    return d.getDate()===n.getDate()&&d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear()
-  }).length
+// ── AnalyticsTab (unified Analytics + Audit Trail) ────────────────────────────
+function AnalyticsTab() {
+  const [subTab, setSubTab] = useState<'overview'|'audit'>('overview')
 
   return (
     <div className="space-y-4">
-      {/* Summary bar */}
+      {/* Sub-tab switcher */}
+      <div className="glass rounded-2xl p-1.5 flex gap-1 w-fit shadow-sm">
+        {([
+          { id: 'overview', icon: '📈', label: 'Overview' },
+          { id: 'audit',    icon: '🔍', label: 'Audit Trail' },
+        ] as const).map(({ id, icon, label }) => (
+          <button key={id} onClick={() => setSubTab(id)}
+            className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
+              subTab === id
+                ? 'bg-[var(--dict-blue)] text-white shadow-md'
+                : 'text-gray-500 hover:bg-gray-100'
+            }`}>
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'overview' && <AnalyticsOverview/>}
+      {subTab === 'audit'    && <AuditTrail/>}
+    </div>
+  )
+}
+
+// ── Analytics Overview ─────────────────────────────────────────────────────────
+function AnalyticsOverview() {
+  const [range, setRange] = useState<'today'|'week'|'month'|'year'|'all'>('week')
+  const [data, setData]   = useState<Record<string,unknown> | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/stats?range=${range}`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [range])
+
+  const purposes       = (data?.byPurpose       as {purpose:string;count:number}[])   || []
+  const agencies       = (data?.byAgency         as {agency:string;count:number}[])    || []
+  const equipment      = (data?.byEquipment      as {equipment:string;count:number}[]) || []
+  const byHour         = (data?.byHour           as {hour:number;count:number}[])      || []
+  const dailyTrend     = (data?.dailyTrend       as {day:string;count:number}[])       || []
+  const ratingDist     = (data?.ratingDist       as {rating:number;count:number}[])    || []
+  const serviceTypes   = (data?.byServiceType    as {type:string;count:number}[])      || []
+  const durBuckets     = (data?.durationBuckets  as {bucket:string;count:number}[])    || []
+  const summary        = (data?.summary          as Record<string,number|null>)         || {}
+
+  const maxHour = Math.max(1, ...byHour.map(h => h.count))
+  const maxDay  = Math.max(1, ...dailyTrend.map(d => d.count))
+  const maxDur  = Math.max(1, ...durBuckets.map(d => d.count))
+
+  const RANGE_LABELS = { today: 'Today', week: 'This Week', month: 'This Month', year: 'This Year', all: 'All Time' }
+
+  const trendBadge = (val: number | null | undefined) => {
+    if (val == null) return null
+    const up = val >= 0
+    return (
+      <span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${up ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+        {up ? '▲' : '▼'} {Math.abs(val)}%
+      </span>
+    )
+  }
+
+  const HOUR_COLOR = (pct: number) => {
+    if (pct > 70) return 'bg-[var(--dict-blue)]'
+    if (pct > 40) return 'bg-blue-400'
+    if (pct > 15) return 'bg-blue-200'
+    return 'bg-gray-200'
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="glass rounded-2xl p-4 flex items-center gap-2 flex-wrap shadow-sm">
+        <div className="flex gap-1 flex-wrap">
+          {(['today','week','month','year','all'] as const).map(r => (
+            <button key={r} onClick={() => setRange(r)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                range === r
+                  ? 'bg-[var(--dict-blue)] text-white shadow'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>
+              {RANGE_LABELS[r]}
+            </button>
+          ))}
+        </div>
+        <a href="/api/logs/export?all=true" target="_blank" rel="noreferrer"
+          className="ml-auto flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors">
+          ⬇ Export CSV
+        </a>
+      </div>
+
+      {loading ? (
+        <div className="glass rounded-2xl p-16 text-center shadow-sm">
+          <div className="w-10 h-10 border-4 border-[var(--dict-blue)] border-t-transparent rounded-full animate-spin mx-auto mb-3"/>
+          <p className="text-gray-400 text-sm">Loading analytics…</p>
+        </div>
+      ) : (
+        <>
+          {/* ── KPI Cards ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {
+                label: 'Total Clients',
+                value: summary.total ?? 0,
+                sub: summary.trend != null ? trendBadge(summary.trend as number) : null,
+                icon: '👥', color: 'text-[var(--dict-blue)]', bg: 'bg-blue-50',
+              },
+              {
+                label: 'Active Now',
+                value: summary.active ?? 0,
+                sub: <span className="text-[10px] text-green-600">live sessions</span>,
+                icon: '🟢', color: 'text-green-600', bg: 'bg-green-50',
+              },
+              {
+                label: 'Avg Session',
+                value: summary.avgDurationMins ? `${summary.avgDurationMins}m` : '—',
+                sub: <span className="text-[10px] text-purple-500">per client</span>,
+                icon: '⏱', color: 'text-purple-600', bg: 'bg-purple-50',
+              },
+              {
+                label: 'Satisfaction',
+                value: summary.avgRating ? `${summary.avgRating}★` : '—',
+                sub: summary.ratingCount ? <span className="text-[10px] text-amber-600">{summary.ratingCount} ratings</span> : null,
+                icon: '⭐', color: 'text-amber-600', bg: 'bg-amber-50',
+              },
+            ].map(s => (
+              <div key={s.label} className={`glass rounded-2xl p-4 shadow-sm border border-white/80 ${s.bg}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xl">{s.icon}</span>
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{RANGE_LABELS[range]}</span>
+                </div>
+                <div className={`text-2xl font-bold font-display ${s.color}`}>{String(s.value)}</div>
+                <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                  {s.label} {s.sub}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Second row: Completion rate + service type + equipment */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="glass rounded-2xl p-4 shadow-sm text-center">
+              {/* Donut-style completion ring */}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Completion Rate</p>
+              <div className="relative inline-flex items-center justify-center">
+                <svg width="72" height="72" viewBox="0 0 72 72">
+                  <circle cx="36" cy="36" r="28" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                  <circle cx="36" cy="36" r="28" fill="none" stroke="var(--dict-blue)" strokeWidth="8"
+                    strokeDasharray={`${((summary.completionRate as number) ?? 0) / 100 * 175.9} 175.9`}
+                    strokeLinecap="round" transform="rotate(-90 36 36)"/>
+                </svg>
+                <span className="absolute text-sm font-bold text-gray-700">{summary.completionRate ?? 0}%</span>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">{summary.checkedOut ?? 0} checked out</p>
+            </div>
+
+            <div className="glass rounded-2xl p-4 shadow-sm">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Service Mode</p>
+              {serviceTypes.length === 0
+                ? <p className="text-xs text-gray-300 text-center py-4">No data</p>
+                : serviceTypes.map(s => {
+                    const total = serviceTypes.reduce((a, x) => a + x.count, 0) || 1
+                    const pct = Math.round((s.count / total) * 100)
+                    return (
+                      <div key={s.type} className="mb-2">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-600">{s.type === 'SELF_SERVICE' ? '🙋 Self-Service' : '👨‍💼 Assisted'}</span>
+                          <span className="font-bold text-gray-700">{pct}%</span>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-2 rounded-full ${s.type === 'SELF_SERVICE' ? 'bg-blue-400' : 'bg-teal-400'}`} style={{ width: `${pct}%` }}/>
+                        </div>
+                      </div>
+                    )
+                  })
+              }
+            </div>
+
+            <div className="glass rounded-2xl p-4 shadow-sm">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Equipment Used</p>
+              <div className="space-y-1.5">
+                {equipment.slice(0, 5).map(e => {
+                  const max = equipment[0]?.count || 1
+                  return (
+                    <div key={e.equipment} className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-600 w-28 truncate">{e.equipment}</span>
+                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-2 bg-indigo-400 rounded-full" style={{ width: `${(e.count / max) * 100}%` }}/>
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-500 w-5 text-right">{e.count}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Charts Row ── */}
+          <div className="grid sm:grid-cols-2 gap-4">
+
+            {/* Daily trend bar chart */}
+            <div className="glass rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-display font-semibold text-gray-700 text-sm">Daily Client Volume</h3>
+                <span className="text-[10px] text-gray-400">{RANGE_LABELS[range]}</span>
+              </div>
+              {dailyTrend.length === 0
+                ? <p className="text-xs text-gray-300 text-center py-10">No data for this period</p>
+                : (
+                  <div className="flex items-end gap-0.5 h-28 overflow-x-auto pb-1">
+                    {dailyTrend.map(d => {
+                      const pct = maxDay > 0 ? (d.count / maxDay) * 100 : 0
+                      const isToday = d.day === new Date().toISOString().slice(0, 10)
+                      return (
+                        <div key={d.day} className="flex-1 min-w-[16px] flex flex-col items-center gap-0.5 group" title={`${d.day}: ${d.count}`}>
+                          <span className="text-[8px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">{d.count}</span>
+                          <div className={`w-full rounded-t transition-all ${isToday ? 'bg-[var(--dict-blue)]' : 'bg-blue-300 hover:bg-blue-400'}`}
+                            style={{ height: `${Math.max(3, pct)}%` }}/>
+                          <span className="text-[8px] text-gray-300 -rotate-45 origin-top-left">{d.day.slice(5)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              }
+            </div>
+
+            {/* Hourly heatmap */}
+            <div className="glass rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-display font-semibold text-gray-700 text-sm">Peak Hours</h3>
+                <div className="flex gap-1 items-center">
+                  <div className="w-2 h-2 rounded-sm bg-gray-200"/><span className="text-[9px] text-gray-400">Low</span>
+                  <div className="w-2 h-2 rounded-sm bg-blue-400 ml-1"/><span className="text-[9px] text-gray-400">Mid</span>
+                  <div className="w-2 h-2 rounded-sm bg-[var(--dict-blue)] ml-1"/><span className="text-[9px] text-gray-400">High</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {Array.from({ length: 9 }, (_, i) => i + 8).map(h => {
+                  const entry = byHour.find(e => e.hour === h)
+                  const count = entry?.count ?? 0
+                  const pct   = Math.round((count / maxHour) * 100)
+                  return (
+                    <div key={h} className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 w-14 text-right flex-shrink-0">
+                        {h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}
+                      </span>
+                      <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
+                        <div className={`h-4 rounded transition-all ${HOUR_COLOR(pct)}`} style={{ width: `${pct}%` }}/>
+                      </div>
+                      <span className="text-[10px] text-gray-400 w-5 text-right">{count}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Top Purposes */}
+            <div className="glass rounded-2xl p-5 shadow-sm">
+              <h3 className="font-display font-semibold text-gray-700 text-sm mb-4">Top Purposes</h3>
+              <div className="space-y-2">
+                {purposes.length === 0
+                  ? <p className="text-xs text-gray-300 text-center py-8">No data</p>
+                  : purposes.slice(0, 8).map((p, i) => {
+                      const maxP = purposes[0]?.count || 1
+                      const COLORS = ['bg-[var(--dict-blue)]','bg-blue-500','bg-blue-400','bg-blue-300','bg-indigo-400','bg-indigo-300','bg-slate-400','bg-slate-300']
+                      return (
+                        <div key={p.purpose}>
+                          <div className="flex justify-between text-xs text-gray-600 mb-0.5">
+                            <span className="truncate max-w-[72%] font-medium">{p.purpose}</span>
+                            <span className="font-bold text-gray-700">{p.count}</span>
+                          </div>
+                          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-2.5 rounded-full ${COLORS[i] || 'bg-gray-400'}`} style={{ width: `${(p.count / maxP) * 100}%` }}/>
+                          </div>
+                        </div>
+                      )
+                    })
+                }
+              </div>
+            </div>
+
+            {/* Right column: Agencies + Satisfaction + Duration */}
+            <div className="space-y-4">
+              {/* Top Agencies */}
+              <div className="glass rounded-2xl p-5 shadow-sm">
+                <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Top Agencies / Organizations</h3>
+                <div className="space-y-1.5">
+                  {agencies.length === 0
+                    ? <p className="text-xs text-gray-300 text-center py-4">No data</p>
+                    : agencies.slice(0, 6).map((a, i) => {
+                        const maxA = agencies[0]?.count || 1
+                        return (
+                          <div key={a.agency} className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-gray-400 w-4">{i + 1}</span>
+                            <span className="text-[11px] text-gray-600 flex-1 truncate">{a.agency}</span>
+                            <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-2 bg-teal-400 rounded-full" style={{ width: `${(a.count / maxA) * 100}%` }}/>
+                            </div>
+                            <span className="text-[10px] font-bold text-gray-500 w-5 text-right">{a.count}</span>
+                          </div>
+                        )
+                      })
+                  }
+                </div>
+              </div>
+
+              {/* Session Duration Histogram */}
+              {durBuckets.length > 0 && (
+                <div className="glass rounded-2xl p-5 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Session Duration</h3>
+                  <div className="flex items-end gap-2 h-20">
+                    {durBuckets.map(b => {
+                      const pct = Math.max(8, (b.count / maxDur) * 100)
+                      return (
+                        <div key={b.bucket} className="flex-1 flex flex-col items-center gap-0.5 group">
+                          <span className="text-[9px] text-gray-400">{b.count}</span>
+                          <div className="w-full rounded-t bg-violet-400 hover:bg-violet-500 transition-colors"
+                            style={{ height: `${pct}%` }} title={`${b.bucket}: ${b.count}`}/>
+                          <span className="text-[8px] text-gray-400 text-center leading-tight">{b.bucket}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Satisfaction Distribution */}
+              {ratingDist.length > 0 && (
+                <div className="glass rounded-2xl p-5 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-700 text-sm mb-3">Satisfaction</h3>
+                  <div className="space-y-1.5">
+                    {[5, 4, 3, 2, 1].map(star => {
+                      const entry = ratingDist.find(r => r.rating === star)
+                      const count = entry?.count ?? 0
+                      const total = ratingDist.reduce((a, r) => a + r.count, 0) || 1
+                      const pct   = Math.round((count / total) * 100)
+                      return (
+                        <div key={star} className="flex items-center gap-2">
+                          <span className="text-[11px] w-16 flex-shrink-0">{'★'.repeat(star)}<span className="text-gray-300">{'★'.repeat(5 - star)}</span></span>
+                          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-3 rounded-full"
+                              style={{ width: `${pct}%`, backgroundColor: ['#fbbf24','#f59e0b','#d97706','#b45309','#92400e'][5 - star] }}/>
+                          </div>
+                          <span className="text-[10px] text-gray-500 w-6 text-right">{count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Audit Trail ────────────────────────────────────────────────────────────────
+function AuditTrail() {
+  type AuditEntry = {
+    id: string; action: string; target: string | null; detail: string | null
+    ip: string | null; createdAt: string
+    admin?: { username: string; name: string } | null
+  }
+  type AuditResponse = {
+    logs: AuditEntry[]; totalCount: number; todayCount: number
+    actionFreq: Record<string, number>
+  }
+
+  const [result, setResult]       = useState<AuditResponse | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [actionFilter, setAction] = useState('')
+  const [dateFrom, setDateFrom]   = useState('')
+  const [dateTo, setDateTo]       = useState('')
+  const [expanded, setExpanded]   = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    const q = new URLSearchParams({ limit: '1000' })
+    if (actionFilter) q.set('action', actionFilter)
+    if (dateFrom)     q.set('from', dateFrom)
+    if (dateTo)       q.set('to', dateTo)
+    if (search)       q.set('search', search)
+    fetch(`/api/admin-logs?${q}`)
+      .then(r => r.json())
+      .then(d => { setResult(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [actionFilter, dateFrom, dateTo, search])
+
+  useEffect(() => { load() }, [load])
+
+  const ACTION_META: Record<string, { color: string; icon: string; label: string }> = {
+    LOGIN:               { color: 'bg-blue-100 text-blue-700',    icon: '🔑', label: 'Login'          },
+    LOGOUT:              { color: 'bg-gray-100 text-gray-600',    icon: '🚪', label: 'Logout'         },
+    CREATE_LOG:          { color: 'bg-green-100 text-green-700',  icon: '✅', label: 'New Entry'       },
+    CHECKOUT:            { color: 'bg-teal-100 text-teal-700',    icon: '🏁', label: 'Check Out'       },
+    AUTO_CHECKOUT:       { color: 'bg-amber-100 text-amber-700',  icon: '⏰', label: 'Auto Check-Out'  },
+    EDIT_LOG:            { color: 'bg-yellow-100 text-yellow-700',icon: '✏️', label: 'Edit Entry'      },
+    ARCHIVE_LOG:         { color: 'bg-red-100 text-red-600',      icon: '🗃', label: 'Archive'         },
+    CHANGE_SETTING:      { color: 'bg-purple-100 text-purple-700',icon: '⚙️', label: 'Setting Changed' },
+    CREATE_PC:           { color: 'bg-indigo-100 text-indigo-700',icon: '🖥️', label: 'PC Created'      },
+    EDIT_PC:             { color: 'bg-indigo-100 text-indigo-700',icon: '🖊️', label: 'PC Edited'       },
+    DELETE_PC:           { color: 'bg-red-100 text-red-600',      icon: '🗑️', label: 'PC Deleted'      },
+    CREATE_ANNOUNCEMENT: { color: 'bg-cyan-100 text-cyan-700',    icon: '📢', label: 'Announcement'    },
+    CREATE_CAMERA:       { color: 'bg-pink-100 text-pink-700',    icon: '📷', label: 'Camera Added'    },
+    DELETE_CAMERA:       { color: 'bg-red-100 text-red-600',      icon: '🗑️', label: 'Camera Removed'  },
+  }
+
+  const logs = result?.logs || []
+  const freq = result?.actionFreq || {}
+  const allActions = Object.keys(freq).sort((a, b) => freq[b] - freq[a])
+
+  const exportCsv = () => {
+    const rows = [['Time', 'Action', 'Admin', 'Target', 'Detail', 'IP']]
+    logs.forEach(l => {
+      let det = l.detail || ''
+      try { const d = JSON.parse(det); det = Object.entries(d).map(([k, v]) => `${k}: ${v}`).join('; ') } catch {}
+      rows.push([
+        new Date(l.createdAt).toLocaleString('en-PH'),
+        l.action, l.admin?.name || '—', l.target || '—', det, l.ip || '—',
+      ])
+    })
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const a   = document.createElement('a')
+    a.href    = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = `audit_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* KPI row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          {label:'Total Events', value:logs.length,      icon:'📋', color:'text-[var(--dict-blue)]'},
-          {label:'Today',        value:totalToday,        icon:'📅', color:'text-green-600'},
-          {label:'Unique Actions',value:ACTIONS.length,  icon:'🎯', color:'text-purple-600'},
-          {label:'Showing',      value:visible.length,   icon:'👁', color:'text-amber-600'},
-        ].map(s=>(
-          <div key={s.label} className="glass rounded-2xl p-4 text-center shadow-sm">
-            <div className="text-xl mb-1">{s.icon}</div>
+          { label: 'Total Events',    value: result?.totalCount ?? 0,  icon: '📋', color: 'text-[var(--dict-blue)]', bg: 'bg-blue-50'  },
+          { label: 'Today',           value: result?.todayCount ?? 0,  icon: '📅', color: 'text-green-600',          bg: 'bg-green-50' },
+          { label: 'Action Types',    value: allActions.length,         icon: '🎯', color: 'text-purple-600',         bg: 'bg-purple-50'},
+          { label: 'Loaded',          value: logs.length,              icon: '👁️', color: 'text-amber-600',          bg: 'bg-amber-50' },
+        ].map(s => (
+          <div key={s.label} className={`glass rounded-2xl p-4 shadow-sm ${s.bg}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">{s.icon}</span>
+              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">{s.label}</span>
+            </div>
             <div className={`text-2xl font-bold font-display ${s.color}`}>{s.value}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
           </div>
         ))}
       </div>
 
-      <div className="glass rounded-2xl p-5 shadow-sm">
-        {/* Header + filters */}
-        <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
-          <div>
-            <h3 className="font-display font-semibold text-gray-800">Admin Activity Audit Trail</h3>
-            <p className="text-xs text-gray-400 mt-0.5">All admin actions logged for Data Privacy Act compliance.</p>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button onClick={exportCsv} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-green-300 hover:text-green-600">
-              ⬇ CSV
-            </button>
-            <a href="/print" target="_blank" className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300">
-              🖨 Print
-            </a>
+      {/* Action frequency chips */}
+      {allActions.length > 0 && (
+        <div className="glass rounded-2xl p-4 shadow-sm">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">Action Frequency</p>
+          <div className="flex flex-wrap gap-2">
+            {allActions.map(a => {
+              const meta = ACTION_META[a]
+              const isActive = actionFilter === a
+              return (
+                <button key={a} onClick={() => setAction(isActive ? '' : a)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                    isActive
+                      ? 'ring-2 ring-offset-1 ring-[var(--dict-blue)] scale-105 ' + (meta?.color || 'bg-gray-100 text-gray-600')
+                      : (meta?.color || 'bg-gray-100 text-gray-600') + ' border-transparent hover:scale-105'
+                  }`}>
+                  {meta?.icon || '📌'} {meta?.label || a.replace(/_/g, ' ')}
+                  <span className="bg-white/60 rounded-full px-1.5 text-[10px] font-bold">{freq[a]}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
+      )}
 
-        {/* Search + filter */}
-        <div className="flex gap-3 mb-4 flex-wrap">
-          <input value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="Search admin, action, IP..."
-            className="flex-1 min-w-48 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-          <select value={actionFilter} onChange={e=>setActionFilter(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]">
-            <option value="">All Actions</option>
-            {ACTIONS.map(a=><option key={a} value={a}>{a.replace(/_/g,' ')}</option>)}
-          </select>
-          {(search||actionFilter) && (
-            <button onClick={()=>{setSearch('');setActionFilter('')}}
-              className="text-xs px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50">
-              ✕ Clear
+      {/* Filters */}
+      <div className="glass rounded-2xl p-4 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="🔍 Search action, detail, IP…"
+            className="sm:col-span-2 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"
+            title="From date"/>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"
+            title="To date"/>
+        </div>
+        <div className="flex items-center gap-2 mt-3">
+          {(search || actionFilter || dateFrom || dateTo) && (
+            <button onClick={() => { setSearch(''); setAction(''); setDateFrom(''); setDateTo('') }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+              ✕ Clear filters
             </button>
           )}
+          <div className="ml-auto flex gap-2">
+            <button onClick={exportCsv}
+              className="text-xs px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold">
+              ⬇ Export CSV
+            </button>
+            <button onClick={load}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <div className="glass rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-display font-semibold text-gray-700 text-sm">Admin Activity Timeline</h3>
+          <p className="text-[10px] text-gray-400">Logged for RA 10173 (Data Privacy Act) compliance</p>
         </div>
 
-        {loading
-          ? <div className="text-center py-12 text-gray-300"><div className="w-8 h-8 border-4 border-[var(--dict-blue)] border-t-transparent rounded-full animate-spin mx-auto mb-3"/><p>Loading audit trail...</p></div>
-          : visible.length === 0
-          ? <p className="text-center py-12 text-gray-300">No activity matches your filters</p>
-          : (
-            <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
-              {visible.map(log => {
-                let detail = log.detail || ''
-                try { const d = JSON.parse(detail); detail = Object.entries(d).map(([k,v])=>`${k}: ${v}`).join(' · ') } catch {}
-                return (
-                  <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50/80 transition-colors">
-                    <span className="text-base flex-shrink-0 mt-0.5">{ACTION_ICONS[log.action]||'📌'}</span>
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold flex-shrink-0 mt-0.5 whitespace-nowrap ${ACTION_COLORS[log.action]||'bg-gray-100 text-gray-600'}`}>
-                      {log.action.replace(/_/g,' ')}
-                    </span>
+        {loading ? (
+          <div className="p-12 text-center">
+            <div className="w-8 h-8 border-4 border-[var(--dict-blue)] border-t-transparent rounded-full animate-spin mx-auto mb-3"/>
+            <p className="text-sm text-gray-300">Loading audit trail…</p>
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="p-12 text-center">
+            <p className="text-2xl mb-2">📭</p>
+            <p className="text-sm text-gray-400">No activity matches your filters</p>
+          </div>
+        ) : (
+          <div className="max-h-[580px] overflow-y-auto divide-y divide-gray-50">
+            {logs.map((log, idx) => {
+              const meta = ACTION_META[log.action]
+              const isExp = expanded === log.id
+              let detail = log.detail || ''
+              let detailParsed: Record<string, unknown> = {}
+              try { detailParsed = JSON.parse(detail); detail = Object.entries(detailParsed).map(([k, v]) => `${k}: ${v}`).join(' · ') } catch {}
+              const prevLog = logs[idx - 1]
+              const showDate = idx === 0 || new Date(log.createdAt).toDateString() !== new Date(prevLog.createdAt).toDateString()
+              return (
+                <div key={log.id}>
+                  {showDate && (
+                    <div className="px-5 py-2 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest sticky top-0 z-10">
+                      {new Date(log.createdAt).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setExpanded(isExp ? null : log.id)}
+                    className="w-full flex items-start gap-3 px-5 py-3 hover:bg-gray-50/80 transition-colors text-left">
+                    {/* Timeline dot */}
+                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0 mt-1">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${meta?.color || 'bg-gray-100 text-gray-500'}`}>
+                        {meta?.icon || '📌'}
+                      </div>
+                    </div>
+                    {/* Content */}
                     <div className="flex-1 min-w-0">
-                      {log.target && <p className="text-[10px] font-mono text-gray-400 truncate">ID: {log.target}</p>}
-                      {detail && <p className="text-xs text-gray-600 mt-0.5">{detail}</p>}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-gray-700">{meta?.label || log.action.replace(/_/g, ' ')}</span>
+                          {log.admin && (
+                            <span className="ml-2 text-[10px] text-gray-400">by <strong className="text-gray-600">{log.admin.name}</strong></span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0 font-mono">
+                          {new Date(log.createdAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </span>
+                      </div>
+                      {detail && (
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">{detail}</p>
+                      )}
+                      {isExp && (
+                        <div className="mt-2 bg-gray-50 rounded-xl p-3 space-y-1 text-left border border-gray-100">
+                          {log.target && (
+                            <div className="flex gap-2 text-[11px]">
+                              <span className="text-gray-400 w-16 flex-shrink-0">Target</span>
+                              <span className="font-mono text-gray-600 break-all">{log.target}</span>
+                            </div>
+                          )}
+                          {log.ip && (
+                            <div className="flex gap-2 text-[11px]">
+                              <span className="text-gray-400 w-16 flex-shrink-0">IP</span>
+                              <span className="font-mono text-gray-600">{log.ip}</span>
+                            </div>
+                          )}
+                          {Object.entries(detailParsed).map(([k, v]) => (
+                            <div key={k} className="flex gap-2 text-[11px]">
+                              <span className="text-gray-400 w-16 flex-shrink-0 capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}</span>
+                              <span className="text-gray-600 break-all">{String(v)}</span>
+                            </div>
+                          ))}
+                          <div className="flex gap-2 text-[11px]">
+                            <span className="text-gray-400 w-16 flex-shrink-0">Event ID</span>
+                            <span className="font-mono text-gray-300 text-[9px]">{log.id}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right flex-shrink-0 min-w-24">
-                      {log.admin && <p className="text-xs font-semibold text-gray-700">{log.admin.name}</p>}
-                      <p className="text-[10px] text-gray-400 font-mono">{new Date(log.createdAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
-                      {log.ip && <p className="text-[10px] text-gray-300 font-mono">{log.ip}</p>}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )
-        }
+                    <span className="text-gray-300 text-xs flex-shrink-0 mt-1">{isExp ? '▲' : '▼'}</span>
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
