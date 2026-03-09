@@ -1,10 +1,4 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-// Required Railway env vars:
-// NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY
-// NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-// NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-// NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/admin
-// NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/admin
 import { NextResponse } from 'next/server'
 
 // Routes that are always public (no Clerk auth needed)
