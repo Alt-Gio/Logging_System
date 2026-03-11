@@ -414,7 +414,8 @@ export default function AdminPage() {
   const [allLogs, setAllLogs] = useState<Log[]>([])
   const [pcs, setPcs] = useState<PC[]>([])
   const [search, setSearch] = useState('')
-  const [dateFilter, setDateFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [showAllDates, setShowAllDates] = useState(false)
   const [dashView, setDashView] = useState<DashView>('recent')
   const [editLog, setEditLog] = useState<Log | null>(null)
   const [editingPc, setEditingPc] = useState<PC | null>(null)
@@ -839,12 +840,24 @@ export default function AdminPage() {
               <div className="flex flex-wrap gap-3 items-center">
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or agency..."
                   className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm flex-1 min-w-48 outline-none focus:border-[var(--dict-blue)]"/>
-                <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-                  className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+                <input type="date" value={showAllDates ? '' : dateFilter} onChange={e => { setDateFilter(e.target.value); setShowAllDates(false) }}
+                  max={format(new Date(), 'yyyy-MM-dd')}
+                  disabled={showAllDates}
+                  className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] disabled:opacity-50 disabled:cursor-not-allowed"/>
+                <button onClick={() => { setShowAllDates(v => !v); if (!showAllDates) setDateFilter('') }}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    showAllDates ? 'bg-[var(--dict-blue)] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'
+                  }`}>
+                  {showAllDates ? '✓ Showing All' : 'Show All'}
+                </button>
                 <button onClick={fetchLogs} className="px-5 py-2.5 bg-[var(--dict-blue)] text-white rounded-xl text-sm font-medium">Search</button>
                 <button onClick={() => { const p = dateFilter ? `?date=${dateFilter}` : ''; window.open(`/api/logs/export${p}`, '_blank') }}
                   className="px-5 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-green-700">
-                  ↓ Export CSV
+                  ↓ CSV
+                </button>
+                <button onClick={() => { const p = dateFilter ? `?date=${dateFilter}` : ''; window.open(`/app/print${p ? `?date=${dateFilter}` : ''}`, '_blank') }}
+                  className="px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-red-700">
+                  📄 PDF
                 </button>
               </div>
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
