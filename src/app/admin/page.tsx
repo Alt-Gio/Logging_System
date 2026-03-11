@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useUser, UserButton, SignOutButton, useClerk } from '@clerk/nextjs'
 import { usePusher } from '@/lib/usePusher'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
+import { VoiceAssistant } from '@/components/VoiceAssistant'
 import { format, formatDistanceToNow, isToday, differenceInMinutes } from 'date-fns'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -365,6 +366,30 @@ export default function AdminPage() {
   const { user, isLoaded: clerkLoaded, isSignedIn } = useUser()
   const currentAdmin = isSignedIn ? { id: user?.id ?? '', name: user?.fullName ?? user?.username ?? 'Admin', role: 'SUPER_ADMIN' } : null
   const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'announcements' | 'analytics'>('dashboard')
+  const [adminVoiceToast, setAdminVoiceToast] = useState<{ message: string; type: 'success'|'info'|'error' } | null>(null)
+
+  const handleAdminVoiceCommand = (cmd: { action: string; section?: string; filter?: string; field?: string; value?: string; message?: string }) => {
+    if (cmd.action === 'navigate' && cmd.section) {
+      const sectionMap: Record<string, typeof tab> = {
+        pcs: 'pcs', logs: 'logs', announcements: 'announcements',
+        settings: 'settings', audit: 'analytics', analytics: 'analytics', dashboard: 'dashboard',
+      }
+      const dest = sectionMap[cmd.section]
+      if (dest) { setTab(dest); setAdminVoiceToast({ message: cmd.message || `Navigated to ${dest}`, type: 'info' }) }
+    } else if (cmd.action === 'show_pc_count') {
+      setTab('pcs')
+      setAdminVoiceToast({ message: 'Showing PC status overview', type: 'info' })
+    } else if (cmd.action === 'show_stats') {
+      setTab('dashboard')
+      setAdminVoiceToast({ message: 'Showing dashboard statistics', type: 'info' })
+    } else if (cmd.action === 'show_logs') {
+      setTab('logs')
+      setAdminVoiceToast({ message: cmd.message || 'Showing log entries', type: 'info' })
+    } else if (cmd.message) {
+      setAdminVoiceToast({ message: cmd.message, type: 'success' })
+    }
+    setTimeout(() => setAdminVoiceToast(null), 4000)
+  }
   const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [sheetSyncing, setSheetSyncing] = useState(false)
@@ -1659,6 +1684,25 @@ export default function AdminPage() {
         )}
 
       </main>
+
+      {/* Admin Voice Toast */}
+      {adminVoiceToast && (
+        <div className="fixed top-4 right-4 z-[70]">
+          <div className={`rounded-xl shadow-2xl px-5 py-3 flex items-center gap-3 text-white ${
+            adminVoiceToast.type === 'success' ? 'bg-green-600' :
+            adminVoiceToast.type === 'error' ? 'bg-red-600' : 'bg-[var(--dict-blue)]'
+          }`}>
+            <span className="text-lg">{adminVoiceToast.type === 'success' ? '✓' : 'ℹ'}</span>
+            <span className="font-semibold text-sm">{adminVoiceToast.message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Voice Assistant - full system access */}
+      <VoiceAssistant
+        context="admin"
+        onCommand={handleAdminVoiceCommand}
+      />
     </div>
   )
 }

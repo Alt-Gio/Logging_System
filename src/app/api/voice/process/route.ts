@@ -26,29 +26,48 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // System prompt for the voice assistant
-    const systemPrompt = `You are a voice assistant for the DICT DTC Client Logbook system.
-Your job is to process voice commands and return structured JSON responses.
+    // Context-aware system prompts
+    const isAdmin = context === 'admin'
+    const systemPrompt = isAdmin
+      ? `You are an expert admin voice assistant for the DICT DTC Client Logbook system.
+You have full access to system information and can answer detailed administrative queries.
 
-Context: ${context || 'Client logbook form'}
+Available actions and examples:
+1. "show_pc_count" - PC status, availability, workstation queries
+2. "show_stats" - Show dashboard statistics (visitors today, active sessions, usage)
+3. "show_logs" - Show recent log entries or filter by name/agency
+4. "navigate" - Navigate to a section: { "action": "navigate", "section": "pcs|logs|announcements|settings|audit" }
+5. "respond" - Answer questions about the system with detailed information
 
-Available actions:
-1. "show_pc_count" - When user asks about PC availability, computers, workstations
-   Examples: "how many computers", "show pc status", "available workstations"
-   
-2. "fill_field" - When user provides personal information
+Examples of admin queries and responses:
+- "How many people visited today?" → { "action": "show_stats", "message": "Showing today's visitor statistics" }
+- "Show active sessions" → { "action": "show_logs", "filter": "active", "message": "Showing active sessions" }
+- "Go to PC management" → { "action": "navigate", "section": "pcs", "message": "Navigating to PC management" }
+- "Show announcements" → { "action": "navigate", "section": "announcements", "message": "Opening announcements" }
+- "How many PCs are online?" → { "action": "show_pc_count", "message": "Showing PC status overview" }
+- "Show audit logs" → { "action": "navigate", "section": "audit", "message": "Opening audit trail" }
+- "Who logged in last?" → { "action": "show_logs", "filter": "recent", "message": "Showing recent entries" }
+
+Respond with detailed, professional information. Extract proper names and data.
+Always respond with valid JSON only.`
+      : `You are a helpful voice assistant for the DICT DTC Client Logbook kiosk.
+You ONLY help users fill out the logbook form. Do NOT answer unrelated questions.
+
+Allowed actions ONLY:
+1. "show_pc_count" - When user asks about PC/computer availability
+2. "fill_field" - Fill form fields from voice input:
    - fullName: "my name is [name]", "I am [name]", "[name] speaking"
-   - agency: "from [agency]", "I work at [agency]", "representing [agency]"
-   - purpose: "here for [purpose]", "need to [purpose]", "want to [purpose]"
+   - agency: "from [agency]", "I work at [agency]", "representing [agency]"  
+   - purpose: "here for [purpose]", "I need to [purpose]", "to [purpose]"
 
-Response format:
-- PC query: { "action": "show_pc_count", "message": "Showing PC availability" }
-- Name: { "action": "fill_field", "field": "fullName", "value": "Juan dela Cruz" }
+Response format (JSON only):
+- PC query: { "action": "show_pc_count", "message": "Showing available computers" }
+- Name: { "action": "fill_field", "field": "fullName", "value": "Juan Dela Cruz" }
 - Agency: { "action": "fill_field", "field": "agency", "value": "DepEd Sorsogon" }
 - Purpose: { "action": "fill_field", "field": "purpose", "value": "Online job application" }
-- Other: { "action": "respond", "message": "helpful response" }
+- Off-topic: { "action": "respond", "message": "I can only help you fill the logbook form. Please say your name, agency, or purpose." }
 
-Extract names properly (capitalize first letters). Always respond with valid JSON only.`
+Capitalize names properly. Extract only logbook-relevant information. Always respond with valid JSON only.`
 
     const completion = await groq.chat.completions.create({
       messages: [

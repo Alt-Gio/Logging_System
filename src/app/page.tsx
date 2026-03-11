@@ -1663,6 +1663,20 @@ export default function LogbookPage() {
 
         </div>{/* end two-column flex */}
       </main>
+
+      {/* Voice Assistant - restricted to logbook form actions only */}
+      <VoiceAssistant
+        context="logbook-form"
+        onCommand={handleVoiceCommand}
+        onTranscript={(text) => setVoiceTranscript(text)}
+      />
+
+      {/* PC Count Modal - triggered by voice command */}
+      <PCCountModal
+        isOpen={showPCCountModal}
+        onClose={() => setShowPCCountModal(false)}
+        pcs={pcs}
+      />
     </div>
   )
 }
