@@ -972,15 +972,44 @@ export default function LogbookPage() {
   const handleSubmit = async (selectedPcId?: string) => {
     setSubmitting(true)
     try {
+      // Ensure pcId is null if empty string or undefined
+      const finalPcId = selectedPcId || form.pcId || null
+      const cleanPcId = finalPcId === '' ? null : finalPcId
+      
+      const payload = {
+        fullName: form.fullName.trim(),
+        agency: form.agency.trim(),
+        purpose: form.purpose.trim(),
+        equipmentUsed: form.equipmentUsed,
+        pcId: cleanPcId,
+        photoDataUrl: photo || null,
+        plannedDurationHours: effectiveDuration,
+        serviceType
+      }
+      
       const res = await fetch('/api/logs', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName: form.fullName, agency: form.agency, purpose: form.purpose, equipmentUsed: form.equipmentUsed, pcId: selectedPcId || form.pcId || null, photoDataUrl: photo || null, plannedDurationHours: effectiveDuration, serviceType }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Submission failed')
+      
+      if (!res.ok) {
+        // Show detailed validation errors if available
+        if (data.details) {
+          const errorMsg = Object.entries(data.details.fieldErrors || {})
+            .map(([field, errors]) => `${field}: ${(errors as string[]).join(', ')}`)
+            .join('\n') || data.error
+          throw new Error(errorMsg)
+        }
+        throw new Error(data.error || 'Submission failed')
+      }
+      
       setSubmittedLog(data); stopCamera(); setStep('success')
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err)); setStep('form')
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      alert(`Submission Error:\n\n${errorMessage}\n\nPlease check your entries and try again.`)
+      setStep('form')
     } finally { setSubmitting(false) }
   }
 

@@ -7,12 +7,12 @@ export const LogCreateSchema = z.object({
   agency:               z.string().min(1).max(200),
   purpose:              z.string().min(2).max(500),
   equipmentUsed:        z.array(z.string()).min(1, 'Select at least one service'),
-  pcId:                 z.string().cuid().nullable().optional(),
+  pcId:                 z.string().cuid().nullable().optional().or(z.literal('')).transform(val => val === '' ? null : val),
   // Photo must be a valid data URI of an image (prevents storing arbitrary blobs)
-  photoDataUrl:         z.string().max(2_000_000).regex(/^data:image\/(jpeg|jpg|png|webp|gif);base64,/).nullable().optional(),
+  photoDataUrl:         z.string().max(2_000_000).regex(/^data:image\/(jpeg|jpg|png|webp|gif);base64,/).nullable().optional().or(z.literal('')).transform(val => val === '' ? null : val),
   plannedDurationHours: z.number().min(0.25).max(8),
   serviceType:          z.enum(['SELF_SERVICE', 'STAFF_ASSISTED']).default('SELF_SERVICE'),
-  staffNotes:           z.string().max(500).optional(),
+  staffNotes:           z.string().max(500).optional().or(z.literal('')).transform(val => val === '' ? undefined : val),
   satisfactionRating:   z.number().int().min(1).max(5).nullable().optional(),
 })
 
@@ -73,6 +73,8 @@ export const AnnouncementSchema = z.object({
   title:     z.string().min(1).max(200),
   body:      z.string().min(1).max(2000),
   type:      z.enum(['INFO','WARNING','MAINTENANCE','HOLIDAY']).default('INFO'),
+  dateStart: z.string().nullable().optional(),
+  dateEnd:   z.string().nullable().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
   active:    z.boolean().default(true),
 })
