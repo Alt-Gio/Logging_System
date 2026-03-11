@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/auth'
 import { audit } from '@/lib/audit'
 import { AnnouncementSchema } from '@/lib/validation'
 
-// Public GET — front page reads active announcements
+// Public GET — front page reads active announcements within date range
 export async function GET() {
   try {
   const now = new Date()
@@ -13,6 +13,10 @@ export async function GET() {
     where: {
       active: true,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      AND: [
+        { OR: [{ dateStart: null }, { dateStart: { lte: now } }] },
+        { OR: [{ dateEnd: null }, { dateEnd: { gte: now } }] },
+      ],
     },
     orderBy: { createdAt: 'desc' },
     take: 10,

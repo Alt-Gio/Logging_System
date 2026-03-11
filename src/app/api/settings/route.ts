@@ -48,3 +48,25 @@ export async function POST(req: NextRequest) {
   await audit('CHANGE_SETTING', { req, adminId: admin.id, detail: { changed } })
   return NextResponse.json({ success: true })
 }
+
+export async function PUT(req: NextRequest) {
+  const admin = await requireAuth(req)
+  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const raw = await req.json()
+  const changed: string[] = []
+  
+  // Handle any setting updates including grid settings
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === undefined || value === null) continue
+    await prisma.setting.upsert({
+      where: { key },
+      update: { value: String(value) },
+      create: { key, value: String(value) },
+    })
+    changed.push(key)
+  }
+
+  await audit('CHANGE_SETTING', { req, adminId: admin.id, detail: { changed } })
+  return NextResponse.json({ success: true })
+}

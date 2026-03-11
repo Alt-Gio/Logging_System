@@ -78,10 +78,13 @@ model AdminLog {
   target    String?
   detail    String?  @db.Text
   ip        String?
+  userEmail String?
+  userName  String?
   createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([adminId])
+  @@index([action])
   @@map("admin_logs")
 }
 
@@ -105,12 +108,16 @@ model Announcement {
   body      String           @db.Text
   type      AnnouncementType @default(INFO)
   active    Boolean          @default(true)
+  dateStart DateTime?
+  dateEnd   DateTime?
   expiresAt DateTime?
   createdBy String?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
   @@index([active])
+  @@index([dateStart])
+  @@index([dateEnd])
   @@map("announcements")
 }
 

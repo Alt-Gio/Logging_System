@@ -1764,8 +1764,8 @@ export default function AdminPage() {
 
 // ── AnnouncementsTab ──────────────────────────────────────────────────────────
 function AnnouncementsTab() {
-  const [items, setItems] = useState<{id:string;title:string;body:string;type:string;active:boolean;expiresAt:string|null;createdBy:string|null;createdAt:string}[]>([])
-  const [form, setForm] = useState({ title:'', body:'', type:'INFO', expiresAt:'' })
+  const [items, setItems] = useState<{id:string;title:string;body:string;type:string;active:boolean;dateStart:string|null;dateEnd:string|null;expiresAt:string|null;createdBy:string|null;createdAt:string}[]>([])
+  const [form, setForm] = useState({ title:'', body:'', type:'INFO', dateStart:'', dateEnd:'', expiresAt:'' })
   const [saving, setSaving] = useState(false)
   const colors: Record<string,string> = {
     INFO:'bg-blue-100 text-blue-700 border-blue-200',
@@ -1783,9 +1783,14 @@ function AnnouncementsTab() {
     setSaving(true)
     await fetch('/api/announcements', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ ...form, expiresAt: form.expiresAt || null }),
+      body: JSON.stringify({ 
+        ...form, 
+        dateStart: form.dateStart || null,
+        dateEnd: form.dateEnd || null,
+        expiresAt: form.expiresAt || null 
+      }),
     })
-    setForm({ title:'', body:'', type:'INFO', expiresAt:'' })
+    setForm({ title:'', body:'', type:'INFO', dateStart:'', dateEnd:'', expiresAt:'' })
     load(); setSaving(false)
   }
 
@@ -1821,6 +1826,20 @@ function AnnouncementsTab() {
             <input type="datetime-local" value={form.expiresAt} onChange={e=>setForm(f=>({...f,expiresAt:e.target.value}))}
               className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"
               title="Expires at (leave blank for permanent)"/>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1">Start Date (optional)</label>
+              <input type="date" value={form.dateStart} onChange={e=>setForm(f=>({...f,dateStart:e.target.value}))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"
+                title="Announcement becomes visible from this date"/>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1">End Date (optional)</label>
+              <input type="date" value={form.dateEnd} onChange={e=>setForm(f=>({...f,dateEnd:e.target.value}))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"
+                title="Announcement hides after this date"/>
+            </div>
           </div>
           <button onClick={save} disabled={saving || !form.title || !form.body}
             className="w-full py-2.5 rounded-xl bg-[var(--dict-blue)] text-white font-bold text-sm hover:bg-blue-800 disabled:opacity-50">
