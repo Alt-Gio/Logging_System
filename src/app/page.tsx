@@ -898,8 +898,11 @@ export default function LogbookPage() {
   const maxDuration = settings ? getMaxDurationHours(now, settings.officeClose) : 8
   const effectiveDuration = showCustom ? Math.min(parseFloat(customDuration) || 1, maxDuration) : Math.min(parseFloat(usageDuration) || 1, maxDuration)
   
-  // Service type determination
-  const serviceType = hasPC && hasWifi ? 'PC_USE' : hasPC ? 'PC_USE' : hasWifi ? 'WIFI_ONLY' : 'PC_USE'
+  // Service type determination - when both selected, it's just 'Internet' (PC + WiFi)
+  const serviceType = hasBoth ? 'PC_USE' : hasPC ? 'PC_USE' : hasWifi ? 'WIFI_ONLY' : 'PC_USE'
+  
+  // Display name for equipment - when both selected, show 'Internet' instead of 'Internet Only'
+  const equipmentDisplayName = hasBoth ? 'Internet' : hasWifi ? 'Internet' : hasPC ? 'Desktop Computer' : ''
 
   // Purpose autocomplete filter
   const purposeSuggestions = useMemo(() => {
@@ -1483,23 +1486,23 @@ export default function LogbookPage() {
             </label>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { key: 'Desktop Computer', icon: '🖥️', desc: 'Use a PC workstation' },
-                { key: 'Internet Only', icon: '📶', desc: 'Connect your own device' },
-              ].map(({ key, icon, desc }) => {
+                { key: 'Desktop Computer', icon: '🖥️', desc: 'Use a PC workstation', display: 'Desktop Computer' },
+                { key: 'Internet Only', icon: '📶', desc: 'Connect your own device', display: 'Internet' },
+              ].map(({ key, icon, desc, display }) => {
                 const sel = form.equipmentUsed.includes(key)
                 return (
                   <button key={key} type="button" onClick={() => toggleEquipment(key)}
                     className={`p-4 rounded-2xl border-2 text-left transition-all ${sel ? 'border-[var(--dict-blue)] bg-blue-50' : 'border-gray-200 hover:border-blue-200 bg-white'}`}>
-                    <div className="text-2xl mb-1">{icon}</div>
-                    <div className={`font-semibold text-sm ${sel ? 'text-[var(--dict-blue)]' : 'text-gray-700'}`}>{key}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{desc}</div>
-                    {sel && <div className="mt-2 text-xs text-[var(--dict-blue)] font-bold flex items-center gap-1"><span className="w-4 h-4 rounded-full bg-[var(--dict-blue)] text-white flex items-center justify-center text-xs">✓</span> Selected</div>}
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-3xl">{icon}</span>
+                      <span className="font-bold text-gray-800 text-base">{display}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
                   </button>
                 )
               })}
             </div>
             {errors.equipment && <p className="text-red-500 text-xs mt-2 flex items-center gap-1">⚠ {errors.equipment}</p>}
-            {hasBoth && <p className="text-xs text-blue-500 bg-blue-50 rounded-xl px-3 py-2 mt-2">✓ Both selected — you&apos;ll see PC selection then WiFi details.</p>}
           </div>
 
           {/* Terms — shown only when equipment is selected */}
