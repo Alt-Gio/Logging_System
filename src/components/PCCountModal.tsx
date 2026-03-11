@@ -9,6 +9,8 @@ type PC = {
   status: 'ONLINE' | 'OFFLINE' | 'IN_USE' | 'MAINTENANCE'
   location: string | null
   icon?: string | null
+  gridCol?: number | null
+  gridRow?: number | null
 }
 
 type PCCountModalProps = {
@@ -131,6 +133,42 @@ export function PCCountModal({ isOpen, onClose, pcs = [] }: PCCountModalProps) {
                   <div className="text-xs text-gray-600 mt-1">Offline</div>
                 </div>
               </div>
+
+              {/* Grid Layout View */}
+              {pcData.some(pc => pc.gridCol && pc.gridRow) && (
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">Floor Plan Layout</h4>
+                  <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                    <div className="grid gap-2" style={{
+                      gridTemplateColumns: `repeat(${Math.max(...pcData.map(p => p.gridCol || 0))}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${Math.max(...pcData.map(p => p.gridRow || 0))}, minmax(0, 1fr))`
+                    }}>
+                      {Array.from({ length: Math.max(...pcData.map(p => p.gridRow || 0)) }).map((_, r) =>
+                        Array.from({ length: Math.max(...pcData.map(p => p.gridCol || 0)) }).map((_, c) => {
+                          const pc = pcData.find(p => p.gridRow === r + 1 && p.gridCol === c + 1)
+                          if (!pc) return <div key={`${r}-${c}`} className="aspect-square bg-white/50 rounded-lg border border-dashed border-gray-200"/>
+                          return (
+                            <div key={pc.id} className={`aspect-square rounded-lg border-2 p-2 flex flex-col items-center justify-center text-center ${
+                              pc.status === 'ONLINE' ? 'bg-green-100 border-green-400' :
+                              pc.status === 'IN_USE' ? 'bg-orange-100 border-orange-400' :
+                              pc.status === 'MAINTENANCE' ? 'bg-yellow-100 border-yellow-400' :
+                              'bg-gray-100 border-gray-300'
+                            }`}>
+                              <span className="text-xl mb-1">{pc.icon || '🖥️'}</span>
+                              <span className="text-[10px] font-semibold text-gray-700 leading-tight">{pc.name}</span>
+                              <div className={`w-2 h-2 rounded-full mt-1 ${
+                                pc.status === 'ONLINE' ? 'bg-green-500 animate-pulse' :
+                                pc.status === 'IN_USE' ? 'bg-orange-500' :
+                                pc.status === 'MAINTENANCE' ? 'bg-yellow-400' : 'bg-gray-400'
+                              }`}/>
+                            </div>
+                          )
+                        })
+                      ).flat()}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* PC List */}
               <div>

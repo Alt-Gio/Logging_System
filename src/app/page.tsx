@@ -1617,6 +1617,29 @@ export default function LogbookPage() {
               src={settings?.interactiveBannerUrl || '/interactive-banner.jpg'}
             />
 
+            {/* Announcements */}
+            {announcements.length > 0 && (
+              <div className="glass rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-gradient-to-r from-[var(--dict-blue)] to-blue-600 border-b border-blue-700 px-4 py-3 flex items-center gap-2">
+                  <span className="text-xl">📢</span>
+                  <h3 className="font-display font-semibold text-white text-sm">Announcements</h3>
+                </div>
+                <div className="p-4 space-y-3 max-h-64 overflow-y-auto">
+                  {announcements.map(a => (
+                    <div key={a.id} className={`rounded-xl p-3 border-l-4 ${
+                      a.type === 'WARNING' ? 'bg-amber-50 border-amber-500' :
+                      a.type === 'MAINTENANCE' ? 'bg-orange-50 border-orange-500' :
+                      a.type === 'HOLIDAY' ? 'bg-red-50 border-red-500' :
+                      'bg-blue-50 border-blue-500'
+                    }`}>
+                      <h4 className="font-semibold text-sm text-gray-800 mb-1">{a.title}</h4>
+                      <p className="text-xs text-gray-600 leading-relaxed">{a.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Offices card */}
             <div className="glass rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="bg-gray-50 border-b border-gray-100 px-4 py-3">

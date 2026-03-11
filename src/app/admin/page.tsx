@@ -469,6 +469,7 @@ export default function AdminPage() {
   const [gridCols, setGridCols] = useState(5)
   const [gridRowCount, setGridRowCount] = useState(4)
   const [showGridSettings, setShowGridSettings] = useState(false)
+  const [gridSettingsSaved, setGridSettingsSaved] = useState(false)
   // Security / IP cameras — DB backed
   const [cameras, setCameras] = useState<{id:string;name:string;url:string;type:string;enabled:boolean;notes:string|null}[]>([])
   const [newCamera, setNewCamera] = useState({name:'',url:'',type:'MJPEG',notes:''})
@@ -579,6 +580,14 @@ export default function AdminPage() {
     fetchLogs(); fetchStats()
   }
   const handleSavePc = async (id: string, data: Partial<PC>) => {
+    // Check for PC stacking - prevent placing PC in occupied cell
+    if (data.gridRow && data.gridCol) {
+      const existingPc = pcs.find(p => p.id !== id && p.gridRow === data.gridRow && p.gridCol === data.gridCol)
+      if (existingPc) {
+        alert(`Cell (${data.gridCol}, ${data.gridRow}) is already occupied by ${existingPc.name}. Please choose an empty cell.`)
+        return
+      }
+    }
     await fetch(`/api/pcs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
     setEditingPc(null); fetchPcs()
   }
@@ -926,9 +935,26 @@ export default function AdminPage() {
             {/* Grid Settings Panel */}
             {showGridSettings && (
               <div className="bg-blue-50 border-2 border-[var(--dict-blue)] rounded-2xl p-5">
-                <h3 className="font-display font-semibold text-[var(--dict-blue)] mb-1">Floor Plan Grid Settings</h3>
-                <p className="text-xs text-blue-500 mb-4">Set how many columns and rows your floor map has. Empty cells act as spacing — useful for hallways, walls, or gaps between station groups. Each PC&apos;s position is set in its Edit panel.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="font-display font-semibold text-[var(--dict-blue)] mb-1">Floor Plan Grid Settings</h3>
+                    <p className="text-xs text-blue-500">Set how many columns and rows your floor map has. Empty cells act as spacing — useful for hallways, walls, or gaps between station groups. Each PC&apos;s position is set in its Edit panel.</p>
+                  </div>
+                  <button onClick={async () => {
+                    try {
+                      await fetch('/api/settings', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ gridCols, gridRows: gridRowCount })
+                      })
+                      setGridSettingsSaved(true)
+                      setTimeout(() => setGridSettingsSaved(false), 2000)
+                    } catch (e) { console.error(e) }
+                  }} className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 whitespace-nowrap">
+                    {gridSettingsSaved ? '✓ Saved' : '💾 Save Grid'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
                   <div>
                     <label className="text-xs font-semibold text-gray-600 block mb-1">Columns</label>
                     <div className="flex items-center gap-2">
