@@ -33,10 +33,10 @@ const STATUS_META: Record<PCStatus, { label: string; dot: string; badge: string 
 }
 
 // ─── Avatar ────────────────────────────────────────────────────────────────────
-function Avatar({ name, photo, size = 'md' }: { name: string; photo?: string | null; size?: 'sm' | 'md' | 'lg' }) {
+function Avatar({ name, photo, size = 'md' }: { name?: string; photo?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const sz = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-14 h-14 text-lg' : 'w-10 h-10 text-sm'
-  const initials = name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  if (photo) return <img src={photo} className={`${sz} rounded-full object-cover flex-shrink-0 border-2 border-white shadow-sm`} alt={name}/>
+  const initials = name?.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
+  if (photo) return <img src={photo} className={`${sz} rounded-full object-cover flex-shrink-0 border-2 border-white shadow-sm`} alt={name || 'User'}/>
   return (
     <div className={`${sz} rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold flex-shrink-0 shadow-sm`}>
       {initials}
