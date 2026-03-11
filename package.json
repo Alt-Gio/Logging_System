@@ -10,8 +10,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\"",
-    "postinstall": "prisma generate"
+    "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
   },
   "dependencies": {
     "@clerk/nextjs": "5.7.5",
