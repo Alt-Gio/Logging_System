@@ -98,6 +98,29 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', 'prisma'],
   },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://*.clerk.accounts.dev https://clerk.accounts.dev https://challenges.cloudflare.com",
+              "worker-src 'self' blob:",
+              "child-src 'self' blob:",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "font-src 'self' https://fonts.gstatic.com data:",
+              "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com https://*.clerk.accounts.dev",
+              "connect-src 'self' https://api.groq.com https://*.pusher.com wss://*.pusher.com https://clerk.accounts.dev https://*.clerk.accounts.dev https://res.cloudinary.com",
+              "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev",
+            ].join('; '),
+          },
+        ],
+      },
+    ]
+  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },

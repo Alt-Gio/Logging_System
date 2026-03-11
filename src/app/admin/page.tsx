@@ -1047,7 +1047,7 @@ export default function AdminPage() {
                           {pc.status==='IN_USE' && currentUser && (
                             <div className="mt-1.5 pt-1.5 border-t border-orange-200 flex items-center gap-1">
                               <Avatar name={currentUser.fullName} photo={currentUser.photoDataUrl} size="sm"/>
-                              <p className="text-[10px] font-semibold text-orange-700 truncate">{currentUser.fullName.split(' ')[0]}</p>
+                              <p className="text-[10px] font-semibold text-orange-700 truncate">{currentUser.fullName?.split(' ')[0] || 'User'}</p>
                             </div>
                           )}
                           {pc.specs && <p className="text-[10px] text-gray-400 mt-1 line-clamp-1 italic">{pc.specs}</p>}
