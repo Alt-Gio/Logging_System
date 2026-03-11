@@ -123,14 +123,46 @@ export function VoiceAssistant({ onTranscript, onCommand, context }: VoiceAssist
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
+      // Voice Activity Detection - auto-stop after 2s of silence
+      const audioContext = new AudioContext()
+      const source = audioContext.createMediaStreamSource(stream)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 512
+      source.connect(analyser)
+      
+      const bufferLength = analyser.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+      let silenceStart = 0
+      let hasDetectedSpeech = false
+      
+      const checkAudioLevel = () => {
+        if (!isListening) return
+        analyser.getByteFrequencyData(dataArray)
+        const average = dataArray.reduce((a, b) => a + b) / bufferLength
+        
+        if (average > 10) { // Speech detected
+          hasDetectedSpeech = true
+          silenceStart = 0
+        } else if (hasDetectedSpeech && average <= 10) { // Silence after speech
+          if (silenceStart === 0) silenceStart = Date.now()
+          else if (Date.now() - silenceStart > 2000) { // 2 seconds of silence
+            stopListening()
+            return
+          }
+        }
+        requestAnimationFrame(checkAudioLevel)
+      }
+
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
       mediaRecorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         stream.getTracks().forEach(t => t.stop())
+        audioContext.close()
         await transcribeAndSend(blob)
       }
       mediaRecorder.start()
       setIsListening(true)
+      checkAudioLevel()
     } catch {
       addMessage('assistant', '⚠️ Microphone access denied. Please allow microphone permission.')
     }
