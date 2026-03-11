@@ -898,8 +898,9 @@ export default function LogbookPage() {
   const maxDuration = settings ? getMaxDurationHours(now, settings.officeClose) : 8
   const effectiveDuration = showCustom ? Math.min(parseFloat(customDuration) || 1, maxDuration) : Math.min(parseFloat(usageDuration) || 1, maxDuration)
   
-  // Service type determination - when both selected, it's just 'Internet' (PC + WiFi)
-  const serviceType = hasBoth ? 'PC_USE' : hasPC ? 'PC_USE' : hasWifi ? 'WIFI_ONLY' : 'PC_USE'
+  // Service type determination - all client self-service entries use SELF_SERVICE
+  // STAFF_ASSISTED is only set by admin panel when staff helps the client
+  const serviceType = 'SELF_SERVICE'
   
   // Display name for equipment - when both selected, show 'Internet' instead of 'Internet Only'
   const equipmentDisplayName = hasBoth ? 'Internet' : hasWifi ? 'Internet' : hasPC ? 'Desktop Computer' : ''
