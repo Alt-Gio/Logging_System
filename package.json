@@ -5,12 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start -H 0.0.0.0",
+    "start": "next start",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
+    "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\"",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@clerk/nextjs": "5.7.5",
