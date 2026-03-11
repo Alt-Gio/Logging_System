@@ -1,7 +1,7 @@
 {
   "name": "DICT DTC Client Logbook",
   "short_name": "DTC Logbook",
-  "description": "Digital Transformation Center Region V — Client Logbook System",
+  "description": "Digital Transformation Center Region V — Client Logbook System with Voice Assistant",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "theme_color": "#003082",
   "orientation": "portrait-primary",
   "lang": "en-PH",
-  "categories": ["productivity", "government"],
+  "categories": ["productivity", "government", "utilities"],
   "screenshots": [],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
@@ -19,5 +19,18 @@
     { "name": "Admin Dashboard", "url": "/admin", "description": "Open the admin dashboard" },
     { "name": "New Log Entry", "url": "/", "description": "Open client-facing logbook" }
   ],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded"
+  },
+  "display_override": ["window-controls-overlay", "standalone"],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "protocol_handlers": [],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  }
 }

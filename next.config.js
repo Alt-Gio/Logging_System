@@ -3,55 +3,91 @@ const withPWA = require('next-pwa')({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
-  fallbacks: {
-    document: '/offline',
-  },
+  buildExcludes: [/middleware-manifest\.json$/],
   runtimeCaching: [
     {
-      // API routes — NetworkFirst with 10s timeout, fallback to cache
+      // API routes — NetworkFirst with 5s timeout for faster offline fallback
       urlPattern: /^\/api\/(settings|announcements|pcs|stats)/,
       handler: 'NetworkFirst',
       options: {
         cacheName: 'dict-api-cache',
         expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 },
-        networkTimeoutSeconds: 8,
+        networkTimeoutSeconds: 5,
+        cacheableResponse: { statuses: [0, 200] },
       },
     },
     {
-      // Logs API — StaleWhileRevalidate so offline still shows last known data
+      // Logs API — StaleWhileRevalidate for instant offline access
       urlPattern: /^\/api\/logs/,
       handler: 'StaleWhileRevalidate',
       options: {
         cacheName: 'dict-logs-cache',
         expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
+        cacheableResponse: { statuses: [0, 200] },
       },
     },
     {
-      // Static assets — CacheFirst
-      urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp|woff2?)$/,
+      // Voice API — NetworkOnly (requires internet)
+      urlPattern: /^\/api\/voice/,
+      handler: 'NetworkOnly',
+    },
+    {
+      // Images — CacheFirst with longer expiration
+      urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp|avif)$/,
       handler: 'CacheFirst',
       options: {
-        cacheName: 'dict-static-cache',
-        expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+        cacheName: 'dict-image-cache',
+        expiration: { maxEntries: 150, maxAgeSeconds: 60 * 60 * 24 * 60 },
+        cacheableResponse: { statuses: [0, 200] },
       },
     },
     {
-      // Fonts — CacheFirst forever
-      urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/,
+      // Fonts — CacheFirst with very long expiration
+      urlPattern: /\.(?:woff|woff2|ttf|otf|eot)$/,
       handler: 'CacheFirst',
       options: {
         cacheName: 'dict-font-cache',
-        expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+        expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+        cacheableResponse: { statuses: [0, 200] },
       },
     },
     {
-      // Everything else — NetworkFirst
-      urlPattern: /^https?.*/,
+      // Google Fonts — CacheFirst
+      urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'dict-google-fonts',
+        expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+        cacheableResponse: { statuses: [0, 200] },
+      },
+    },
+    {
+      // Cloudinary images — CacheFirst
+      urlPattern: /^https:\/\/res\.cloudinary\.com\/.*/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'dict-cloudinary-cache',
+        expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+        cacheableResponse: { statuses: [0, 200] },
+      },
+    },
+    {
+      // Next.js static files — CacheFirst
+      urlPattern: /^\/_next\/static\/.*/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'dict-next-static',
+        expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 365 },
+      },
+    },
+    {
+      // Pages — NetworkFirst with fast timeout
+      urlPattern: /^\/(?!api).*/,
       handler: 'NetworkFirst',
       options: {
-        cacheName: 'dict-logbook-cache',
-        expiration: { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 },
-        networkTimeoutSeconds: 10,
+        cacheName: 'dict-pages-cache',
+        expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 },
+        networkTimeoutSeconds: 3,
       },
     },
   ],

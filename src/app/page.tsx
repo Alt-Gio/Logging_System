@@ -1,7 +1,10 @@
 'use client'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
+import { VoiceAssistant } from '@/components/VoiceAssistant'
+import { PCCountModal } from '@/components/PCCountModal'
 import { format, addHours, setHours, setMinutes, setSeconds } from 'date-fns'
+import { syncOfflineData, saveSetting, getSetting } from '@/lib/indexedDB'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STORAGE_KEY_AUTH = 'dtc_access_granted'
@@ -746,39 +749,38 @@ export default function LogbookPage() {
   const [customDuration, setCustomDuration] = useState('')
   const [showCustom, setShowCustom] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
-  const [announcements, setAnnouncements] = useState<Announcement[]>([])
-  const [serviceType, setServiceType] = useState<'SELF_SERVICE' | 'STAFF_ASSISTED'>('SELF_SERVICE')
-
-  // PC terms checkboxes
-  const [pcTerms, setPcTerms] = useState<boolean[]>(PC_TERMS.map(() => false))
-  // WiFi terms checkboxes
-  const [wifiTerms, setWifiTerms] = useState<boolean[]>(WIFI_TERMS.map(() => false))
-
-  // Webcam
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const [showConsentModal, setShowConsentModal] = useState(false)
-  const [consentChecked, setConsentChecked] = useState(false)
-  const [cameraActive, setCameraActive] = useState(false)
-  const [photo, setPhoto] = useState<string | null>(null)
-  const [cameraError, setCameraError] = useState<string | null>(null)
-
-  // Purpose autocomplete
   const [purposeFocus, setPurposeFocus] = useState(false)
+  const [showPCCountModal, setShowPCCountModal] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [form, setForm] = useState({ fullName: '', agency: '', purpose: '', equipmentUsed: [] as string[], pcId: '' })
+  const [pcTerms, setPcTerms] = useState(PC_TERMS.map(() => false))
+  const [wifiTerms, setWifiTerms] = useState(WIFI_TERMS.map(() => false))
+  const [photo, setPhoto] = useState<string | null>(null)
+  const [cameraActive, setCameraActive] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
+  const [consentChecked, setConsentChecked] = useState(false)
+  const [showConsentModal, setShowConsentModal] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  const [form, setForm] = useState({
-    fullName: '', agency: '', purpose: '',
-    equipmentUsed: [] as string[], pcId: '',
-  })
+  // Voice command handler
+  const handleVoiceCommand = (cmd: { action: string; field?: string; value?: string; message?: string }) => {
+    if (cmd.action === 'show_pc_count') {
+      setShowPCCountModal(true)
+    } else if (cmd.action === 'fill_field' && cmd.field && cmd.value) {
+      if (cmd.field === 'fullName') {
+        setForm(f => ({ ...f, fullName: sanitizeName(cmd.value || '') }))
+      } else if (cmd.field === 'agency') {
+        setForm(f => ({ ...f, agency: sanitizeAgency(cmd.value || '') }))
+      } else if (cmd.field === 'purpose') {
+        setForm(f => ({ ...f, purpose: cmd.value || '' }))
+      }
+    }
+  }
 
-  // ── Clock ───────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
-
-  // ── Settings ────────────────────────────────────────────────────────────────
+  // Fetch settings + PCs on mount and sync offline data
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try { const c = localStorage.getItem(STORAGE_KEY_SETTINGS); if (c) setSettings(JSON.parse(c)) } catch {}
@@ -787,6 +789,17 @@ export default function LogbookPage() {
       setSettings(s)
       try { localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(s)) } catch {}
     }).catch(() => setSettings({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '' }))
+    
+    fetchPCs()
+    fetchAnnouncements()
+    syncOfflineData().then(result => {
+      if (result.synced > 0) {
+        console.log(`Synced ${result.synced} offline entries`)
+      }
+    }).catch(err => console.error('Offline sync failed:', err))
+    
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
   }, [])
 
   // ── Apply dynamic background from settings ──────────────────────────────────
@@ -829,10 +842,20 @@ export default function LogbookPage() {
   }
 
   // ── PCs ─────────────────────────────────────────────────────────────────────
-  const fetchPcs = useCallback(async () => {
+  const fetchPCs = useCallback(async () => {
     try { const r = await fetch('/api/pcs'); if (r.ok) setPcs(await r.json()) } catch {}
   }, [])
-  useEffect(() => { fetchPcs() }, [fetchPcs])
+
+  // ── Announcements ────────────────────────────────────────────────────────────
+  const fetchAnnouncements = useCallback(async () => {
+    try {
+      const r = await fetch('/api/announcements')
+      if (r.ok) {
+        const data = await r.json()
+        setAnnouncements(Array.isArray(data) ? data : [])
+      }
+    } catch {}
+  }, [])
 
   // ── Camera ──────────────────────────────────────────────────────────────────
   useEffect(() => () => stopCamera(), [])
@@ -874,6 +897,9 @@ export default function LogbookPage() {
   const officeCloseStr = settings ? closingAt(settings.officeClose) : '5:00 PM'
   const maxDuration = settings ? getMaxDurationHours(now, settings.officeClose) : 8
   const effectiveDuration = showCustom ? Math.min(parseFloat(customDuration) || 1, maxDuration) : Math.min(parseFloat(usageDuration) || 1, maxDuration)
+  
+  // Service type determination
+  const serviceType = hasPC && hasWifi ? 'PC_USE' : hasPC ? 'PC_USE' : hasWifi ? 'WIFI_ONLY' : 'PC_USE'
 
   // Purpose autocomplete filter
   const purposeSuggestions = useMemo(() => {
@@ -929,13 +955,13 @@ export default function LogbookPage() {
     setPinging(true)
     try {
       await fetch('/api/network/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pingAll: true }) })
-      await fetchPcs()
+      await fetchPCs()
     } catch {}
     setPinging(false)
   }
   const pingOnePc = async (pc: PC) => {
     setPingingId(pc.id)
-    try { await fetch(`/api/network/ping?ip=${pc.ipAddress}`); await fetchPcs() } catch {}
+    try { await fetch(`/api/network/ping?ip=${pc.ipAddress}`); await fetchPCs() } catch {}
     setPingingId(null)
   }
 
@@ -960,7 +986,7 @@ export default function LogbookPage() {
     setErrors({}); setSubmittedLog(null); setPhoto(null)
     setUsageDuration('1'); setCustomDuration(''); setShowCustom(false)
     setPcTerms(PC_TERMS.map(() => false)); setWifiTerms(WIFI_TERMS.map(() => false))
-    setConsentChecked(false); stopCamera(); setStep('form'); fetchPcs()
+    setConsentChecked(false); stopCamera(); setStep('form'); fetchPCs()
   }
 
   // ════════════════════════════════════════════════════════════════════════════
