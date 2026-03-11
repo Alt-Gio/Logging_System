@@ -1,14 +1,12 @@
 export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 
 // Public health endpoint — used by Railway healthcheck
-// Does NOT expose any data; just confirms DB connectivity
+// Simple check that doesn't require database connection
 export async function GET() {
-  try {
-    await prisma.$queryRaw`SELECT 1`
-    return NextResponse.json({ status: 'ok', ts: new Date().toISOString() })
-  } catch {
-    return NextResponse.json({ status: 'error', message: 'DB unavailable' }, { status: 503 })
-  }
+  return NextResponse.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    service: 'dict-logbook'
+  })
 }
