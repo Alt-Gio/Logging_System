@@ -10,7 +10,7 @@ const groq = new Groq({
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, context } = await req.json()
+    const { text, context, history = [] } = await req.json()
 
     if (!text) {
       return NextResponse.json(
@@ -69,14 +69,19 @@ Response format (JSON only):
 
 Capitalize names properly. Extract only logbook-relevant information. Always respond with valid JSON only.`
 
+    const chatHistory = Array.isArray(history)
+      ? history.map((m: { role: string; content: string }) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+      : []
+
     const completion = await groq.chat.completions.create({
       messages: [
         { role: 'system', content: systemPrompt },
+        ...chatHistory,
         { role: 'user', content: text }
       ],
-      model: 'llama-3.1-70b-versatile',
-      temperature: 0.3,
-      max_tokens: 500,
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.4,
+      max_tokens: 1024,
     })
 
     const response = completion.choices[0]?.message?.content || ''
