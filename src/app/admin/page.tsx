@@ -371,11 +371,25 @@ export default function AdminPage() {
   const handleAdminVoiceCommand = (cmd: { action: string; section?: string; filter?: string; field?: string; value?: string; message?: string }) => {
     if (cmd.action === 'navigate' && cmd.section) {
       const sectionMap: Record<string, typeof tab> = {
-        pcs: 'pcs', logs: 'logs', announcements: 'announcements',
-        settings: 'settings', audit: 'analytics', analytics: 'analytics', dashboard: 'dashboard',
+        dashboard: 'dashboard',
+        logs: 'logs',
+        pcs: 'pcs',
+        stations: 'pcs',
+        network: 'network',
+        networks: 'network',
+        announcements: 'announcements',
+        notices: 'announcements',
+        analytics: 'analytics',
+        audit: 'analytics',
+        settings: 'settings',
       }
-      const dest = sectionMap[cmd.section]
-      if (dest) { setTab(dest); setAdminVoiceToast({ message: cmd.message || `Navigated to ${dest}`, type: 'info' }) }
+      const dest = sectionMap[cmd.section.toLowerCase()]
+      if (dest) { 
+        setTab(dest)
+        setAdminVoiceToast({ message: cmd.message || `Navigated to ${dest}`, type: 'info' })
+      } else {
+        setAdminVoiceToast({ message: `Unknown section: ${cmd.section}`, type: 'error' })
+      }
     } else if (cmd.action === 'show_pc_count') {
       setTab('pcs')
       setAdminVoiceToast({ message: 'Showing PC status overview', type: 'info' })
