@@ -1067,8 +1067,29 @@ export default function LogbookPage() {
           <p className="text-blue-200 text-sm mt-1">Monday – Friday</p>
         </div>
         {isBeforeOpen && (
-          <p className="text-blue-300 text-sm">Opens in {Math.max(0, Math.floor((timeToDate(settings.officeOpen, now).getTime() - now.getTime()) / 60000))} minutes</p>
+          <p className="text-blue-300 text-sm mb-4">Opens in {Math.max(0, Math.floor((timeToDate(settings.officeOpen, now).getTime() - now.getTime()) / 60000))} minutes</p>
         )}
+        
+        {/* After-hours WiFi access button */}
+        <div className="mt-6 w-full max-w-md">
+          <button
+            onClick={() => {
+              // Set form to WiFi-only mode and skip to internet info
+              setForm(f => ({ ...f, equipmentUsed: ['Internet Only'] }))
+              setWifiTerms(WIFI_TERMS.map(() => false))
+              setStep('internet-info')
+            }}
+            className="w-full py-4 px-6 bg-white text-[var(--dict-blue)] rounded-2xl font-bold text-lg hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 group"
+          >
+            <span className="text-2xl group-hover:scale-110 transition-transform">📶</span>
+            <div className="text-left">
+              <div className="font-bold">Access WiFi Outside Premise</div>
+              <div className="text-xs font-normal text-blue-600">Use internet after office hours</div>
+            </div>
+          </button>
+          <p className="text-blue-300 text-xs mt-3">Available 24/7 for authorized users</p>
+        </div>
+
         {/* Contact footer */}
         <div className="absolute bottom-6 left-0 right-0 text-center">
           <p className="text-blue-300 text-xs">📍 DICT Region V · Legazpi City, Albay · 📞 (052) 742-5670</p>
