@@ -749,6 +749,7 @@ export default function LogbookPage() {
   const [customDuration, setCustomDuration] = useState('')
   const [showCustom, setShowCustom] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
+  const [showAfterHoursWifiModal, setShowAfterHoursWifiModal] = useState(false)
   const [purposeFocus, setPurposeFocus] = useState(false)
   const [showPCCountModal, setShowPCCountModal] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
@@ -1073,12 +1074,7 @@ export default function LogbookPage() {
         {/* After-hours WiFi access button */}
         <div className="mt-6 w-full max-w-md">
           <button
-            onClick={() => {
-              // Set form to WiFi-only mode and skip to internet info
-              setForm(f => ({ ...f, equipmentUsed: ['Internet Only'] }))
-              setWifiTerms(WIFI_TERMS.map(() => false))
-              setStep('internet-info')
-            }}
+            onClick={() => setShowAfterHoursWifiModal(true)}
             className="w-full py-4 px-6 bg-white text-[var(--dict-blue)] rounded-2xl font-bold text-lg hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 group"
           >
             <span className="text-2xl group-hover:scale-110 transition-transform">📶</span>
@@ -1089,6 +1085,60 @@ export default function LogbookPage() {
           </button>
           <p className="text-blue-300 text-xs mt-3">Available 24/7 for authorized users</p>
         </div>
+
+        {/* After-hours WiFi Modal */}
+        {showAfterHoursWifiModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowAfterHoursWifiModal(false)}>
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="text-center mb-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+                  <span className="text-3xl">📶</span>
+                </div>
+                <h2 className="font-display font-bold text-2xl text-gray-800 mb-1">WiFi Access</h2>
+                <p className="text-sm text-gray-500">Connect to DTC WiFi outside office hours</p>
+              </div>
+
+              <div className="space-y-4">
+                {/* SSID */}
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                  <p className="text-xs text-blue-600 font-semibold mb-1">Network Name (SSID)</p>
+                  <p className="font-mono font-bold text-lg text-gray-800">{settings?.wifiSsid || 'DTC-WiFi'}</p>
+                </div>
+
+                {/* Password */}
+                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4">
+                  <p className="text-xs text-purple-600 font-semibold mb-1">Password</p>
+                  <p className="font-mono font-bold text-lg text-gray-800">{settings?.wifiPassword || '••••••••'}</p>
+                </div>
+
+                {/* Instructions */}
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <p className="text-xs text-gray-600 font-semibold mb-2">📱 How to Connect:</p>
+                  <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+                    <li>Open WiFi settings on your device</li>
+                    <li>Select the network name above</li>
+                    <li>Enter the password</li>
+                    <li>You're connected!</li>
+                  </ol>
+                </div>
+
+                {/* Terms */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-amber-800">
+                    <strong>⚠️ Important:</strong> This WiFi is for authorized users only. Usage is monitored and logged.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowAfterHoursWifiModal(false)}
+                className="w-full mt-5 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl font-bold hover:from-blue-600 hover:to-purple-700 transition-all shadow-lg"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Contact footer */}
         <div className="absolute bottom-6 left-0 right-0 text-center">
@@ -1741,12 +1791,14 @@ export default function LogbookPage() {
         </div>{/* end two-column flex */}
       </main>
 
-      {/* Voice Assistant - restricted to logbook form actions only */}
-      <VoiceAssistant
-        context="logbook-form"
-        onCommand={handleVoiceCommand}
-        onTranscript={(text) => setVoiceTranscript(text)}
-      />
+      {/* Voice Assistant - only available after access granted */}
+      {accessGranted && (
+        <VoiceAssistant
+          context="logbook-form"
+          onCommand={handleVoiceCommand}
+          onTranscript={(text) => setVoiceTranscript(text)}
+        />
+      )}
 
       {/* PC Count Modal - triggered by voice command */}
       <PCCountModal

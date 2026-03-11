@@ -123,7 +123,7 @@ export function VoiceAssistant({ onTranscript, onCommand, context }: VoiceAssist
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
-      // Voice Activity Detection - auto-stop after 2s of silence
+      // Voice Activity Detection - auto-stop after 4s of silence
       const audioContext = new AudioContext()
       const source = audioContext.createMediaStreamSource(stream)
       const analyser = audioContext.createAnalyser()
@@ -145,7 +145,7 @@ export function VoiceAssistant({ onTranscript, onCommand, context }: VoiceAssist
           silenceStart = 0
         } else if (hasDetectedSpeech && average <= 10) { // Silence after speech
           if (silenceStart === 0) silenceStart = Date.now()
-          else if (Date.now() - silenceStart > 2000) { // 2 seconds of silence
+          else if (Date.now() - silenceStart > 4000) { // 4 seconds of silence
             stopListening()
             return
           }
