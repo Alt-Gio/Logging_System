@@ -1949,7 +1949,7 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <p className="font-bold text-gray-800 text-base">{user?.fullName ?? user?.username}</p>
-              <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">You · Admin</span>
+              <span className="text-[10px] bg-gradient-to-r from-purple-500 to-blue-600 text-white px-2.5 py-1 rounded-full font-bold shadow-sm">You · SuperAdmin</span>
             </div>
             <p className="text-sm text-gray-400">{user?.primaryEmailAddress?.emailAddress}</p>
             <p className="text-xs text-gray-300 mt-0.5">
@@ -1959,6 +1959,37 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
           <a href="/admin/auth-guide" className="text-xs px-3 py-2 rounded-xl border border-blue-200 text-[var(--dict-blue)] bg-blue-50 hover:bg-blue-100 font-semibold transition-colors flex-shrink-0">
             🔐 Auth Guide
           </a>
+        </div>
+      </div>
+
+      {/* Role Hierarchy Info */}
+      <div className="glass rounded-2xl p-5 border-l-4 border-purple-500">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white text-xl flex-shrink-0 shadow-md">
+            👑
+          </div>
+          <div className="flex-1">
+            <h3 className="font-display font-bold text-gray-800 mb-2">Role Hierarchy System</h3>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-xs bg-gradient-to-r from-purple-500 to-blue-600 text-white px-3 py-1 rounded-full font-bold shadow-sm">SuperAdmin</span>
+                <span className="text-xs text-gray-500">Full system access · First account created · Can manage all roles</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs bg-blue-500 text-white px-3 py-1 rounded-full font-bold shadow-sm">Admin</span>
+                <span className="text-xs text-gray-500">Full admin access · Can invite staff · Manage settings</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs bg-gray-500 text-white px-3 py-1 rounded-full font-bold shadow-sm">Staff</span>
+                <span className="text-xs text-gray-500">View-only access · Can view logs and dashboard</span>
+              </div>
+            </div>
+            <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-xl">
+              <p className="text-xs text-purple-700">
+                <strong>🔒 Invite-Only System:</strong> Only users with valid email invitations or one-time links can create accounts. The first account created automatically becomes SuperAdmin.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1981,7 +2012,7 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
         {/* Send invite form */}
         <div className="glass rounded-2xl p-5">
           <h3 className="font-display font-semibold text-gray-800 text-base mb-1">Invite Staff Member</h3>
-          <p className="text-xs text-gray-400 mb-4">Only invited accounts can sign up. Invitations are sent via Clerk.</p>
+          <p className="text-xs text-gray-400 mb-4">Only invited accounts can sign up. Invitations are sent via Clerk. New invites default to <strong>Admin</strong> role.</p>
 
           {/* Mode toggle */}
           <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
