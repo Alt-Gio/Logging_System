@@ -32,6 +32,12 @@ model LogEntry {
   @@index([pcId])
   @@index([archived])
   @@index([serviceType])
+  @@index([date])
+  @@index([fullName])
+  @@index([agency])
+  @@index([createdAt])
+  @@index([date, archived])
+  @@index([timeOut, archived])
   @@map("log_entries")
 }
 
@@ -53,6 +59,9 @@ model PC {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
+  @@index([status])
+  @@index([isActive])
+  @@index([isActive, status])
   @@map("pcs")
 }
 
@@ -118,6 +127,8 @@ model Announcement {
   @@index([active])
   @@index([dateStart])
   @@index([dateEnd])
+  @@index([expiresAt])
+  @@index([active, expiresAt])
   @@map("announcements")
 }
 
