@@ -1,0 +1,17 @@
+{
+  "name": "dict-network-bridge-agent",
+  "version": "1.0.0",
+  "description": "Network bridge agent for DICT Logbook - enables local network scanning from Railway",
+  "main": "network-bridge-agent.js",
+  "scripts": {
+    "start": "node network-bridge-agent.js",
+    "install-service": "node install-service.js",
+    "uninstall-service": "node uninstall-service.js"
+  },
+  "keywords": ["network", "bridge", "ping", "scanner"],
+  "author": "DICT",
+  "license": "MIT",
+  "dependencies": {
+    "node-windows": "^1.0.0-beta.8"
+  }
+}

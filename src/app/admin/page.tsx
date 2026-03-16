@@ -1309,29 +1309,58 @@ export default function AdminPage() {
                       try {
                         const start = parseInt(scanConfig.start)
                         const end = parseInt(scanConfig.end)
-                        const ips = []
-                        for (let i = start; i <= end; i++) {
-                          ips.push(`${scanConfig.baseIp}.${i}`)
-                        }
-                        const res = await fetch('/api/network/ping', {
+                        
+                        // Request scan via bridge
+                        const res = await fetch('/api/network/bridge/scan', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ ips })
+                          body: JSON.stringify({ 
+                            baseIp: scanConfig.baseIp,
+                            start,
+                            end
+                          })
                         })
+                        
                         if (res.ok) {
                           const data = await res.json()
-                          setScanResults(data.results || [])
+                          const requestId = data.requestId
+                          
+                          // Poll for results every 2 seconds
+                          const pollInterval = setInterval(async () => {
+                            const resultRes = await fetch(`/api/network/bridge/scan?requestId=${requestId}`)
+                            if (resultRes.ok) {
+                              const resultData = await resultRes.json()
+                              if (resultData.completed) {
+                                clearInterval(pollInterval)
+                                setScanResults(resultData.results || [])
+                                setScanning(false)
+                              }
+                            }
+                          }, 2000)
+                          
+                          // Timeout after 60 seconds
+                          setTimeout(() => {
+                            clearInterval(pollInterval)
+                            if (scanning) {
+                              setScanning(false)
+                              alert('Scan timeout. Bridge agent may not be running.')
+                            }
+                          }, 60000)
+                        } else {
+                          const error = await res.json()
+                          alert(error.error || 'Failed to start scan')
+                          setScanning(false)
                         }
                       } catch (e) {
                         console.error(e)
-                      } finally {
+                        alert('Failed to start scan. Check console for details.')
                         setScanning(false)
                       }
                     }}
                     disabled={scanning}
                     className="w-full py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {scanning ? <><Spinner /> Scanning...</> : '🔍 Scan Network'}
+                    {scanning ? <><Spinner /> Scanning via Bridge Agent...</> : '🔍 Scan Network (via Bridge)'}
                   </button>
                 </div>
 
