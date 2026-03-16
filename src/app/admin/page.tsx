@@ -604,26 +604,16 @@ export default function AdminPage() {
     await fetch(`/api/pcs/${id}`, { method: 'DELETE' }); fetchPcs()
   }
   const pingPc = async (pc: PC) => {
-    setPingingId(pc.id); await fetch(`/api/network/ping?ip=${pc.ipAddress}`); await fetchPcs(); setPingingId(null)
-  }
-  const pingAll = async () => {
-    setPingAllLoading(true)
-    await fetch('/api/network/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pingAll: true }) })
-    await fetchPcs(); setPingAllLoading(false)
-  }
-  const searchIp = async () => {
-    if (!ipSearch.trim()) return
-    setIpLoading(true)
-    setIpResult(null)
+    setPingingId(pc.id)
     try {
-      // Use bridge API for single IP ping
+      // Use bridge API for instant ping
       const res = await fetch('/api/network/bridge/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          baseIp: ipSearch.trim().split('.').slice(0, 3).join('.'),
-          start: parseInt(ipSearch.trim().split('.')[3]),
-          end: parseInt(ipSearch.trim().split('.')[3])
+          baseIp: pc.ipAddress.split('.').slice(0, 3).join('.'),
+          start: parseInt(pc.ipAddress.split('.')[3]),
+          end: parseInt(pc.ipAddress.split('.')[3])
         })
       })
       
@@ -631,7 +621,144 @@ export default function AdminPage() {
         const data = await res.json()
         const requestId = data.requestId
         
-        // Poll for results
+        // Poll for results with faster interval
+        const pollInterval = setInterval(async () => {
+          const resultRes = await fetch(`/api/network/bridge/scan?requestId=${requestId}`)
+          if (resultRes.ok) {
+            const resultData = await resultRes.json()
+            if (resultData.completed) {
+              clearInterval(pollInterval)
+              await fetchPcs()
+              setPingingId(null)
+            }
+          }
+        }, 1000) // Poll every 1 second for faster response
+        
+        // Timeout after 15 seconds
+        setTimeout(() => {
+          clearInterval(pollInterval)
+          setPingingId(null)
+          fetchPcs()
+        }, 15000)
+      } else {
+        setPingingId(null)
+        fetchPcs()
+      }
+    } catch (e) {
+      console.error(e)
+      setPingingId(null)
+      fetchPcs()
+    }
+  }
+  const pingAll = async () => {
+    setPingAllLoading(true)
+    try {
+      // Get all PC IPs
+      const pcIps = pcs.map(pc => pc.ipAddress).filter(ip => ip)
+      
+      if (pcIps.length === 0) {
+        setPingAllLoading(false)
+        return
+      }
+      
+      // Group IPs by base (first 3 octets) for efficient scanning
+      const ipGroups: Record<string, number[]> = {}
+      pcIps.forEach(ip => {
+        const parts = ip.split('.')
+        const base = parts.slice(0, 3).join('.')
+        const last = parseInt(parts[3])
+        if (!ipGroups[base]) ipGroups[base] = []
+        ipGroups[base].push(last)
+      })
+      
+      // Scan each group
+      const scanPromises = Object.entries(ipGroups).map(async ([base, lastOctets]) => {
+        const min = Math.min(...lastOctets)
+        const max = Math.max(...lastOctets)
+        
+        const res = await fetch('/api/network/bridge/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ baseIp: base, start: min, end: max })
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          return data.requestId
+        }
+        return null
+      })
+      
+      const requestIds = (await Promise.all(scanPromises)).filter(id => id !== null)
+      
+      // Poll for all results
+      let completedCount = 0
+      const checkInterval = setInterval(async () => {
+        const checks = await Promise.all(
+          requestIds.map(async (requestId) => {
+            const res = await fetch(`/api/network/bridge/scan?requestId=${requestId}`)
+            if (res.ok) {
+              const data = await res.json()
+              return data.completed
+            }
+            return false
+          })
+        )
+        
+        completedCount = checks.filter(c => c).length
+        
+        if (completedCount === requestIds.length) {
+          clearInterval(checkInterval)
+          await fetchPcs()
+          setPingAllLoading(false)
+        }
+      }, 2000)
+      
+      // Timeout after 60 seconds
+      setTimeout(() => {
+        clearInterval(checkInterval)
+        fetchPcs()
+        setPingAllLoading(false)
+      }, 60000)
+    } catch (e) {
+      console.error(e)
+      setPingAllLoading(false)
+      fetchPcs()
+    }
+  }
+  const searchIp = async () => {
+    if (!ipSearch.trim()) return
+    
+    // Validate IP format
+    const ipParts = ipSearch.trim().split('.')
+    if (ipParts.length !== 4 || ipParts.some(p => isNaN(parseInt(p)))) {
+      setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null, error: 'Invalid IP format' })
+      return
+    }
+    
+    setIpLoading(true)
+    setIpResult(null)
+    
+    try {
+      const baseIp = ipParts.slice(0, 3).join('.')
+      const lastOctet = parseInt(ipParts[3])
+      
+      // Use bridge API for single IP ping
+      const res = await fetch('/api/network/bridge/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          baseIp,
+          start: lastOctet,
+          end: lastOctet
+        })
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        const requestId = data.requestId
+        
+        // Poll for results with faster interval for single IP
         const pollInterval = setInterval(async () => {
           const resultRes = await fetch(`/api/network/bridge/scan?requestId=${requestId}`)
           if (resultRes.ok) {
@@ -650,20 +777,24 @@ export default function AdminPage() {
               fetchPcs()
             }
           }
-        }, 2000)
+        }, 1000) // Poll every 1 second for instant feedback
         
-        // Timeout after 30 seconds
+        // Timeout after 20 seconds
         setTimeout(() => {
           clearInterval(pollInterval)
           if (ipLoading) {
             setIpLoading(false)
             setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null })
           }
-        }, 30000)
+        }, 20000)
+      } else {
+        setIpLoading(false)
+        setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null, error: 'Failed to start scan' })
       }
     } catch (e) {
       console.error(e)
       setIpLoading(false)
+      setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null, error: 'Network error' })
     }
   }
   const handleScan = async () => {
@@ -1252,31 +1383,46 @@ export default function AdminPage() {
                     <button 
                       onClick={searchIp} 
                       disabled={ipLoading}
-                      className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2"
+                      className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 min-w-[100px] justify-center"
                     >
-                      {ipLoading ? <><Spinner /> Pinging...</> : '📡 Ping'}
+                      {ipLoading ? <><Spinner /> Pinging...</> : '📡 Ping Now'}
                     </button>
                   </div>
                   {ipResult && (
-                    <div className={`mt-3 rounded-xl p-4 flex items-center gap-4 border-2 transition-all ${ipResult.alive?'bg-green-50 border-green-300 shadow-green-100 shadow-md':'bg-red-50 border-red-300'}`}>
-                      <div className={`w-5 h-5 rounded-full flex-shrink-0 ${ipResult.alive?'bg-green-500 animate-pulse shadow-lg shadow-green-300':'bg-red-400'}`}/>
-                      <div className="flex-1">
-                        <p className={`font-bold text-base ${ipResult.alive?'text-green-700':'text-red-600'}`}>
-                          {ipResult.ip} is {ipResult.alive?'ONLINE ✓':'OFFLINE ✗'}
-                        </p>
-                        {ipResult.alive&&ipResult.responseTime&&<p className="text-xs text-green-600 font-semibold mt-0.5">⚡ {ipResult.responseTime}ms response time</p>}
-                        {ipResult.pcName&&<p className="text-xs text-gray-600 mt-1 flex items-center gap-1">📌 <strong>{ipResult.pcName}</strong></p>}
+                    <div className={`mt-3 rounded-xl p-4 border-2 transition-all animate-in fade-in duration-300 ${ipResult.alive?'bg-gradient-to-br from-green-50 to-emerald-50 border-green-400 shadow-lg shadow-green-100':'bg-gradient-to-br from-red-50 to-rose-50 border-red-400 shadow-lg shadow-red-100'}`}>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center ${ipResult.alive?'bg-green-500 animate-pulse shadow-lg shadow-green-400':'bg-red-500'}`}>
+                          <span className="text-white text-xs font-bold">{ipResult.alive?'✓':'✗'}</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className={`font-bold text-lg ${ipResult.alive?'text-green-700':'text-red-700'}`}>
+                            {ipResult.ip}
+                          </p>
+                          <p className={`text-sm font-semibold ${ipResult.alive?'text-green-600':'text-red-600'}`}>
+                            {ipResult.alive?'🟢 ONLINE':'🔴 OFFLINE'}
+                          </p>
+                          {ipResult.alive&&ipResult.responseTime&&(
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="px-2 py-0.5 bg-green-200 rounded-full">
+                                <p className="text-xs text-green-800 font-bold">⚡ {ipResult.responseTime}ms</p>
+                              </div>
+                            </div>
+                          )}
+                          {ipResult.pcName&&<p className="text-xs text-gray-700 mt-1.5 flex items-center gap-1 font-semibold">📌 Registered as: <strong className="text-blue-600">{ipResult.pcName}</strong></p>}
+                          {ipResult.error&&<p className="text-xs text-red-600 mt-1">⚠️ {ipResult.error}</p>}
+                        </div>
+                        {ipResult.alive&&!ipResult.pcName&&(
+                          <button onClick={async()=>{
+                            const name = prompt('Register this IP as a workstation? Enter name:')
+                            if (!name) return
+                            await fetch('/api/pcs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,ipAddress:ipResult?.ip,location:''})})
+                            fetchPcs()
+                            setIpResult(null)
+                          }} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-bold hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg">
+                            + Register Station
+                          </button>
+                        )}
                       </div>
-                      {ipResult.alive&&!ipResult.pcName&&(
-                        <button onClick={async()=>{
-                          const name = prompt('Register this IP as a workstation? Enter name:')
-                          if (!name) return
-                          await fetch('/api/pcs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,ipAddress:ipResult?.ip,location:''})})
-                          fetchPcs()
-                        }} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white text-xs font-bold hover:from-blue-600 hover:to-blue-700 transition-all shadow-md">
-                          + Register
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>
@@ -1384,8 +1530,8 @@ export default function AdminPage() {
                     Live Station Status
                   </h3>
                   <button onClick={pingAll} disabled={pingAllLoading}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1.5">
-                    {pingAllLoading?<><Spinner/> Pinging...</>:'🔄 Refresh All'}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 flex items-center gap-1.5 font-semibold shadow-sm transition-all">
+                    {pingAllLoading?<><Spinner/> Pinging All...</>:'🔄 Refresh All Stations'}
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1406,8 +1552,8 @@ export default function AdminPage() {
                           </div>
                           {pc.lastSeen && <p className="text-xs text-gray-300 hidden sm:block">{formatDistanceToNow(new Date(pc.lastSeen),{addSuffix:true})}</p>}
                           <button onClick={()=>pingPc(pc)} disabled={pingingId===pc.id}
-                            className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors disabled:opacity-40 flex-shrink-0">
-                            {pingingId===pc.id?'…':'📡'}
+                            className="text-xs px-2.5 py-1.5 rounded-lg border-2 border-gray-200 text-gray-600 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all disabled:opacity-50 flex-shrink-0 font-semibold">
+                            {pingingId===pc.id?<><Spinner/></>:'📡 Ping'}
                           </button>
                         </div>
                       )
