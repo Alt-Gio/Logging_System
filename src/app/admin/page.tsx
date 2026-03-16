@@ -509,6 +509,9 @@ export default function AdminPage() {
         googleSheetId: data.googleSheetId ?? s.googleSheetId,
         googleServiceKey: data.googleServiceKey ?? s.googleServiceKey,
       }))
+      // Load grid settings
+      if (data.gridCols) setGridCols(parseInt(data.gridCols))
+      if (data.gridRows) setGridRowCount(parseInt(data.gridRows))
       // Apply bg immediately on admin page too
       if (data.bgImageUrl) {
         applyBgToPage(data.bgImageUrl)
@@ -945,10 +948,11 @@ export default function AdminPage() {
                       await fetch('/api/settings', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ gridCols, gridRows: gridRowCount })
+                        body: JSON.stringify({ gridCols: String(gridCols), gridRows: String(gridRowCount) })
                       })
                       setGridSettingsSaved(true)
                       setTimeout(() => setGridSettingsSaved(false), 2000)
+                      fetchSettings() // Reload to confirm save
                     } catch (e) { console.error(e) }
                   }} className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 whitespace-nowrap">
                     {gridSettingsSaved ? '✓ Saved' : '💾 Save Grid'}
@@ -1264,6 +1268,87 @@ export default function AdminPage() {
                     })
                   }
                 </div>
+              </div>
+
+              {/* Network Scanner */}
+              <div className="glass rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm">🔍</span>
+                  <h3 className="font-display font-semibold text-gray-700">Network Scanner</h3>
+                </div>
+                <p className="text-xs text-gray-500 mb-4">Discover and ping computers on your network. Useful for finding devices on the same SSID.</p>
+                
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      value={scanConfig.baseIp}
+                      onChange={e => setScanConfig(c => ({ ...c, baseIp: e.target.value }))}
+                      placeholder="Base IP (e.g., 192.168.1)"
+                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-purple-400 font-mono"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={scanConfig.start}
+                      onChange={e => setScanConfig(c => ({ ...c, start: e.target.value }))}
+                      placeholder="Start"
+                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-purple-400 font-mono text-center"
+                    />
+                    <span className="flex items-center text-gray-400">to</span>
+                    <input
+                      value={scanConfig.end}
+                      onChange={e => setScanConfig(c => ({ ...c, end: e.target.value }))}
+                      placeholder="End"
+                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-purple-400 font-mono text-center"
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setScanning(true)
+                      setScanResults([])
+                      try {
+                        const start = parseInt(scanConfig.start)
+                        const end = parseInt(scanConfig.end)
+                        const ips = []
+                        for (let i = start; i <= end; i++) {
+                          ips.push(`${scanConfig.baseIp}.${i}`)
+                        }
+                        const res = await fetch('/api/network/ping', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ ips })
+                        })
+                        if (res.ok) {
+                          const data = await res.json()
+                          setScanResults(data.results || [])
+                        }
+                      } catch (e) {
+                        console.error(e)
+                      } finally {
+                        setScanning(false)
+                      }
+                    }}
+                    disabled={scanning}
+                    className="w-full py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {scanning ? <><Spinner /> Scanning...</> : '🔍 Scan Network'}
+                  </button>
+                </div>
+
+                {scanResults.length > 0 && (
+                  <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Found {scanResults.filter(r => r.alive).length} active devices:</p>
+                    {scanResults.filter(r => r.alive).map(result => (
+                      <div key={result.ip} className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                          <span className="font-mono text-sm text-gray-800">{result.ip}</span>
+                        </div>
+                        <span className="text-xs text-green-600 font-semibold">{result.responseTime}ms</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Browser info note */}
