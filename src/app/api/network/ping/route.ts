@@ -13,11 +13,11 @@ const execAsync = promisify(exec)
 // Strict IP-only regex — NO shell metacharacters possible
 const SAFE_IP = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
 
-async function pingHost(ip: string): Promise<{ alive: boolean; responseTime: number | null }> {
+async function pingHost(ip: string): Promise<{ alive: boolean; responseTime: number | null; error?: string }> {
   // Validate BEFORE passing to shell — belt + suspenders with allowlist regex
-  if (!SAFE_IP.test(ip)) return { alive: false, responseTime: null }
+  if (!SAFE_IP.test(ip)) return { alive: false, responseTime: null, error: 'Invalid IP format' }
   const parts = ip.split('.').map(Number)
-  if (parts.some(p => p < 0 || p > 255)) return { alive: false, responseTime: null }
+  if (parts.some(p => p < 0 || p > 255)) return { alive: false, responseTime: null, error: 'IP out of range' }
 
   const start = Date.now()
   try {
@@ -27,10 +27,42 @@ async function pingHost(ip: string): Promise<{ alive: boolean; responseTime: num
     const cmd = isWindows
       ? `ping -n 1 -w 1000 ${ip}`
       : `ping -c 1 -W 1 ${ip}`
-    await execAsync(cmd, { timeout: 3000 })
+    
+    console.log(`[PING] Attempting to ping ${ip} with command: ${cmd}`)
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 3000 })
+    console.log(`[PING] Success for ${ip} - Response time: ${Date.now() - start}ms`)
+    if (stderr) console.log(`[PING] stderr: ${stderr}`)
+    
     return { alive: true, responseTime: Date.now() - start }
-  } catch {
-    return { alive: false, responseTime: null }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    console.error(`[PING] Failed for ${ip}: ${error}`)
+    
+    // Fallback: Try HTTP check on common ports
+    try {
+      const httpStart = Date.now()
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 2000)
+      
+      await fetch(`http://${ip}`, { 
+        signal: controller.signal,
+        method: 'HEAD'
+      }).catch(() => {
+        // Try HTTPS
+        return fetch(`https://${ip}`, { 
+          signal: controller.signal,
+          method: 'HEAD'
+        })
+      })
+      
+      clearTimeout(timeout)
+      const httpTime = Date.now() - httpStart
+      console.log(`[PING] HTTP fallback success for ${ip} - ${httpTime}ms`)
+      return { alive: true, responseTime: httpTime }
+    } catch {
+      console.log(`[PING] HTTP fallback also failed for ${ip}`)
+      return { alive: false, responseTime: null, error }
+    }
   }
 }
 
