@@ -365,7 +365,7 @@ function EditPcModal({ pc, onSave, onClose }: {
 export default function AdminPage() {
   const { user, isLoaded: clerkLoaded, isSignedIn } = useUser()
   const currentAdmin = isSignedIn ? { id: user?.id ?? '', name: user?.fullName ?? user?.username ?? 'Admin', role: 'SUPER_ADMIN' } : null
-  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'network' | 'settings' | 'announcements' | 'analytics'>('dashboard')
+  const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'settings' | 'announcements' | 'analytics'>('dashboard')
   const [adminVoiceToast, setAdminVoiceToast] = useState<{ message: string; type: 'success'|'info'|'error' } | null>(null)
 
   const handleAdminVoiceCommand = (cmd: { action: string; section?: string; filter?: string; field?: string; value?: string; message?: string }) => {
@@ -375,8 +375,8 @@ export default function AdminPage() {
         logs: 'logs',
         pcs: 'pcs',
         stations: 'pcs',
-        network: 'network',
-        networks: 'network',
+        network: 'pcs',
+        networks: 'pcs',
         announcements: 'announcements',
         notices: 'announcements',
         analytics: 'analytics',
@@ -428,6 +428,7 @@ export default function AdminPage() {
   const [scanConfig, setScanConfig] = useState({ baseIp: '192.168.1', start: '1', end: '30' })
   const [scanning, setScanning] = useState(false)
   const [scanResults, setScanResults] = useState<{ ip: string; alive: boolean; responseTime: number | null }[]>([])
+  const [pingHistory, setPingHistory] = useState<{ ip: string; alive: boolean; responseTime: number | null; timestamp: Date; pcName?: string | null }[]>([])
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   // ── Pusher real-time + browser notifications ──────────────────────────────
@@ -726,75 +727,82 @@ export default function AdminPage() {
       fetchPcs()
     }
   }
-  const searchIp = async () => {
-    if (!ipSearch.trim()) return
-    
+  const searchIp = async (overrideIp?: string) => {
+    const targetIp = (overrideIp ?? ipSearch).trim()
+    if (!targetIp) return
+    if (overrideIp) setIpSearch(overrideIp)
+
     // Validate IP format
-    const ipParts = ipSearch.trim().split('.')
+    const ipParts = targetIp.split('.')
     if (ipParts.length !== 4 || ipParts.some(p => isNaN(parseInt(p)))) {
-      setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null, error: 'Invalid IP format' })
+      setIpResult({ ip: targetIp, alive: false, responseTime: null, error: 'Invalid IP format' })
       return
     }
-    
+
     setIpLoading(true)
     setIpResult(null)
-    
+
     try {
       const baseIp = ipParts.slice(0, 3).join('.')
       const lastOctet = parseInt(ipParts[3])
-      
-      // Use bridge API for single IP ping
+
       const res = await fetch('/api/network/bridge/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          baseIp,
-          start: lastOctet,
-          end: lastOctet
-        })
+        body: JSON.stringify({ baseIp, start: lastOctet, end: lastOctet })
       })
-      
+
       if (res.ok) {
         const data = await res.json()
         const requestId = data.requestId
-        
-        // Poll for results with faster interval for single IP
+        let settled = false
+
         const pollInterval = setInterval(async () => {
           const resultRes = await fetch(`/api/network/bridge/scan?requestId=${requestId}`)
           if (resultRes.ok) {
             const resultData = await resultRes.json()
-            if (resultData.completed && resultData.results.length > 0) {
+            if (resultData.completed) {
               clearInterval(pollInterval)
-              const result = resultData.results[0]
-              const pc = pcs.find(p => p.ipAddress === result.ip)
-              setIpResult({
-                ip: result.ip,
-                alive: result.alive,
-                responseTime: result.responseTime,
-                pcName: pc?.name
-              })
+              settled = true
+              const result = resultData.results?.[0] ?? { ip: targetIp, alive: false, responseTime: null }
+              const matchedPc = pcs.find(p => p.ipAddress === result.ip)
+
+              // Auto-mark matching PC as ONLINE when alive
+              if (result.alive && matchedPc) {
+                await fetch(`/api/pcs/${matchedPc.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ status: 'ONLINE' })
+                })
+              }
+
+              const finalResult = { ip: result.ip, alive: result.alive, responseTime: result.responseTime, pcName: matchedPc?.name ?? null }
+              setIpResult(finalResult)
+              setPingHistory(prev => [{ ...finalResult, timestamp: new Date() }, ...prev].slice(0, 10))
               setIpLoading(false)
               fetchPcs()
             }
           }
-        }, 1000) // Poll every 1 second for instant feedback
-        
+        }, 800)
+
         // Timeout after 20 seconds
         setTimeout(() => {
           clearInterval(pollInterval)
-          if (ipLoading) {
+          if (!settled) {
             setIpLoading(false)
-            setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null })
+            const timeoutResult = { ip: targetIp, alive: false, responseTime: null, pcName: null, error: 'Timeout — bridge agent may be offline' }
+            setIpResult(timeoutResult)
+            setPingHistory(prev => [{ ...timeoutResult, timestamp: new Date() }, ...prev].slice(0, 10))
           }
         }, 20000)
       } else {
         setIpLoading(false)
-        setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null, error: 'Failed to start scan' })
+        setIpResult({ ip: targetIp, alive: false, responseTime: null, error: 'Failed to start scan' })
       }
     } catch (e) {
       console.error(e)
       setIpLoading(false)
-      setIpResult({ ip: ipSearch.trim(), alive: false, responseTime: null, error: 'Network error' })
+      setIpResult({ ip: targetIp, alive: false, responseTime: null, error: 'Network error' })
     }
   }
   const handleScan = async () => {
@@ -956,10 +964,10 @@ export default function AdminPage() {
           </div>
           <div className="border-t border-white/15 flex items-center justify-between py-1">
             <nav className="flex gap-0.5 flex-wrap">
-              {(['dashboard','logs','pcs','network','announcements','analytics','settings'] as const).map(t => (
+              {(['dashboard','logs','pcs','announcements','analytics','settings'] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all ${tab===t ? 'bg-white text-[var(--dict-blue)] shadow-sm' : 'text-blue-200 hover:text-white hover:bg-white/10'}`}>
-                  {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='announcements'?'📢 Notices':t==='analytics'?'📊 Analytics':'📋 Logs'}
+                  {t==='pcs'?'🖥 Stations & Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='announcements'?'📢 Notices':t==='analytics'?'📊 Analytics':'📋 Logs'}
                 </button>
               ))}
               <a href="/interns"
@@ -1354,259 +1362,251 @@ export default function AdminPage() {
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* ══════════════════════════════════════════════════════════ NETWORK */}
-        {tab === 'network' && (
-          <div className="grid lg:grid-cols-2 gap-5">
-            {/* LEFT COL */}
-            <div className="space-y-5">
-              {/* Unified Network Scanner */}
-              <div className="glass rounded-2xl p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-lg shadow-lg">
-                    🔍
-                  </div>
-                  <div>
-                    <h3 className="font-display font-bold text-gray-800 text-lg">Network Scanner</h3>
-                    <p className="text-xs text-gray-500">Discover and ping devices on your network via bridge agent</p>
-                  </div>
-                </div>
-
-                {/* Ping Single IP */}
-                <div className="mb-6">
-                  <label className="text-sm font-semibold text-gray-700 mb-2 block flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-xs">📍</span>
-                    Ping Single IP Address
-                  </label>
-                  <div className="flex gap-2">
-                    <input 
-                      value={ipSearch} 
-                      onChange={e=>setIpSearch(e.target.value)} 
-                      onKeyDown={e=>e.key==='Enter'&&searchIp()}
-                      placeholder="e.g. 192.168.1.117"
-                      className="flex-1 border-2 border-gray-200 rounded-xl px-4 py-3 font-mono text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                    />
-                    <button 
-                      onClick={searchIp} 
-                      disabled={ipLoading}
-                      className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 min-w-[100px] justify-center"
-                    >
-                      {ipLoading ? <><Spinner /> Pinging...</> : '📡 Ping Now'}
-                    </button>
-                  </div>
-                  {ipResult && (
-                    <div className={`mt-3 rounded-xl p-4 border-2 transition-all animate-in fade-in duration-300 ${ipResult.alive?'bg-gradient-to-br from-green-50 to-emerald-50 border-green-400 shadow-lg shadow-green-100':'bg-gradient-to-br from-red-50 to-rose-50 border-red-400 shadow-lg shadow-red-100'}`}>
-                      <div className="flex items-center gap-4">
-                        <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center ${ipResult.alive?'bg-green-500 animate-pulse shadow-lg shadow-green-400':'bg-red-500'}`}>
-                          <span className="text-white text-xs font-bold">{ipResult.alive?'✓':'✗'}</span>
-                        </div>
-                        <div className="flex-1">
-                          <p className={`font-bold text-lg ${ipResult.alive?'text-green-700':'text-red-700'}`}>
-                            {ipResult.ip}
-                          </p>
-                          <p className={`text-sm font-semibold ${ipResult.alive?'text-green-600':'text-red-600'}`}>
-                            {ipResult.alive?'🟢 ONLINE':'🔴 OFFLINE'}
-                          </p>
-                          {ipResult.alive&&ipResult.responseTime&&(
-                            <div className="flex items-center gap-2 mt-1">
-                              <div className="px-2 py-0.5 bg-green-200 rounded-full">
-                                <p className="text-xs text-green-800 font-bold">⚡ {ipResult.responseTime}ms</p>
-                              </div>
-                            </div>
-                          )}
-                          {ipResult.pcName&&<p className="text-xs text-gray-700 mt-1.5 flex items-center gap-1 font-semibold">📌 Registered as: <strong className="text-blue-600">{ipResult.pcName}</strong></p>}
-                          {ipResult.error&&<p className="text-xs text-red-600 mt-1">⚠️ {ipResult.error}</p>}
-                        </div>
-                        {ipResult.alive&&!ipResult.pcName&&(
-                          <button onClick={async()=>{
-                            const name = prompt('Register this IP as a workstation? Enter name:')
-                            if (!name) return
-                            await fetch('/api/pcs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,ipAddress:ipResult?.ip,location:''})})
-                            fetchPcs()
-                            setIpResult(null)
-                          }} className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-bold hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg">
-                            + Register Station
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t border-gray-200 my-6"></div>
-
-                {/* Scan IP Range */}
+            {/* ══════════════════════════════════ NETWORK TOOLS (below stations) */}
+            <div className="mt-6 border-t-2 border-dashed border-gray-200 pt-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg">🔍</div>
                 <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-3 block flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-xs">🌐</span>
-                    Scan IP Range
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 block mb-1.5">Base IP (first 3 octets)</label>
-                      <input 
-                        value={scanConfig.baseIp} 
-                        onChange={e=>setScanConfig(f=>({...f,baseIp:e.target.value}))}
-                        placeholder="e.g. 192.168.1"
-                        className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-mono text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all"
+                  <h2 className="font-display font-bold text-gray-800 text-lg">Network Tools</h2>
+                  <p className="text-xs text-gray-500">Ping, scan, and monitor station connectivity via bridge agent</p>
+                </div>
+              </div>
+              <div className="grid lg:grid-cols-2 gap-5">
+
+                {/* ── LEFT: Ping + Scan ── */}
+                <div className="space-y-5">
+                  {/* Ping Single IP — upgraded */}
+                  <div className="glass rounded-2xl p-5">
+                    <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-xs">📍</span>
+                      Ping Workstation / IP
+                    </h3>
+
+                    {/* Input row */}
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        value={ipSearch}
+                        onChange={e => setIpSearch(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && searchIp()}
+                        placeholder="e.g. 192.168.1.109"
+                        className="flex-1 border-2 border-gray-200 rounded-xl px-4 py-3 font-mono text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
+                      <button
+                        onClick={() => searchIp()}
+                        disabled={ipLoading}
+                        className="px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center gap-2 min-w-[110px] justify-center hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg transition-all"
+                      >
+                        {ipLoading ? <><Spinner /> Pinging...</> : '📡 Ping'}
+                      </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 block mb-1.5">Start</label>
-                        <input 
-                          value={scanConfig.start} 
-                          onChange={e=>setScanConfig(f=>({...f,start:e.target.value}))}
-                          placeholder="1"
-                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-mono text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all text-center"
-                        />
+
+                    {/* Quick-select registered PCs */}
+                    {pcs.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs text-gray-400 font-semibold mb-1.5">Quick-select a station:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {pcs.map(pc => (
+                            <button key={pc.id} onClick={() => setIpSearch(pc.ipAddress)}
+                              className={`text-xs px-2.5 py-1 rounded-lg border-2 font-mono transition-all ${ipSearch === pc.ipAddress ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-600 hover:border-blue-300 bg-white'}`}>
+                              {pc.icon || '🖥️'} {pc.name}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 block mb-1.5">End</label>
-                        <input 
-                          value={scanConfig.end} 
-                          onChange={e=>setScanConfig(f=>({...f,end:e.target.value}))}
-                          placeholder="254"
-                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-mono text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all text-center"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={handleScan} 
-                    disabled={scanning}
-                    className="w-full py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 hover:from-purple-600 hover:to-purple-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                  >
-                    {scanning ? <><Spinner /> Scanning {scanConfig.baseIp}.{scanConfig.start}–{scanConfig.end}...</> : '🔍 Scan Network Range'}
-                  </button>
-                  
-                  {scanResults.length > 0 && (
-                    <div className="mt-4">
-                      <div className="flex items-center justify-between mb-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-green-500 text-white flex items-center justify-center font-bold text-sm shadow-md">
-                            {scanResults.length}
+                    )}
+
+                    {/* Result card */}
+                    {ipResult && (
+                      <div className={`rounded-xl p-4 border-2 transition-all ${ipResult.alive ? 'bg-green-50 border-green-300 shadow-green-100 shadow-md' : 'bg-red-50 border-red-300'}`}>
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${ipResult.alive ? 'bg-green-500 animate-pulse shadow-lg shadow-green-300' : 'bg-red-500'}`}>
+                            {ipResult.alive ? '✓' : '✗'}
                           </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-display font-bold text-xl leading-tight ${ipResult.alive ? 'text-green-700' : 'text-red-700'}`}>{ipResult.ip}</p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className={`text-sm font-bold ${ipResult.alive ? 'text-green-600' : 'text-red-600'}`}>
+                                {ipResult.alive ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                              </span>
+                              {ipResult.alive && ipResult.responseTime != null && (
+                                <span className="text-xs bg-green-200 text-green-800 font-bold px-2 py-0.5 rounded-full">⚡ {ipResult.responseTime}ms</span>
+                              )}
+                            </div>
+                            {ipResult.pcName && (
+                              <p className="text-xs text-gray-600 mt-1 font-semibold">📌 Registered: <strong className="text-blue-600">{ipResult.pcName}</strong> — marked ONLINE ✓</p>
+                            )}
+                            {ipResult.error && <p className="text-xs text-red-600 mt-1 font-semibold">⚠️ {ipResult.error}</p>}
+                          </div>
+                          <div className="flex flex-col gap-1.5 flex-shrink-0">
+                            <button onClick={() => searchIp()}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 font-semibold hover:bg-blue-200 transition-colors whitespace-nowrap">
+                              🔄 Re-ping
+                            </button>
+                            {ipResult.alive && !ipResult.pcName && (
+                              <button onClick={async () => {
+                                const name = prompt(`Register ${ipResult?.ip} as a workstation? Enter name:`)
+                                if (!name) return
+                                await fetch('/api/pcs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, ipAddress: ipResult?.ip, location: '' }) })
+                                fetchPcs(); setIpResult(null)
+                              }} className="text-xs px-3 py-1.5 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200 transition-colors whitespace-nowrap">
+                                + Register
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Ping History */}
+                    {pingHistory.length > 0 && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Ping History</p>
+                          <button onClick={() => setPingHistory([])} className="text-xs text-gray-400 hover:text-red-500 transition-colors">Clear</button>
+                        </div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {pingHistory.map((h, i) => (
+                            <div key={i} className={`flex items-center gap-2 text-xs rounded-lg px-3 py-1.5 cursor-pointer hover:opacity-80 ${h.alive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}
+                              onClick={() => setIpSearch(h.ip)}>
+                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${h.alive ? 'bg-green-500' : 'bg-red-400'}`}/>
+                              <span className="font-mono font-bold">{h.ip}</span>
+                              {h.pcName && <span className="text-gray-500 truncate">· {h.pcName}</span>}
+                              <span className="ml-auto">{h.alive ? '✓ Online' : '✗ Offline'}</span>
+                              {h.alive && h.responseTime != null && <span className="font-bold">{h.responseTime}ms</span>}
+                              <span className="text-gray-400">{format(h.timestamp, 'HH:mm:ss')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Scan IP Range */}
+                  <div className="glass rounded-2xl p-5">
+                    <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-xs">🌐</span>
+                      Scan IP Range
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 block mb-1.5">Base IP (first 3 octets)</label>
+                        <input value={scanConfig.baseIp} onChange={e => setScanConfig(f => ({ ...f, baseIp: e.target.value }))}
+                          placeholder="e.g. 192.168.1"
+                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-mono text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all"/>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 block mb-1.5">Start</label>
+                          <input value={scanConfig.start} onChange={e => setScanConfig(f => ({ ...f, start: e.target.value }))} placeholder="1"
+                            className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-mono text-sm outline-none focus:border-purple-500 transition-all text-center"/>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 block mb-1.5">End</label>
+                          <input value={scanConfig.end} onChange={e => setScanConfig(f => ({ ...f, end: e.target.value }))} placeholder="254"
+                            className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-mono text-sm outline-none focus:border-purple-500 transition-all text-center"/>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={handleScan} disabled={scanning}
+                      className="w-full py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 hover:from-purple-600 hover:to-purple-700 shadow-md hover:shadow-lg transition-all">
+                      {scanning ? <><Spinner /> Scanning {scanConfig.baseIp}.{scanConfig.start}–{scanConfig.end}...</> : '🔍 Scan Network Range'}
+                    </button>
+
+                    {scanResults.length > 0 && (
+                      <div className="mt-4">
+                        <div className="flex items-center gap-2 mb-3 p-3 bg-green-50 rounded-xl border border-green-200">
+                          <div className="w-8 h-8 rounded-lg bg-green-500 text-white flex items-center justify-center font-bold text-sm shadow-md">{scanResults.length}</div>
                           <div>
                             <p className="text-sm font-bold text-green-700">Active Devices Found</p>
                             <p className="text-xs text-green-600">
-                              {scanResults.filter(h=>pcs.find(p=>p.ipAddress===h.ip)).length} registered · {scanResults.filter(h=>!pcs.find(p=>p.ipAddress===h.ip)).length} unregistered
+                              {scanResults.filter(h => pcs.find(p => p.ipAddress === h.ip)).length} registered · {scanResults.filter(h => !pcs.find(p => p.ipAddress === h.ip)).length} unregistered
                             </p>
                           </div>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
-                        {scanResults.map(h=>{
-                          const reg = pcs.find(p=>p.ipAddress===h.ip)
-                          return (
-                            <div key={h.ip} className={`rounded-xl p-3 border-2 transition-all hover:shadow-md ${reg?'bg-blue-50 border-blue-300':'bg-green-50 border-green-300'}`}>
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className={`w-3 h-3 rounded-full flex-shrink-0 shadow-md ${reg?'bg-blue-500 animate-pulse':'bg-green-500 animate-pulse'}`}/>
-                                <span className="font-mono text-sm font-bold text-gray-800">{h.ip}</span>
+                        <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                          {scanResults.map(h => {
+                            const reg = pcs.find(p => p.ipAddress === h.ip)
+                            return (
+                              <div key={h.ip} className={`rounded-xl p-3 border-2 transition-all hover:shadow-md ${reg ? 'bg-blue-50 border-blue-300' : 'bg-green-50 border-green-300'}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse ${reg ? 'bg-blue-500' : 'bg-green-500'}`}/>
+                                  <span className="font-mono text-xs font-bold text-gray-800">{h.ip}</span>
+                                </div>
+                                <p className="text-xs text-gray-500 font-semibold">⚡ {h.responseTime}ms</p>
+                                {reg
+                                  ? <p className="text-xs text-blue-700 font-bold mt-1.5 bg-blue-100 px-2 py-1 rounded-lg">📌 {reg.name}</p>
+                                  : <button onClick={async () => {
+                                      const name = prompt(`Register ${h.ip}? Enter name:`)
+                                      if (!name) return
+                                      await fetch('/api/pcs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, ipAddress: h.ip, location: '' }) })
+                                      fetchPcs()
+                                    }} className="text-xs text-green-700 font-bold bg-green-100 hover:bg-green-200 px-2 py-1 rounded-lg transition-colors w-full text-center mt-1.5">
+                                      + Register Device
+                                    </button>
+                                }
                               </div>
-                              <p className="text-xs text-gray-500 font-semibold mb-2">⚡ {h.responseTime}ms</p>
-                              {reg
-                                ? <div className="flex items-center gap-1.5 text-xs text-blue-700 font-bold bg-blue-100 px-2 py-1 rounded-lg">📌 {reg.name}</div>
-                                : <button onClick={async()=>{
-                                    const name = prompt(`Register ${h.ip} as a workstation? Enter name:`)
-                                    if (!name) return
-                                    await fetch('/api/pcs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,ipAddress:h.ip,location:''})})
-                                    fetchPcs()
-                                  }} className="text-xs text-green-700 font-bold bg-green-100 hover:bg-green-200 px-2 py-1 rounded-lg transition-colors w-full text-center">
-                                    + Register Device
-                                  </button>
-                              }
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        <strong>⚠️ Bridge Agent required</strong> — Scanning runs on your local office PC. Average scan time: 10–30s. Browsers cannot perform raw network scans directly due to security restrictions.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── RIGHT: Live Station Status ── */}
+                <div className="glass rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm">📡</span>
+                      Live Station Status
+                    </h3>
+                    <button onClick={pingAll} disabled={pingAllLoading}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 flex items-center gap-1.5 font-semibold shadow-sm transition-all">
+                      {pingAllLoading ? <><Spinner /> Pinging All...</> : '🔄 Refresh All'}
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {pcs.length === 0
+                      ? <p className="text-center text-gray-300 py-6 text-sm">No stations registered yet</p>
+                      : pcs.map(pc => {
+                          const sm = STATUS_META[pc.status]
+                          return (
+                            <div key={pc.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors group">
+                              <div className={`w-3 h-3 rounded-full flex-shrink-0 ${sm.dot} ${pc.status === 'ONLINE' || pc.status === 'IN_USE' ? 'animate-pulse' : ''}`}/>
+                              <span className="text-base">{pc.icon || '🖥️'}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-semibold text-sm text-gray-800">{pc.name}</p>
+                                  <span className={`text-xs px-1.5 py-0.5 rounded-full border font-semibold ${sm.badge}`}>{sm.label}</span>
+                                </div>
+                                <p className="font-mono text-xs text-gray-400">{pc.ipAddress}{pc.location && ` · ${pc.location}`}</p>
+                                {pc.lastSeen && <p className="text-xs text-gray-300">{formatDistanceToNow(new Date(pc.lastSeen), { addSuffix: true })}</p>}
+                              </div>
+                              <button
+                                onClick={() => { setIpSearch(pc.ipAddress); searchIp(pc.ipAddress) }}
+                                disabled={pingingId === pc.id || ipLoading}
+                                className="text-xs px-3 py-1.5 rounded-lg border-2 border-gray-200 text-gray-600 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all disabled:opacity-50 flex-shrink-0 font-semibold flex items-center gap-1">
+                                {(pingingId === pc.id || (ipLoading && ipSearch === pc.ipAddress)) ? <><Spinner /></> : '📡 Ping'}
+                              </button>
                             </div>
                           )
-                        })}
-                      </div>
-                    </div>
-                  )}
+                        })
+                    }
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* RIGHT COL */}
-            <div className="space-y-5">
-              {/* Live station status */}
-              <div className="glass rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-display font-semibold text-gray-700 flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm">📡</span>
-                    Live Station Status
-                  </h3>
-                  <button onClick={pingAll} disabled={pingAllLoading}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 flex items-center gap-1.5 font-semibold shadow-sm transition-all">
-                    {pingAllLoading?<><Spinner/> Pinging All...</>:'🔄 Refresh All Stations'}
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {pcs.length===0
-                    ? <p className="text-center text-gray-300 py-6 text-sm">No stations registered yet</p>
-                    : pcs.map(pc=>{
-                      const sm = STATUS_META[pc.status]
-                      return (
-                        <div key={pc.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
-                          <div className={`w-3 h-3 rounded-full flex-shrink-0 ${sm.dot} ${pc.status==='ONLINE'?'animate-pulse':''}`}/>
-                          <span className="text-base">{pc.icon||'🖥️'}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-sm text-gray-800">{pc.name}</p>
-                              <span className={`text-xs px-1.5 py-0.5 rounded-full border ${sm.badge}`}>{sm.label}</span>
-                            </div>
-                            <p className="font-mono text-xs text-gray-400">{pc.ipAddress}{pc.location&&` · ${pc.location}`}</p>
-                          </div>
-                          {pc.lastSeen && <p className="text-xs text-gray-300 hidden sm:block">{formatDistanceToNow(new Date(pc.lastSeen),{addSuffix:true})}</p>}
-                          <button onClick={()=>pingPc(pc)} disabled={pingingId===pc.id}
-                            className="text-xs px-2.5 py-1.5 rounded-lg border-2 border-gray-200 text-gray-600 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all disabled:opacity-50 flex-shrink-0 font-semibold">
-                            {pingingId===pc.id?<><Spinner/></>:'📡 Ping'}
-                          </button>
-                        </div>
-                      )
-                    })
-                  }
-                </div>
-              </div>
-
-
-              {/* Bridge Agent Status */}
-              <div className="glass rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm">🔗</span>
-                  <h3 className="font-display font-semibold text-gray-700">Bridge Agent Info</h3>
-                </div>
-                <div className="space-y-2 text-xs text-gray-600 leading-relaxed">
-                  <p className="flex items-start gap-2">
-                    <span className="text-green-500 mt-0.5">✓</span>
-                    <span>Network scanning powered by <strong>Bridge Agent</strong> running on your office PC</span>
-                  </p>
-                  <p className="flex items-start gap-2">
-                    <span className="text-blue-500 mt-0.5">ℹ️</span>
-                    <span>Scans are processed locally and results sent securely to Railway</span>
-                  </p>
-                  <p className="flex items-start gap-2">
-                    <span className="text-purple-500 mt-0.5">⚡</span>
-                    <span>Average scan time: ~10-30 seconds depending on range</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Browser Security Note */}
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-4 shadow-sm">
-                <p className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
-                  <span className="text-lg">⚠️</span> Browser Security Limitations
-                </p>
-                <p className="text-xs text-amber-700 leading-relaxed">
-                  Browsers cannot directly access WiFi SSID, MAC addresses, or perform raw network scans due to security restrictions.
-                  This scanner uses a <strong>bridge agent</strong> running on your local network to bypass these limitations.
-                  For advanced network monitoring, consider tools like <strong>Advanced IP Scanner</strong> or <strong>Angry IP Scanner</strong>.
-                </p>
               </div>
             </div>
           </div>
         )}
+
 
         {/* ══════════════════════════════════════════════════════════ SECURITY */}
         {tab === 'settings' && (
