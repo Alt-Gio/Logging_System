@@ -181,6 +181,13 @@ export default function InternsPage() {
   const [dtrIntern, setDtrIntern] = useState<string>('all')
   const [internPhotoPreview, setInternPhotoPreview] = useState<string | null>(null)
   const [internDocFiles, setInternDocFiles] = useState<{ name: string; type: string; data: string }[]>([])
+  const [showEditIntern, setShowEditIntern] = useState(false)
+  const [editInternData, setEditInternData] = useState({ fullName: '', school: '', course: '', department: '', supervisor: '', startDate: '', endDate: '', requiredHours: '', email: '', phone: '', notes: '', status: 'ACTIVE' as InternStatus })
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [emailTarget, setEmailTarget] = useState<Intern | null>(null)
+  const [emailData, setEmailData] = useState({ subject: '', message: '', type: 'general', senderName: 'DTC Supervisor' })
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailResult, setEmailResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
   // ─── Data Fetching ────────────────────────────────────────────────────────────
   const fetchInterns = useCallback(async () => {
@@ -189,15 +196,15 @@ export default function InternsPage() {
       if (r.ok) {
         const data = await r.json()
         setInterns(data)
-        // Refresh selected intern if any
-        if (selectedIntern) {
-          const updated = data.find((i: Intern) => i.id === selectedIntern.id)
-          if (updated) setSelectedIntern(updated)
-        }
+        // Sync selected intern without creating a dependency cycle
+        setSelectedIntern(prev => {
+          if (!prev) return null
+          return data.find((i: Intern) => i.id === prev.id) ?? prev
+        })
       }
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [selectedIntern])
+  }, [])
 
   useEffect(() => {
     if (isSignedIn) fetchInterns()
@@ -307,8 +314,58 @@ export default function InternsPage() {
     fetchInterns()
   }
 
+  const handleEditIntern = async () => {
+    if (!selectedIntern) return
+    setSaving(true)
+    try {
+      const r = await fetch(`/api/interns/${selectedIntern.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editInternData,
+          requiredHours: parseInt(editInternData.requiredHours) || 486,
+          department: editInternData.department || null,
+          supervisor: editInternData.supervisor || null,
+          email: editInternData.email || null,
+          phone: editInternData.phone || null,
+          notes: editInternData.notes || null,
+        })
+      })
+      if (r.ok) {
+        setShowEditIntern(false)
+        await fetchInterns()
+      }
+    } finally { setSaving(false) }
+  }
+
+  const handleSendEmail = async () => {
+    if (!emailTarget || !emailData.subject || !emailData.message) return
+    setEmailSending(true)
+    setEmailResult(null)
+    try {
+      const r = await fetch(`/api/interns/${emailTarget.id}/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailData)
+      })
+      const json = await r.json()
+      if (r.ok) {
+        setEmailResult({ ok: true, msg: `Email sent successfully to ${emailTarget.email}` })
+        setEmailData({ subject: '', message: '', type: 'general', senderName: 'DTC Supervisor' })
+      } else {
+        setEmailResult({ ok: false, msg: json.error || 'Failed to send email' })
+      }
+    } catch { setEmailResult({ ok: false, msg: 'Network error — could not send email' }) }
+    finally { setEmailSending(false) }
+  }
+
   const handleAddAttendance = async () => {
     if (!newAttendance.internId) return
+    // Block future dates
+    if (newAttendance.date > format(new Date(), 'yyyy-MM-dd')) {
+      alert('Cannot log attendance for a future date.')
+      return
+    }
     setSaving(true)
     try {
       const date = newAttendance.date
@@ -623,6 +680,7 @@ export default function InternsPage() {
                 <div>
                   <label className="text-xs font-semibold text-gray-600 block mb-1.5">Date</label>
                   <input type="date" value={newAttendance.date} onChange={e => setNewAttendance(f => ({ ...f, date: e.target.value }))}
+                    max={format(new Date(), 'yyyy-MM-dd')}
                     className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
                 </div>
                 <div>
@@ -720,6 +778,202 @@ export default function InternsPage() {
               <button onClick={handleAddTask} disabled={saving || !newTask.internId || !newTask.title} className="flex-1 py-2.5 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
                 {saving ? <><Spinner/>Saving...</> : '+ Assign Task'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ EDIT INTERN MODAL ═════════════════════════════════════════════════════ */}
+      {showEditIntern && selectedIntern && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowEditIntern(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <Avatar name={selectedIntern.fullName} photo={selectedIntern.photoUrl} size="sm"/>
+                <div>
+                  <h2 className="font-display font-bold text-xl text-gray-800">Edit Intern</h2>
+                  <p className="text-xs text-gray-400">{selectedIntern.fullName}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowEditIntern(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Full Name *</label>
+                  <input value={editInternData.fullName} onChange={e => setEditInternData(f => ({ ...f, fullName: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">School / University *</label>
+                  <input value={editInternData.school} onChange={e => setEditInternData(f => ({ ...f, school: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Course / Program *</label>
+                  <input value={editInternData.course} onChange={e => setEditInternData(f => ({ ...f, course: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Department</label>
+                  <input value={editInternData.department} onChange={e => setEditInternData(f => ({ ...f, department: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Supervisor</label>
+                  <input value={editInternData.supervisor} onChange={e => setEditInternData(f => ({ ...f, supervisor: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Start Date</label>
+                  <input type="date" value={editInternData.startDate} onChange={e => setEditInternData(f => ({ ...f, startDate: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">End Date</label>
+                  <input type="date" value={editInternData.endDate} onChange={e => setEditInternData(f => ({ ...f, endDate: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Required Hours</label>
+                  <input type="number" value={editInternData.requiredHours} onChange={e => setEditInternData(f => ({ ...f, requiredHours: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Email</label>
+                  <input type="email" value={editInternData.email} onChange={e => setEditInternData(f => ({ ...f, email: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Phone</label>
+                  <input value={editInternData.phone} onChange={e => setEditInternData(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Status</label>
+                  <select value={editInternData.status} onChange={e => setEditInternData(f => ({ ...f, status: e.target.value as InternStatus }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+                    {Object.entries(INTERN_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Notes</label>
+                  <textarea value={editInternData.notes} onChange={e => setEditInternData(f => ({ ...f, notes: e.target.value }))}
+                    rows={2} className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100 resize-none"/>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 p-6 border-t border-gray-100">
+              <button onClick={() => setShowEditIntern(false)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleEditIntern} disabled={saving} className="flex-1 py-2.5 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving ? <><Spinner/>Saving...</> : '✓ Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ SEND EMAIL MODAL ═══════════════════════════════════════════════════════ */}
+      {showEmailModal && emailTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setShowEmailModal(false); setEmailResult(null) }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center text-lg">✉️</div>
+                <div>
+                  <h2 className="font-display font-bold text-xl text-gray-800">Send Message</h2>
+                  <p className="text-xs text-gray-400">to {emailTarget.fullName}</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowEmailModal(false); setEmailResult(null) }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Recipient preview */}
+              <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                <Avatar name={emailTarget.fullName} photo={emailTarget.photoUrl} size="md"/>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-gray-800">{emailTarget.fullName}</p>
+                  <p className="text-xs text-gray-500 truncate">{emailTarget.email || <span className="text-red-500">No email on file — add one via Edit</span>}</p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${INTERN_STATUS_META[emailTarget.status].badge}`}>
+                  {INTERN_STATUS_META[emailTarget.status].label}
+                </span>
+              </div>
+
+              {/* Message type */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Message Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'general',    label: 'General',    icon: '💬', color: 'border-blue-300 bg-blue-50 text-blue-700' },
+                    { id: 'reminder',   label: 'Reminder',   icon: '⏰', color: 'border-yellow-300 bg-yellow-50 text-yellow-700' },
+                    { id: 'task',       label: 'Task',       icon: '✅', color: 'border-purple-300 bg-purple-50 text-purple-700' },
+                    { id: 'evaluation', label: 'Evaluation', icon: '📋', color: 'border-green-300 bg-green-50 text-green-700' },
+                    { id: 'attendance', label: 'Attendance', icon: '📅', color: 'border-cyan-300 bg-cyan-50 text-cyan-700' },
+                  ].map(t => (
+                    <button key={t.id} onClick={() => setEmailData(f => ({ ...f, type: t.id }))}
+                      className={`py-2 px-3 rounded-xl border-2 text-xs font-semibold transition-all flex items-center gap-1.5 justify-center ${emailData.type === t.id ? t.color + ' border-current' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                      {t.icon} {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">From (Sender Name)</label>
+                <input value={emailData.senderName} onChange={e => setEmailData(f => ({ ...f, senderName: e.target.value }))}
+                  placeholder="e.g. John Smith — DTC Supervisor"
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Subject *</label>
+                <input value={emailData.subject} onChange={e => setEmailData(f => ({ ...f, subject: e.target.value }))}
+                  placeholder="e.g. Reminder: Submit your weekly report"
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Message *</label>
+                <textarea value={emailData.message} onChange={e => setEmailData(f => ({ ...f, message: e.target.value }))}
+                  rows={5} placeholder="Write your message here..."
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] resize-none"/>
+              </div>
+
+              {/* Quick templates */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1.5">Quick Templates</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Submit DTR', text: 'Please submit your Daily Time Record (DTR) for this week. Kindly ensure it is complete and signed before end of day.' },
+                    { label: 'Meeting Tomorrow', text: 'Please be advised that there will be a meeting tomorrow. Kindly be present at the office at 9:00 AM. Please come prepared.' },
+                    { label: 'Completion', text: `Congratulations on completing your internship with the Department of Information and Communications Technology — Digital Transformation Center, Region V! We commend your hard work and dedication throughout your stay.` },
+                  ].map(t => (
+                    <button key={t.label} onClick={() => setEmailData(f => ({ ...f, message: t.text }))}
+                      className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all font-semibold">
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Result feedback */}
+              {emailResult && (
+                <div className={`flex items-center gap-3 p-3 rounded-xl border ${emailResult.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                  <span>{emailResult.ok ? '✓' : '✗'}</span>
+                  <p className="text-sm font-semibold">{emailResult.msg}</p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 p-6 border-t border-gray-100">
+              <button onClick={() => { setShowEmailModal(false); setEmailResult(null) }} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                {emailResult?.ok ? 'Close' : 'Cancel'}
+              </button>
+              {!emailResult?.ok && (
+                <button onClick={handleSendEmail}
+                  disabled={emailSending || !emailTarget.email || !emailData.subject || !emailData.message}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                  {emailSending ? <><Spinner/>Sending...</> : '✉️ Send Email'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -993,7 +1247,7 @@ export default function InternsPage() {
                   className="flex-1 min-w-[200px] border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
                 <div className="flex gap-2">
                   {['all', 'ACTIVE', 'COMPLETED', 'INACTIVE', 'ON_LEAVE'].map(s => (
-                    <button key={s} onClick={() => setFilterStatus(s)}
+                    <button key={s} onClick={() => { setFilterStatus(s); setSelectedIntern(null) }}
                       className={`text-xs px-3 py-2 rounded-xl font-semibold transition-all ${filterStatus === s ? 'bg-[var(--dict-blue)] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                       {s === 'all' ? 'All' : INTERN_STATUS_META[s as InternStatus].label}
                     </button>
@@ -1022,6 +1276,32 @@ export default function InternsPage() {
                           className="text-xs px-3 py-2 rounded-xl bg-white/20 text-white border border-white/30 outline-none cursor-pointer">
                           {Object.entries(INTERN_STATUS_META).map(([k, v]) => <option key={k} value={k} className="text-gray-800">{v.label}</option>)}
                         </select>
+                        <button
+                          onClick={() => {
+                            setEditInternData({
+                              fullName: selectedIntern.fullName,
+                              school: selectedIntern.school,
+                              course: selectedIntern.course,
+                              department: selectedIntern.department || '',
+                              supervisor: selectedIntern.supervisor || '',
+                              startDate: selectedIntern.startDate.split('T')[0],
+                              endDate: selectedIntern.endDate.split('T')[0],
+                              requiredHours: String(selectedIntern.requiredHours),
+                              email: selectedIntern.email || '',
+                              phone: selectedIntern.phone || '',
+                              notes: selectedIntern.notes || '',
+                              status: selectedIntern.status,
+                            })
+                            setShowEditIntern(true)
+                          }}
+                          className="text-xs px-3 py-2 rounded-xl bg-white/20 text-white border border-white/30 hover:bg-white/30 transition-all">
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={() => { setEmailTarget(selectedIntern); setEmailResult(null); setShowEmailModal(true) }}
+                          className="text-xs px-3 py-2 rounded-xl bg-white/20 text-white border border-white/30 hover:bg-white/30 transition-all">
+                          ✉️ Message
+                        </button>
                         <button onClick={() => handleDeleteIntern(selectedIntern.id)}
                           className="text-xs px-3 py-2 rounded-xl bg-red-500/30 text-white border border-red-400/40 hover:bg-red-500/50 transition-all">
                           🗑 Delete
@@ -1113,7 +1393,7 @@ export default function InternsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedIntern.attendance.slice(0, 10).map(a => {
+                          {selectedIntern.attendance.slice().sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()).slice(-10).map(a => {
                             const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
                             return (
                               <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
@@ -1289,7 +1569,7 @@ export default function InternsPage() {
               </div>
 
               {interns.map(intern => {
-                const sorted = intern.attendance.slice().sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                const sorted = intern.attendance.slice().sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                 const weekHours = intern.attendance.filter(a => {
                   const diff = (Date.now() - new Date(a.date).getTime()) / (1000*60*60*24)
                   return diff <= 7
@@ -1351,7 +1631,7 @@ export default function InternsPage() {
                         <p className="text-center text-gray-400 text-xs py-2">No records yet</p>
                       ) : (
                         <div className="grid grid-cols-4 sm:grid-cols-7 lg:grid-cols-10 gap-1.5">
-                          {sorted.slice(0,20).map(a => {
+                          {sorted.slice(-20).map(a => {
                             const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
                             return (
                               <div key={a.id} className={`rounded-xl p-2 border text-center group relative ${m.color} border-current/20 cursor-default`}

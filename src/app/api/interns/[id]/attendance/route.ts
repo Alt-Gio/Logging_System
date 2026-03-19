@@ -19,6 +19,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const body = await req.json()
     const { date, timeIn, timeOut, status, notes } = body
 
+    // Reject future dates
+    const recordDate = new Date(date)
+    const today = new Date()
+    today.setHours(23, 59, 59, 999)
+    if (recordDate > today) {
+      return NextResponse.json({ error: 'Cannot log attendance for a future date' }, { status: 400 })
+    }
+
     // Compute hours if both timeIn and timeOut provided
     let hours: number | null = null
     if (timeIn && timeOut) {
