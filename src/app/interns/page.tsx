@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useUser, UserButton } from '@clerk/nextjs'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, differenceInDays } from 'date-fns'
+import * as XLSX from 'xlsx'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type InternStatus = 'ACTIVE' | 'COMPLETED' | 'INACTIVE' | 'ON_LEAVE'
@@ -94,13 +95,14 @@ const ATTENDANCE_STATUS_META: Record<AttendanceStatus, { label: string; color: s
   HOLIDAY:  { label: 'Holiday',  color: 'bg-purple-100 text-purple-700', icon: '🎉' },
 }
 
-type NavSection = 'overview' | 'interns' | 'attendance' | 'tasks' | 'documents' | 'certificates' | 'reports'
+type NavSection = 'overview' | 'interns' | 'attendance' | 'tasks' | 'timeline' | 'documents' | 'certificates' | 'reports'
 
 const NAV_ITEMS: { id: NavSection; label: string; icon: string; description: string }[] = [
   { id: 'overview',    label: 'Overview',       icon: '📊', description: 'Dashboard & stats' },
   { id: 'interns',     label: 'Intern Roster',  icon: '👥', description: 'Manage interns' },
   { id: 'attendance',  label: 'Attendance/DTR', icon: '📅', description: 'Time records' },
   { id: 'tasks',       label: 'Tasks',          icon: '✅', description: 'Assign & track' },
+  { id: 'timeline',    label: 'Timeline',       icon: '🗓️', description: 'Intern gallery timeline' },
   { id: 'documents',   label: 'Documents',      icon: '📁', description: 'Files & records' },
   { id: 'certificates', label: 'Certificates',  icon: '📜', description: 'Generate certificates' },
   { id: 'reports',     label: 'Reports',        icon: '📈', description: 'Summaries' },
@@ -174,6 +176,9 @@ export default function InternsPage() {
   const [saving, setSaving] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [draggedTask, setDraggedTask] = useState<{ taskId: string; internId: string; fromStatus: TaskStatus } | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<TaskStatus | null>(null)
+  const [dtrIntern, setDtrIntern] = useState<string>('all')
 
   // ─── Data Fetching ────────────────────────────────────────────────────────────
   const fetchInterns = useCallback(async () => {
@@ -311,6 +316,96 @@ export default function InternsPage() {
   const handleDeleteAttendance = async (internId: string, recordId: string) => {
     await fetch(`/api/interns/${internId}/attendance?recordId=${recordId}`, { method: 'DELETE' })
     fetchInterns()
+  }
+
+  const exportDTR = (intern: Intern) => {
+    const rows: (string | number)[][] = [
+      ['DAILY TIME RECORD (DTR)'],
+      ['Name:', intern.fullName],
+      ['School:', intern.school],
+      ['Course / Program:', intern.course],
+      ['Department:', intern.department ?? ''],
+      ['Supervisor:', intern.supervisor ?? ''],
+      ['Internship Period:', `${format(new Date(intern.startDate), 'MMMM d, yyyy')} – ${format(new Date(intern.endDate), 'MMMM d, yyyy')}`],
+      ['Required Hours:', intern.requiredHours],
+      ['Total Hours Logged:', Math.round(intern.totalHours * 10) / 10],
+      [],
+      ['Date', 'Day', 'Time In', 'Time Out', 'Hours', 'Status', 'Notes'],
+      ...intern.attendance
+        .slice()
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map(a => [
+          format(new Date(a.date), 'MM/dd/yyyy'),
+          format(new Date(a.date), 'EEEE'),
+          a.timeIn ? format(new Date(a.timeIn), 'h:mm a') : '',
+          a.timeOut ? format(new Date(a.timeOut), 'h:mm a') : '',
+          a.hours ?? '',
+          ATTENDANCE_STATUS_META[a.status as AttendanceStatus].label,
+          a.notes ?? ''
+        ])
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 30 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'DTR')
+    XLSX.writeFile(wb, `DTR-${intern.fullName.replace(/\s+/g, '-')}.xlsx`)
+  }
+
+  const exportAllDTR = () => {
+    const wb = XLSX.utils.book_new()
+    interns.forEach(intern => {
+      const rows: (string | number)[][] = [
+        ['Name:', intern.fullName],
+        ['School:', intern.school],
+        ['Course:', intern.course],
+        ['Period:', `${format(new Date(intern.startDate), 'MMM d, yyyy')} – ${format(new Date(intern.endDate), 'MMM d, yyyy')}`],
+        ['Total Hours:', Math.round(intern.totalHours * 10) / 10],
+        [],
+        ['Date', 'Day', 'Time In', 'Time Out', 'Hours', 'Status', 'Notes'],
+        ...intern.attendance
+          .slice()
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .map(a => [
+            format(new Date(a.date), 'MM/dd/yyyy'),
+            format(new Date(a.date), 'EEEE'),
+            a.timeIn ? format(new Date(a.timeIn), 'h:mm a') : '',
+            a.timeOut ? format(new Date(a.timeOut), 'h:mm a') : '',
+            a.hours ?? '',
+            ATTENDANCE_STATUS_META[a.status as AttendanceStatus].label,
+            a.notes ?? ''
+          ])
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(rows)
+      const sheetName = intern.fullName.slice(0, 28).replace(/[\\\/*?[\]]/g, '')
+      XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    })
+    XLSX.writeFile(wb, `All-DTR-${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
+  }
+
+  const handleDragStart = (taskId: string, internId: string, fromStatus: TaskStatus) => {
+    setDraggedTask({ taskId, internId, fromStatus })
+  }
+
+  const handleDragOver = (e: React.DragEvent, status: TaskStatus) => {
+    e.preventDefault()
+    setDragOverCol(status)
+  }
+
+  const handleDrop = async (e: React.DragEvent, toStatus: TaskStatus) => {
+    e.preventDefault()
+    if (!draggedTask || draggedTask.fromStatus === toStatus) {
+      setDraggedTask(null)
+      setDragOverCol(null)
+      return
+    }
+    await handleTaskStatusChange(draggedTask.internId, draggedTask.taskId, toStatus)
+    setDraggedTask(null)
+    setDragOverCol(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedTask(null)
+    setDragOverCol(null)
   }
 
   // ─── Auth Gate ────────────────────────────────────────────────────────────────
@@ -1066,26 +1161,33 @@ export default function InternsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h1 className="font-display font-bold text-2xl text-gray-800">Attendance / DTR</h1>
-                  <p className="text-sm text-gray-500 mt-0.5">Daily time records for all interns</p>
+                  <p className="text-sm text-gray-500 mt-0.5">Daily time records — export each intern's DTR as Excel</p>
                 </div>
-                <button onClick={() => setShowAddAttendance(true)}
-                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
-                  ✓ Log Attendance
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={exportAllDTR}
+                    className="px-4 py-2 border-2 border-green-400 text-green-700 rounded-xl text-sm font-bold hover:bg-green-50 transition-all flex items-center gap-2">
+                    ↓ Export All DTR
+                  </button>
+                  <button onClick={() => setShowAddAttendance(true)}
+                    className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                    ✓ Log Attendance
+                  </button>
+                </div>
               </div>
 
-              {activeInterns.map(intern => {
-                const recentRecords = intern.attendance.slice(0, 14)
+              {interns.map(intern => {
+                const sorted = intern.attendance.slice().sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 const weekHours = intern.attendance.filter(a => {
-                  const d = new Date(a.date)
-                  const now = new Date()
-                  const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)
+                  const diff = (Date.now() - new Date(a.date).getTime()) / (1000*60*60*24)
                   return diff <= 7
                 }).reduce((s, a) => s + (a.hours ?? 0), 0)
+                const presentDays = intern.attendance.filter(a => a.status === 'PRESENT' || a.status === 'HALF_DAY').length
+                const absentDays  = intern.attendance.filter(a => a.status === 'ABSENT').length
 
                 return (
                   <div key={intern.id} className="glass rounded-2xl overflow-hidden">
-                    <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-wrap gap-3">
                       <div className="flex items-center gap-3">
                         <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
                         <div>
@@ -1093,55 +1195,113 @@ export default function InternsPage() {
                           <p className="text-xs text-gray-500">{intern.course} · {intern.school}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4 text-right">
-                        <div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="text-right">
                           <p className="text-xs text-gray-400">This week</p>
-                          <p className="font-bold text-gray-700 text-sm">{Math.round(weekHours * 10) / 10}h</p>
+                          <p className="font-bold text-gray-700 text-sm">{Math.round(weekHours*10)/10}h</p>
                         </div>
-                        <div>
+                        <div className="text-right">
                           <p className="text-xs text-gray-400">Total</p>
-                          <p className="font-bold text-[var(--dict-blue)] text-sm">{Math.round(intern.totalHours * 10) / 10}h / {intern.requiredHours}h</p>
+                          <p className="font-bold text-[var(--dict-blue)] text-sm">{Math.round(intern.totalHours*10)/10}h / {intern.requiredHours}h</p>
                         </div>
-                        <button onClick={() => { setNewAttendance(f => ({ ...f, internId: intern.id })); setShowAddAttendance(true) }}
-                          className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-all">
-                          + Log
-                        </button>
+                        <div className="flex gap-2">
+                          <button onClick={() => exportDTR(intern)}
+                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-200 transition-all flex items-center gap-1">
+                            ↓ DTR
+                          </button>
+                          <button onClick={() => { setNewAttendance(f => ({ ...f, internId: intern.id })); setShowAddAttendance(true) }}
+                            className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-all">
+                            + Log
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div className="p-4">
-                      <div className="mb-3">
-                        <HoursProgress current={intern.totalHours} required={intern.requiredHours}/>
+
+                    <div className="p-4 space-y-4">
+                      {/* Progress + summary stats */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="col-span-3 sm:col-span-1">
+                          <HoursProgress current={intern.totalHours} required={intern.requiredHours}/>
+                        </div>
+                        <div className="flex gap-3 col-span-3 sm:col-span-2 justify-end">
+                          {[{label:'Present',val:presentDays,c:'text-green-600 bg-green-50'},{label:'Absent',val:absentDays,c:'text-red-600 bg-red-50'},{label:'Records',val:intern.attendance.length,c:'text-blue-600 bg-blue-50'}].map(s=>(
+                            <div key={s.label} className={`px-4 py-2 rounded-xl text-center ${s.c}`}>
+                              <p className="text-xl font-bold">{s.val}</p>
+                              <p className="text-xs font-semibold">{s.label}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      {recentRecords.length === 0 ? (
-                        <p className="text-center text-gray-400 text-xs py-4">No attendance records yet</p>
+
+                      {/* Day chips */}
+                      {sorted.length === 0 ? (
+                        <p className="text-center text-gray-400 text-xs py-2">No records yet</p>
                       ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-                          {recentRecords.map(a => {
+                        <div className="grid grid-cols-4 sm:grid-cols-7 lg:grid-cols-10 gap-1.5">
+                          {sorted.slice(0,20).map(a => {
                             const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
                             return (
-                              <div key={a.id} className={`rounded-xl p-2.5 border text-center group relative ${m.color} border-current/20`}>
-                                <p className="text-xs font-bold">{format(new Date(a.date), 'MMM d')}</p>
-                                <p className="text-lg mt-0.5">{m.icon}</p>
-                                {a.hours && <p className="text-xs font-semibold mt-0.5">{a.hours}h</p>}
-                                <button
-                                  onClick={() => handleDeleteAttendance(intern.id, a.id)}
-                                  className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs hidden group-hover:flex items-center justify-center">
-                                  ✕
-                                </button>
+                              <div key={a.id} className={`rounded-xl p-2 border text-center group relative ${m.color} border-current/20 cursor-default`}
+                                title={`${format(new Date(a.date),'MMM d, yyyy')} — ${m.label}${a.hours ? ` · ${a.hours}h` : ''}`}>
+                                <p className="text-xs font-bold leading-none">{format(new Date(a.date),'MMM d')}</p>
+                                <p className="text-base mt-0.5">{m.icon}</p>
+                                {a.hours && <p className="text-xs font-semibold">{a.hours}h</p>}
+                                <button onClick={() => handleDeleteAttendance(intern.id, a.id)}
+                                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs hidden group-hover:flex items-center justify-center shadow">✕</button>
                               </div>
                             )
                           })}
                         </div>
+                      )}
+
+                      {/* Full DTR table */}
+                      {sorted.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs font-semibold text-blue-600 cursor-pointer hover:underline select-none">
+                            View full DTR table ({intern.attendance.length} records)
+                          </summary>
+                          <div className="overflow-x-auto mt-3 rounded-xl border border-gray-100">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-gray-50 border-b border-gray-100">
+                                  {['Date','Day','Time In','Time Out','Hours','Status','Notes'].map(h=>(
+                                    <th key={h} className="text-left text-xs font-bold text-gray-500 px-3 py-2">{h}</th>
+                                  ))}
+                                  <th className="px-3 py-2"/>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-50">
+                                {sorted.map(a => {
+                                  const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
+                                  return (
+                                    <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                                      <td className="px-3 py-2 font-semibold text-gray-800 whitespace-nowrap">{format(new Date(a.date),'MMM d, yyyy')}</td>
+                                      <td className="px-3 py-2 text-gray-500 text-xs">{format(new Date(a.date),'EEE')}</td>
+                                      <td className="px-3 py-2 font-mono text-xs text-gray-600">{a.timeIn ? format(new Date(a.timeIn),'h:mm a') : '—'}</td>
+                                      <td className="px-3 py-2 font-mono text-xs text-gray-600">{a.timeOut ? format(new Date(a.timeOut),'h:mm a') : '—'}</td>
+                                      <td className="px-3 py-2 font-bold text-gray-800">{a.hours ? `${a.hours}h` : '—'}</td>
+                                      <td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${m.color}`}>{m.label}</span></td>
+                                      <td className="px-3 py-2 text-xs text-gray-400 max-w-[120px] truncate">{a.notes || '—'}</td>
+                                      <td className="px-3 py-2 text-right">
+                                        <button onClick={() => handleDeleteAttendance(intern.id, a.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
                       )}
                     </div>
                   </div>
                 )
               })}
 
-              {activeInterns.length === 0 && (
+              {interns.length === 0 && (
                 <div className="glass rounded-2xl py-16 text-center">
                   <p className="text-5xl mb-4">📅</p>
-                  <p className="text-gray-500 font-medium">No active interns to show attendance for</p>
+                  <p className="text-gray-500 font-medium">No interns to show attendance for</p>
                 </div>
               )}
             </div>
@@ -1152,8 +1312,8 @@ export default function InternsPage() {
             <div className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h1 className="font-display font-bold text-2xl text-gray-800">Task Management</h1>
-                  <p className="text-sm text-gray-500 mt-0.5">{allTasks.length} total tasks across all interns</p>
+                  <h1 className="font-display font-bold text-2xl text-gray-800">Task Board</h1>
+                  <p className="text-sm text-gray-500 mt-0.5">{allTasks.length} total · {allTasks.filter(t=>t.status==='PENDING').length} pending · {allTasks.filter(t=>t.status==='IN_PROGRESS').length} in progress · {allTasks.filter(t=>t.status==='COMPLETED').length} done — <span className="text-blue-500 font-semibold">drag cards to move between columns</span></p>
                 </div>
                 <button onClick={() => setShowAddTask(true)}
                   className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
@@ -1161,59 +1321,275 @@ export default function InternsPage() {
                 </button>
               </div>
 
-              {/* Kanban columns */}
+              {/* Kanban board */}
               <div className="grid md:grid-cols-4 gap-4">
                 {(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as TaskStatus[]).map(status => {
                   const statusTasks = allTasks.filter(t => t.status === status)
                   const tm = TASK_STATUS_META[status]
+                  const isOver = dragOverCol === status
+                  const colAccent: Record<TaskStatus, string> = {
+                    PENDING:     'border-gray-300 bg-gray-50/60',
+                    IN_PROGRESS: 'border-blue-300 bg-blue-50/60',
+                    COMPLETED:   'border-green-300 bg-green-50/60',
+                    CANCELLED:   'border-red-200 bg-red-50/60',
+                  }
+                  const colHeader: Record<TaskStatus, string> = {
+                    PENDING:     'bg-gray-100 text-gray-700',
+                    IN_PROGRESS: 'bg-blue-100 text-blue-700',
+                    COMPLETED:   'bg-green-100 text-green-700',
+                    CANCELLED:   'bg-red-100 text-red-600',
+                  }
                   return (
-                    <div key={status} className="glass rounded-2xl p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                    <div key={status}
+                      onDragOver={e => handleDragOver(e, status)}
+                      onDrop={e => handleDrop(e, status)}
+                      className={`rounded-2xl border-2 transition-all duration-200 ${colAccent[status]} ${isOver ? 'scale-[1.02] ring-2 ring-blue-400 shadow-lg' : ''}`}>
+                      {/* Column header */}
+                      <div className={`flex items-center justify-between px-4 py-3 rounded-t-2xl ${colHeader[status]}`}>
+                        <h3 className="text-sm font-bold flex items-center gap-2">
                           <span>{tm.icon}</span>{tm.label}
                         </h3>
-                        <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 font-bold">{statusTasks.length}</span>
+                        <span className="text-xs bg-white/70 rounded-full px-2 py-0.5 font-bold shadow-sm">{statusTasks.length}</span>
                       </div>
-                      <div className="space-y-2 min-h-[100px]">
+
+                      {/* Drop zone */}
+                      <div className="p-3 space-y-2 min-h-[200px]">
                         {statusTasks.map(task => {
                           const pm = PRIORITY_META[task.priority] || PRIORITY_META.MEDIUM
                           const intern = interns.find(i => i.id === task.internId)
+                          const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'COMPLETED'
+                          const isDragging = draggedTask?.taskId === task.id
                           return (
-                            <div key={task.id} className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <p className="text-sm font-semibold text-gray-800 leading-tight">{task.title}</p>
-                                <button onClick={() => handleDeleteTask(task.internId, task.id)} className="text-red-300 hover:text-red-500 text-xs flex-shrink-0">✕</button>
+                            <div key={task.id}
+                              draggable
+                              onDragStart={() => handleDragStart(task.id, task.internId, task.status)}
+                              onDragEnd={handleDragEnd}
+                              className={`bg-white rounded-xl p-3 border shadow-sm cursor-grab active:cursor-grabbing transition-all duration-150 select-none ${isDragging ? 'opacity-40 scale-95 rotate-1' : 'hover:shadow-md hover:-translate-y-0.5'} ${isOverdue ? 'border-red-300' : 'border-gray-100'}`}>
+
+                              {/* Drag handle + title */}
+                              <div className="flex items-start gap-2 mb-2">
+                                <span className="text-gray-300 text-xs mt-0.5 flex-shrink-0 select-none">⠿</span>
+                                <p className="text-sm font-semibold text-gray-800 leading-tight flex-1">{task.title}</p>
+                                <button onClick={() => handleDeleteTask(task.internId, task.id)}
+                                  className="text-red-300 hover:text-red-500 text-xs flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Delete task">✕</button>
                               </div>
-                              {task.description && <p className="text-xs text-gray-500 mb-2 line-clamp-2">{task.description}</p>}
-                              <div className="flex items-center gap-2 flex-wrap">
+
+                              {task.description && (
+                                <p className="text-xs text-gray-400 mb-2 line-clamp-2 pl-4">{task.description}</p>
+                              )}
+
+                              {/* Priority + Due date */}
+                              <div className="flex items-center gap-1.5 flex-wrap pl-4 mb-2">
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${pm.color}`}>{pm.label}</span>
                                 {task.dueDate && (
-                                  <span className="text-xs text-gray-400">Due {format(new Date(task.dueDate), 'MMM d')}</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                                    {isOverdue ? '⚠️' : '📅'} {format(new Date(task.dueDate), 'MMM d')}
+                                  </span>
                                 )}
                               </div>
-                              <div className="flex items-center justify-between mt-2">
-                                {intern && (
+
+                              {/* Assigned intern + quick status buttons */}
+                              <div className="flex items-center justify-between pl-4 mt-1">
+                                {intern ? (
                                   <div className="flex items-center gap-1.5">
                                     <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
-                                    <span className="text-xs text-gray-500 truncate max-w-[80px]">{intern.fullName.split(' ')[0]}</span>
+                                    <span className="text-xs text-gray-500 truncate max-w-[70px]">{intern.fullName.split(' ')[0]}</span>
                                   </div>
-                                )}
-                                <select value={task.status} onChange={e => handleTaskStatusChange(task.internId, task.id, e.target.value as TaskStatus)}
-                                  className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 outline-none text-gray-600 cursor-pointer">
-                                  {Object.entries(TASK_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                                </select>
+                                ) : <span/>}
+                                <div className="flex gap-1">
+                                  {status !== 'COMPLETED' && (
+                                    <button onClick={() => handleTaskStatusChange(task.internId, task.id, 'COMPLETED')}
+                                      title="Mark complete"
+                                      className="w-6 h-6 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 flex items-center justify-center text-xs transition-all">✓</button>
+                                  )}
+                                  {status === 'PENDING' && (
+                                    <button onClick={() => handleTaskStatusChange(task.internId, task.id, 'IN_PROGRESS')}
+                                      title="Start task"
+                                      className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center justify-center text-xs transition-all">▶</button>
+                                  )}
+                                  <button onClick={() => handleDeleteTask(task.internId, task.id)}
+                                    title="Delete"
+                                    className="w-6 h-6 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 flex items-center justify-center text-xs transition-all">✕</button>
+                                </div>
                               </div>
                             </div>
                           )
                         })}
+
+                        {/* Empty drop target */}
                         {statusTasks.length === 0 && (
-                          <p className="text-center text-xs text-gray-300 py-4">No tasks</p>
+                          <div className={`rounded-xl border-2 border-dashed p-6 text-center transition-all ${isOver ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
+                            <p className="text-xs text-gray-300 font-medium">{isOver ? 'Drop here' : 'No tasks'}</p>
+                          </div>
                         )}
                       </div>
                     </div>
                   )
                 })}
               </div>
+
+              {/* Per-intern task list */}
+              <div className="glass rounded-2xl p-5">
+                <h2 className="font-display font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm">👤</span>
+                  Tasks by Intern
+                </h2>
+                <div className="space-y-4">
+                  {interns.filter(i => i.tasks.length > 0).map(intern => (
+                    <div key={intern.id} className="border-2 border-gray-100 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
+                          <div>
+                            <p className="font-bold text-sm text-gray-800">{intern.fullName}</p>
+                            <p className="text-xs text-gray-400">{intern.tasks.filter(t=>t.status==='COMPLETED').length}/{intern.tasks.length} tasks done</p>
+                          </div>
+                        </div>
+                        <button onClick={() => { setNewTask(f => ({ ...f, internId: intern.id })); setShowAddTask(true) }}
+                          className="text-xs px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg font-semibold hover:bg-purple-200 transition-all">
+                          + Task
+                        </button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {intern.tasks.map(task => {
+                          const tm = TASK_STATUS_META[task.status]
+                          const pm = PRIORITY_META[task.priority] || PRIORITY_META.MEDIUM
+                          const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'COMPLETED'
+                          return (
+                            <div key={task.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all">
+                              <span className="text-base">{tm.icon}</span>
+                              <p className={`flex-1 text-sm font-medium truncate ${task.status === 'COMPLETED' ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.title}</p>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold hidden sm:block ${pm.color}`}>{pm.label}</span>
+                              {task.dueDate && (
+                                <span className={`text-xs font-semibold hidden md:block ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>
+                                  {isOverdue ? '⚠️ ' : ''}Due {format(new Date(task.dueDate), 'MMM d')}
+                                </span>
+                              )}
+                              <select value={task.status} onChange={e => handleTaskStatusChange(intern.id, task.id, e.target.value as TaskStatus)}
+                                className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 outline-none text-gray-600 cursor-pointer flex-shrink-0">
+                                {Object.entries(TASK_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                              </select>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  {interns.filter(i => i.tasks.length > 0).length === 0 && (
+                    <div className="text-center py-8 text-gray-400">
+                      <p className="text-3xl mb-2">✅</p>
+                      <p className="text-sm">No tasks assigned yet</p>
+                      <button onClick={() => setShowAddTask(true)} className="mt-2 text-purple-500 text-xs font-semibold hover:underline">+ Assign first task</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ TIMELINE ═════════════════════════════════════════════════════════ */}
+          {activeSection === 'timeline' && (
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="font-display font-bold text-2xl text-gray-800">Intern Timeline</h1>
+                  <p className="text-sm text-gray-500 mt-0.5">Visual gallery of all interns sorted by internship period</p>
+                </div>
+              </div>
+
+              {/* Gallery grid */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {interns
+                  .slice()
+                  .sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+                  .map((intern, idx) => {
+                    const sm = INTERN_STATUS_META[intern.status]
+                    const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
+                    const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
+                    const tasksDone = intern.tasks.filter(t=>t.status==='COMPLETED').length
+                    const tasksTotal = intern.tasks.length
+                    const presentDays = intern.attendance.filter(a=>a.status==='PRESENT'||a.status==='HALF_DAY').length
+                    return (
+                      <div key={intern.id}
+                        className="glass rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-200 cursor-pointer group"
+                        onClick={() => { setSelectedIntern(intern); setActiveSection('interns') }}>
+                        {/* Color bar by status */}
+                        <div className={`h-1.5 bg-gradient-to-r ${sm.bg}`}/>
+                        {/* Card body */}
+                        <div className="p-5">
+                          <div className="flex items-start gap-3 mb-4">
+                            <div className="relative">
+                              <Avatar name={intern.fullName} photo={intern.photoUrl} size="lg"/>
+                              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${sm.dot}`}/>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-800 leading-tight truncate">{intern.fullName}</p>
+                              <p className="text-xs text-gray-500 truncate mt-0.5">{intern.course}</p>
+                              <p className="text-xs text-gray-400 truncate">{intern.school}</p>
+                            </div>
+                            <span className="text-xs text-gray-400 font-bold">#{idx+1}</span>
+                          </div>
+
+                          {/* Hours progress */}
+                          <div className="mb-3">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-gray-500 font-medium">{Math.round(intern.totalHours)}h / {intern.requiredHours}h</span>
+                              <span className={`font-bold ${pct>=100?'text-green-600':pct>=70?'text-blue-600':'text-orange-500'}`}>{pct}%</span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-2 rounded-full transition-all bg-gradient-to-r ${pct>=100?'from-green-400 to-emerald-500':pct>=70?'from-blue-400 to-indigo-500':'from-orange-400 to-red-400'}`}
+                                style={{width:`${pct}%`}}/>
+                            </div>
+                          </div>
+
+                          {/* Stats row */}
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                            {[
+                              {label:'Days',val:presentDays,icon:'📅'},
+                              {label:'Tasks',val:`${tasksDone}/${tasksTotal}`,icon:'✅'},
+                              {label:daysLeft>0?'Left':'Ended',val:daysLeft>0?`${daysLeft}d`:`${Math.abs(daysLeft)}d`,icon:daysLeft>0?'⏳':'🏁'},
+                            ].map(s=>(
+                              <div key={s.label} className="bg-gray-50 rounded-xl p-2 text-center">
+                                <p className="text-base">{s.icon}</p>
+                                <p className="text-xs font-bold text-gray-800">{s.val}</p>
+                                <p className="text-xs text-gray-400">{s.label}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Timeline bar */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-gray-400">
+                              <span>{format(new Date(intern.startDate),'MMM d')}</span>
+                              <span>{format(new Date(intern.endDate),'MMM d, yyyy')}</span>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-1.5 rounded-full bg-gradient-to-r from-[var(--dict-blue)] to-blue-400"
+                                style={{width:`${Math.min(100,Math.max(2, differenceInDays(new Date(),new Date(intern.startDate))/Math.max(1,differenceInDays(new Date(intern.endDate),new Date(intern.startDate)))*100))}%`}}/>
+                            </div>
+                          </div>
+
+                          {/* Badge */}
+                          <div className="mt-3 flex items-center justify-between">
+                            <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${sm.badge}`}>{sm.label}</span>
+                            <span className="text-xs text-gray-400 group-hover:text-blue-500 transition-colors">View profile →</span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+
+              {interns.length === 0 && (
+                <div className="glass rounded-2xl py-20 text-center">
+                  <p className="text-5xl mb-4">🗓️</p>
+                  <p className="text-gray-500 font-medium">No interns yet</p>
+                  <button onClick={() => setShowAddIntern(true)} className="mt-3 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">
+                    + Add First Intern
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
