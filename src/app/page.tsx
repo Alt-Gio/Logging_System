@@ -28,7 +28,7 @@ function useCounter(target: number, duration = 2200, active = false) {
   return val
 }
 
-function EventCard({ a }: { a: Announcement }) {
+function EventCard({ a, onExpand }: { a: Announcement; onExpand: (a: Announcement) => void }) {
   const [visible, setVisible] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -37,8 +37,8 @@ function EventCard({ a }: { a: Announcement }) {
     return () => obs.disconnect()
   }, [])
   return (
-    <div ref={ref} style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(24px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}
-      className="group relative rounded-2xl overflow-hidden border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-all duration-300 hover:-translate-y-1 cursor-default">
+    <div ref={ref} onClick={() => onExpand(a)} style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(24px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}
+      className="group relative rounded-2xl overflow-hidden border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-all duration-300 hover:-translate-y-1.5 cursor-pointer select-none">
       <div className={`absolute top-0 left-0 w-1 h-full ${a.urgent ? 'bg-amber-400' : 'bg-blue-500'}`}/>
       <div className="p-6 pl-7">
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -58,6 +58,10 @@ function EventCard({ a }: { a: Announcement }) {
             Ends {new Date(a.expiresAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
         )}
+        <div className="mt-4 flex items-center gap-1.5 text-[10px] font-semibold text-blue-400/40 group-hover:text-blue-400 transition-colors duration-200">
+          <span>Read full notice</span>
+          <span className="group-hover:translate-x-0.5 transition-transform inline-block">→</span>
+        </div>
       </div>
     </div>
   )
@@ -67,6 +71,8 @@ export default function HomePage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [statsActive, setStatsActive] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [expanded, setExpanded] = useState<Announcement | null>(null)
+  const [liveTime, setLiveTime] = useState('')
   const statsRef = useRef<HTMLElement>(null)
 
   const active = announcements.filter(a => !a.expiresAt || new Date(a.expiresAt) > new Date())
@@ -84,6 +90,19 @@ export default function HomePage() {
     const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setStatsActive(true); obs.disconnect() } }, { threshold: 0.3 })
     obs.observe(statsRef.current)
     return () => obs.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const tick = () => setLiveTime(new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }))
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(null) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
   }, [])
 
   // Determine live office status (Monâ€“Fri 8AMâ€“5PM)
@@ -132,10 +151,33 @@ export default function HomePage() {
         .stat-card:hover{transform:translateY(-4px);border-color:rgba(99,102,241,.4)}
         .service-card{border:1px solid rgba(255,255,255,.07);transition:transform .3s,box-shadow .3s,border-color .3s}
         .service-card:hover{transform:translateY(-6px);box-shadow:0 24px 64px rgba(0,0,0,.4);border-color:rgba(99,102,241,.35)}
+        .portal-card{border:1px solid rgba(255,255,255,.08);transition:transform .25s ease,box-shadow .25s ease,border-color .25s}
+        .portal-card:hover{transform:translateY(-5px) scale(1.02);box-shadow:0 24px 60px rgba(0,0,0,.5);border-color:rgba(255,255,255,.18)}
+        @keyframes modalIn{from{opacity:0;transform:scale(.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+        .modal-anim{animation:modalIn .22s ease both}
         html{scroll-behavior:smooth}
       `}</style>
 
       <div className="min-h-screen bg-[#060810] text-white overflow-x-hidden font-sans">
+
+        {expanded && (
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setExpanded(null)}>
+            <div className="modal-anim bg-[#0d1221] border border-white/10 rounded-3xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-8 relative shadow-2xl" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setExpanded(null)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/8 hover:bg-white/15 flex items-center justify-center text-gray-500 hover:text-white transition-all text-sm">✕</button>
+              <div className="mb-5">
+                <span className={`text-[10px] font-bold tracking-widest uppercase px-3 py-1.5 rounded-full ${
+                  expanded.urgent ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                }`}>{expanded.urgent ? '🔴 Urgent Notice' : '📌 Announcement'}</span>
+              </div>
+              <h2 className="font-black text-white text-xl leading-snug mb-3">{expanded.title}</h2>
+              <p className="text-gray-600 text-xs mb-6">
+                Posted {new Date(expanded.createdAt).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                {expanded.expiresAt && <span className="text-amber-600/80"> · Ends {new Date(expanded.expiresAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })}</span>}
+              </p>
+              <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{expanded.content}</p>
+            </div>
+          </div>
+        )}
 
         {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• NAV â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
         <nav className="nav-glass fixed top-0 inset-x-0 z-50">
@@ -151,10 +193,11 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-8 text-sm">
+            <div className="hidden md:flex items-center gap-7 text-sm">
               {[['#events','Events'],['#services','Services'],['#about','About']].map(([h,l]) => (
                 <a key={h} href={h} className="text-gray-400 hover:text-white transition-colors duration-200 font-medium">{l}</a>
               ))}
+              <Link href="/intern-logbook" className="text-gray-400 hover:text-violet-400 transition-colors font-medium">Interns</Link>
             </div>
 
             <div className="flex items-center gap-3">
@@ -173,6 +216,7 @@ export default function HomePage() {
               {[['#events','ðŸ“… Events'],['#services','âš¡ Services'],['#about','â„¹ï¸ About']].map(([h,l]) => (
                 <a key={h} href={h} onClick={() => setMenuOpen(false)} className="block text-gray-300 hover:text-white py-1.5 text-sm">{l}</a>
               ))}
+              <Link href="/intern-logbook" onClick={() => setMenuOpen(false)} className="block text-violet-400 py-1.5 text-sm">🎓 Intern Logbook</Link>
               <Link href="/dtc-logbook" onClick={() => setMenuOpen(false)} className="block mt-2 cta-primary text-center py-3 rounded-xl text-sm font-bold">ðŸ–¥ï¸ Access Logbook</Link>
             </div>
           )}
@@ -225,6 +269,7 @@ export default function HomePage() {
               <span className="text-xs font-semibold text-gray-300">
                 {isOpen ? 'DTC is Open Now  Â·  Monâ€“Fri  8AM â€“ 5PM' : 'Closed Â· Opens Monâ€“Fri 8AM'}
               </span>
+              {liveTime && <span className="text-gray-600 text-[10px] font-mono hidden sm:block pl-2.5 border-l border-white/10">{liveTime}</span>}
             </div>
 
             {/* Main headline */}
@@ -246,6 +291,10 @@ export default function HomePage() {
                 <span className="text-xl">ðŸ–¥ï¸</span>
                 <span>Access the Logbook</span>
                 <span className="text-blue-200 text-lg">â†’</span>
+              </Link>
+              <Link href="/intern-logbook" className="cta-secondary flex items-center gap-3 px-8 py-4 rounded-2xl font-semibold text-gray-300 text-base">
+                <span className="text-xl">🎓</span>
+                <span>Intern Logbook</span>
               </Link>
               <a href="#events" className="cta-secondary flex items-center gap-3 px-8 py-4 rounded-2xl font-semibold text-gray-300 text-base">
                 <span className="text-xl">ðŸ“…</span>
@@ -283,6 +332,32 @@ export default function HomePage() {
         )}
 
         {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• EVENTS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* Quick Access Portal */}
+        <section className="py-14 px-6">
+          <div className="max-w-5xl mx-auto">
+            <p className="text-center text-gray-600 text-[10px] uppercase tracking-[0.3em] font-bold mb-7">Quick Access</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {([
+                { href:'/dtc-logbook',        icon:'\ud83d\udda5\ufe0f', title:'DTC Logbook',    desc:'Walk-in sign-in for workstations and internet access', tag:'Walk-in',  col:'from-blue-600/10 to-indigo-700/5'   },
+                { href:'/intern-logbook',     icon:'\ud83c\udf93', title:'Intern Logbook', desc:'Time in and out for internship DTR hour tracking',     tag:'Interns',  col:'from-violet-600/10 to-purple-700/5' },
+                { href:'https://dict.gov.ph', icon:'\ud83c\udfdb\ufe0f', title:'DICT Website',   desc:'Official DICT portal, news, and e-government links',  tag:'External', col:'from-cyan-600/10 to-teal-700/5',    ext:true },
+              ] as {href:string;icon:string;title:string;desc:string;tag:string;col:string;ext?:boolean}[]).map(c => (
+                <Link key={c.href} href={c.href} {...(c.ext ? { target:'_blank', rel:'noopener noreferrer' } : {})}
+                  className={`portal-card group relative rounded-2xl overflow-hidden p-6 bg-gradient-to-br ${c.col}`}>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600 mb-3 block">{c.tag}</span>
+                  <div className="text-3xl mb-3">{c.icon}</div>
+                  <h3 className="font-bold text-white text-base mb-1.5 leading-tight">{c.title}</h3>
+                  <p className="text-gray-500 text-xs leading-relaxed">{c.desc}</p>
+                  <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-gray-600 group-hover:text-blue-400 transition-colors">
+                    <span>Open</span>
+                    <span className="group-hover:translate-x-0.5 transition-transform inline-block">&rarr;</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section id="events" className="py-28 px-6">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-16">
@@ -291,6 +366,7 @@ export default function HomePage() {
               <p className="text-gray-500 mt-4 max-w-xl mx-auto text-sm leading-relaxed">
                 Stay informed on the latest happenings, trainings, and official notices from DICT Region V.
               </p>
+              <p className="text-gray-700 text-xs mt-2">Click any card to read the full notice.</p>
             </div>
 
             {active.length === 0 ? (
@@ -301,7 +377,7 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {active.slice(0, 6).map(a => <EventCard key={a.id} a={a} />)}
+                {active.slice(0, 6).map(a => <EventCard key={a.id} a={a} onExpand={setExpanded} />)}
               </div>
             )}
           </div>
@@ -322,15 +398,16 @@ export default function HomePage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {[
-                { icon:'ðŸ–¥ï¸', title:'Computer Access', desc:'Free use of DTC workstations for government transactions, job applications, and research.', grad:'from-blue-500/15 to-blue-600/5', glow:'group-hover:shadow-blue-500/20' },
-                { icon:'ðŸ“¶', title:'Free Internet', desc:'High-speed Wi-Fi and wired internet. Bring your own device or use ours â€” always free.', grad:'from-violet-500/15 to-violet-600/5', glow:'group-hover:shadow-violet-500/20' },
-                { icon:'ðŸ›ï¸', title:'E-Government', desc:'Guided access to SSS, PhilHealth, Pag-IBIG, PhilSys, and other national government portals.', grad:'from-cyan-500/15 to-cyan-600/5', glow:'group-hover:shadow-cyan-500/20' },
-                { icon:'ðŸ“š', title:'Digital Literacy', desc:'Free trainings, workshops, and capacity-building sessions on digital skills for all ages.', grad:'from-amber-500/15 to-amber-600/5', glow:'group-hover:shadow-amber-500/20' },
+                { icon:'\ud83d\udda5\ufe0f', title:'Computer Access', desc:'Free workstations for government transactions, job applications, and research.', detail:'Sessions up to 2 hours per visit. Staff assistance available on request.', grad:'from-blue-500/15 to-blue-600/5', glow:'group-hover:shadow-blue-500/20' },
+                { icon:'\ud83d\udcf6', title:'Free Internet', desc:'High-speed Wi-Fi and wired internet. Bring your device or use ours â€” always free.', detail:'10â€“50 Mbps fiber connection. BYOD users enjoy unlimited session time.', grad:'from-violet-500/15 to-violet-600/5', glow:'group-hover:shadow-violet-500/20' },
+                { icon:'\ud83c\udfdb\ufe0f', title:'E-Government', desc:'Guided access to SSS, PhilHealth, Pag-IBIG, PhilSys, and other portals.', detail:'Staff can guide you through account setup and online form submission.', grad:'from-cyan-500/15 to-cyan-600/5', glow:'group-hover:shadow-cyan-500/20' },
+                { icon:'\ud83d\udcda', title:'Digital Literacy', desc:'Free trainings, workshops, and capacity-building sessions for all ages.', detail:'Check the announcements section above for the next training schedule.', grad:'from-amber-500/15 to-amber-600/5', glow:'group-hover:shadow-amber-500/20' },
               ].map(s => (
-                <div key={s.title} className={`group service-card rounded-2xl p-7 bg-gradient-to-br ${s.grad} hover:shadow-2xl ${s.glow}`}>
+                <div key={s.title} className={`group service-card rounded-2xl p-7 bg-gradient-to-br ${s.grad} border border-white/5 cursor-default`}>
                   <div className="text-4xl mb-5">{s.icon}</div>
                   <h3 className="font-bold text-white text-base mb-2 leading-tight">{s.title}</h3>
                   <p className="text-gray-500 text-xs leading-relaxed">{s.desc}</p>
+                  {s.detail && <p className="mt-3 pt-3 border-t border-white/5 text-gray-600 text-[11px] leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity duration-300">{s.detail}</p>}
                 </div>
               ))}
             </div>
@@ -395,12 +472,16 @@ export default function HomePage() {
                 <p className="text-gray-600 text-xs">Department of Information and Communications Technology</p>
               </div>
             </div>
-            <div className="flex items-center gap-6 text-xs text-gray-600">
+            <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-600">
               <span>Â© {new Date().getFullYear()} DICT Region V</span>
               <span className="text-white/10">|</span>
               <a href="https://dict.gov.ph" target="_blank" rel="noopener noreferrer" className="hover:text-blue-400 transition-colors">dict.gov.ph</a>
               <span className="text-white/10">|</span>
-              <Link href="/dtc-logbook" className="hover:text-blue-400 transition-colors">Logbook</Link>
+              <Link href="/dtc-logbook" className="hover:text-blue-400 transition-colors">DTC Logbook</Link>
+              <span className="text-white/10">|</span>
+              <Link href="/intern-logbook" className="hover:text-violet-400 transition-colors">Intern Logbook</Link>
+              <span className="text-white/10">|</span>
+              <Link href="/interns" className="hover:text-gray-400 transition-colors">Admin</Link>
             </div>
           </div>
         </footer>
