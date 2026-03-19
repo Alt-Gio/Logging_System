@@ -142,28 +142,24 @@ export async function POST(req: NextRequest) {
     }
 
     // Rate limiting: Check if user has requested OTP recently
-    const recentOtps = await prisma.otpVerification.count({
+    const recentOtps = await (prisma as any).otpVerification.count({
       where: {
         contact,
         createdAt: {
-          gte: new Date(Date.now() - 60 * 60 * 1000) // Last hour
+          gte: new Date(Date.now() - 60 * 1000) // Last minute
         }
       }
     })
 
-    if (recentOtps >= 3) {
-      return NextResponse.json(
-        { error: 'Too many OTP requests. Please try again later.' },
-        { status: 429 }
-      )
+    if (recentOtps > 0) {
+      return NextResponse.json({ error: 'Please wait before requesting another OTP' }, { status: 429 })
     }
 
-    // Generate OTP
     const otp = generateOTP()
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
 
     // Save OTP to database
-    await prisma.otpVerification.create({
+    await (prisma as any).otpVerification.create({
       data: {
         contact,
         contactType,
@@ -189,7 +185,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Clean up expired OTPs
-    await prisma.otpVerification.deleteMany({
+    await (prisma as any).otpVerification.deleteMany({
       where: {
         expiresAt: {
           lt: new Date()

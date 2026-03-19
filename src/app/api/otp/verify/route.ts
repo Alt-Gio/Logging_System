@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Find the most recent unverified OTP for this contact
-    const otpRecord = await prisma.otpVerification.findFirst({
+    const otpRecord = await (prisma as any).otpVerification.findFirst({
       where: {
         contact,
         verified: false,
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Mark OTP as verified
-    await prisma.otpVerification.update({
+    await (prisma as any).otpVerification.update({
       where: {
         id: otpRecord.id
       },
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Clean up old OTPs for this contact
-    await prisma.otpVerification.deleteMany({
+    await (prisma as any).otpVerification.deleteMany({
       where: {
         contact,
         id: {

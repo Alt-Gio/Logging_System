@@ -300,3 +300,18 @@ model InternDocument {
   @@index([internId])
   @@map("intern_documents")
 }
+
+model OtpVerification {
+  id          String   @id @default(cuid())
+  contact     String
+  contactType String
+  otpCode     String
+  purpose     String
+  verified    Boolean  @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([contact])
+  @@index([expiresAt])
+  @@map("otp_verifications")
+}
