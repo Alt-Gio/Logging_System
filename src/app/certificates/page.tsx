@@ -26,8 +26,6 @@ type CertificateLayer = {
   imageHeight?: number
   x: number
   y: number
-  width?: number
-  height?: number
 }
 
 type Template = {
@@ -42,44 +40,42 @@ type Template = {
   _count?: { certificates: number }
 }
 
-type Certificate = {
+type GeneratedCert = {
   id: string
-  templateId: string
-  internId?: string
   data: Record<string, any>
-  pdfUrl?: string
-  issuedAt: string
-  template?: Template
-  intern?: any
+  preview: string
 }
+
+const CERT_WIDTH = 1122  // A4 landscape width in pixels at 96 DPI
+const CERT_HEIGHT = 794  // A4 landscape height in pixels at 96 DPI
 
 export default function CertificatesPage() {
   const { isLoaded: clerkLoaded, isSignedIn } = useUser()
-  const [view, setView] = useState<'list' | 'designer' | 'generator' | 'gallery'>('list')
+  const [view, setView] = useState<'templates' | 'designer' | 'generate'>('templates')
   const [templates, setTemplates] = useState<Template[]>([])
-  const [certificates, setCertificates] = useState<Certificate[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Designer state
   const [designerTemplate, setDesignerTemplate] = useState<Partial<Template>>({
     name: '',
     description: '',
     backgroundUrl: '',
-    width: 1056,
-    height: 816,
+    width: CERT_WIDTH,
+    height: CERT_HEIGHT,
     fields: []
   })
   const [selectedLayer, setSelectedLayer] = useState<string | null>(null)
   const [draggingLayer, setDraggingLayer] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const certificatePreviewRef = useRef<HTMLDivElement>(null)
 
-  const [generatorData, setGeneratorData] = useState<Record<string, any>>({})
+  // Generation state
   const [csvData, setCsvData] = useState<Record<string, any>[]>([])
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const [generatedCertUrl, setGeneratedCertUrl] = useState<string | null>(null)
+  const [generatedCerts, setGeneratedCerts] = useState<GeneratedCert[]>([])
+  const [generating, setGenerating] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const certRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
 
   useEffect(() => {
     if (clerkLoaded && isSignedIn) {
@@ -101,20 +97,16 @@ export default function CertificatesPage() {
     setLoading(false)
   }
 
-  const handleImageUpload = async (file: File, purpose: 'background' | 'layer') => {
+  const handleImageUpload = async (file: File): Promise<string | null> => {
     setUploadingImage(true)
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('upload_preset', 'certificates')
-
     try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo'}/image/upload`, {
-        method: 'POST',
-        body: formData
+      const reader = new FileReader()
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string)
+        reader.readAsDataURL(file)
       })
-      const data = await res.json()
       setUploadingImage(false)
-      return data.secure_url
+      return base64
     } catch (error) {
       console.error('Upload error:', error)
       setUploadingImage(false)
@@ -125,7 +117,7 @@ export default function CertificatesPage() {
   const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = await handleImageUpload(file, 'background')
+    const url = await handleImageUpload(file)
     if (url) {
       setDesignerTemplate(prev => ({ ...prev, backgroundUrl: url }))
     }
@@ -134,7 +126,7 @@ export default function CertificatesPage() {
   const handleLayerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, layerId: string) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = await handleImageUpload(file, 'layer')
+    const url = await handleImageUpload(file)
     if (url) {
       handleUpdateLayer(layerId, { imageUrl: url })
     }
@@ -156,15 +148,16 @@ export default function CertificatesPage() {
 
       if (res.ok) {
         await fetchTemplates()
-        setView('list')
+        setView('templates')
         setDesignerTemplate({
           name: '',
           description: '',
           backgroundUrl: '',
-          width: 1056,
-          height: 816,
+          width: CERT_WIDTH,
+          height: CERT_HEIGHT,
           fields: []
         })
+        alert('Template saved successfully!')
       }
     } catch (error) {
       console.error('Error saving template:', error)
@@ -184,11 +177,11 @@ export default function CertificatesPage() {
       key: 'fieldKey',
       x: 100,
       y: 100,
-      fontSize: 32,
-      fontFamily: 'Arial',
+      fontSize: 48,
+      fontFamily: 'Georgia',
       color: '#000000',
       align: 'center',
-      bold: false,
+      bold: true,
       italic: false
     }
     setDesignerTemplate(prev => ({
@@ -209,8 +202,8 @@ export default function CertificatesPage() {
       imageUrl: '',
       x: 100,
       y: 100,
-      imageWidth: 200,
-      imageHeight: 200
+      imageWidth: 150,
+      imageHeight: 150
     }
     setDesignerTemplate(prev => ({
       ...prev,
@@ -241,7 +234,7 @@ export default function CertificatesPage() {
 
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
-    const scale = canvas.offsetWidth / (designerTemplate.width || 1056)
+    const scale = canvas.offsetWidth / (designerTemplate.width || CERT_WIDTH)
     
     const startX = e.clientX
     const startY = e.clientY
@@ -252,8 +245,8 @@ export default function CertificatesPage() {
       const deltaX = (moveEvent.clientX - startX) / scale
       const deltaY = (moveEvent.clientY - startY) / scale
       handleUpdateLayer(layerId, {
-        x: Math.max(0, Math.min((designerTemplate.width || 1056) - (layer.width || 100), startLayerX + deltaX)),
-        y: Math.max(0, Math.min((designerTemplate.height || 816) - 50, startLayerY + deltaY))
+        x: Math.max(0, Math.min((designerTemplate.width || CERT_WIDTH) - 50, startLayerX + deltaX)),
+        y: Math.max(0, Math.min((designerTemplate.height || CERT_HEIGHT) - 50, startLayerY + deltaY))
       })
     }
 
@@ -272,7 +265,6 @@ export default function CertificatesPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setUploadedFile(file)
     const reader = new FileReader()
     reader.onload = (event) => {
       const data = new Uint8Array(event.target?.result as ArrayBuffer)
@@ -285,95 +277,61 @@ export default function CertificatesPage() {
     reader.readAsArrayBuffer(file)
   }
 
-  const generateCertificatePDF = async () => {
-    if (!certificatePreviewRef.current || !selectedTemplate) return
+  const generatePreview = async (data: Record<string, any>, index: number): Promise<string> => {
+    const certElement = certRefs.current[`cert-${index}`]
+    if (!certElement) return ''
 
     try {
-      const canvas = await html2canvas(certificatePreviewRef.current, {
+      const canvas = await html2canvas(certElement, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff'
       })
-
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({
-        orientation: selectedTemplate.width > selectedTemplate.height ? 'landscape' : 'portrait',
-        unit: 'px',
-        format: [selectedTemplate.width, selectedTemplate.height]
-      })
-
-      pdf.addImage(imgData, 'PNG', 0, 0, selectedTemplate.width, selectedTemplate.height)
-      
-      const pdfBlob = pdf.output('blob')
-      const pdfUrl = URL.createObjectURL(pdfBlob)
-      setGeneratedCertUrl(pdfUrl)
-      
-      pdf.save(`certificate-${Date.now()}.pdf`)
-      
-      return imgData
+      return canvas.toDataURL('image/png')
     } catch (error) {
-      console.error('Error generating PDF:', error)
-      return null
+      console.error('Error generating preview:', error)
+      return ''
     }
   }
 
-  const handleSingleGenerate = async () => {
+  const handleGeneratePreviews = async () => {
+    if (!selectedTemplate || csvData.length === 0) return
+
+    setGenerating(true)
+    const certs: GeneratedCert[] = []
+
+    for (let i = 0; i < csvData.length; i++) {
+      const preview = await generatePreview(csvData[i], i)
+      certs.push({
+        id: `cert-${i}`,
+        data: csvData[i],
+        preview
+      })
+    }
+
+    setGeneratedCerts(certs)
+    setGenerating(false)
+  }
+
+  const downloadCertificate = async (cert: GeneratedCert) => {
     if (!selectedTemplate) return
 
-    const pdfData = await generateCertificatePDF()
-    if (!pdfData) {
-      alert('Failed to generate certificate')
-      return
-    }
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'px',
+      format: [CERT_WIDTH, CERT_HEIGHT]
+    })
 
-    setSaving(true)
-    try {
-      const res = await fetch('/api/certificates/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId: selectedTemplate.id,
-          data: generatorData,
-          pdfUrl: pdfData
-        })
-      })
-
-      if (res.ok) {
-        alert('Certificate generated successfully!')
-        setGeneratorData({})
-      }
-    } catch (error) {
-      console.error('Error generating certificate:', error)
-    }
-    setSaving(false)
+    pdf.addImage(cert.preview, 'PNG', 0, 0, CERT_WIDTH, CERT_HEIGHT)
+    pdf.save(`certificate-${cert.data.fullName || cert.id}.pdf`)
   }
 
-  const handleBulkGenerate = async () => {
-    if (!selectedTemplate || !uploadedFile) return
-
-    setSaving(true)
-    const formData = new FormData()
-    formData.append('file', uploadedFile)
-    formData.append('templateId', selectedTemplate.id)
-
-    try {
-      const res = await fetch('/api/certificates/generate', {
-        method: 'PUT',
-        body: formData
-      })
-
-      if (res.ok) {
-        const result = await res.json()
-        alert(`Successfully generated ${result.count} certificates!`)
-        setView('gallery')
-        setCsvData([])
-        setUploadedFile(null)
-      }
-    } catch (error) {
-      console.error('Error bulk generating:', error)
+  const downloadAllCertificates = async () => {
+    for (const cert of generatedCerts) {
+      await downloadCertificate(cert)
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
-    setSaving(false)
   }
 
   const moveLayerUp = (layerId: string) => {
@@ -392,7 +350,7 @@ export default function CertificatesPage() {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   }
 
-  const scale = 0.6
+  const scale = 0.7
   const sortedLayers = [...(designerTemplate.fields || [])].sort((a, b) => a.zIndex - b.zIndex)
 
   return (
@@ -404,29 +362,27 @@ export default function CertificatesPage() {
               <GovSeal size="md"/>
               <div>
                 <h1 className="font-display font-bold text-lg text-[var(--dict-blue)]">Certificate Generator</h1>
-                <p className="text-xs text-gray-500">DICT Region V - ILCDB</p>
+                <p className="text-xs text-gray-500">DICT Region V - Intern Certificates</p>
               </div>
             </div>
             <GovHeaderLogos/>
           </div>
           <div className="border-t border-white/15 flex items-center justify-between py-1 px-6">
             <nav className="flex gap-2">
-              <button onClick={() => setView('list')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'list' ? 'bg-[var(--dict-blue)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+              <button onClick={() => setView('templates')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'templates' ? 'bg-[var(--dict-blue)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                 📋 Templates
               </button>
-              <button onClick={() => { setView('designer'); setDesignerTemplate({ name: '', description: '', backgroundUrl: '', width: 1056, height: 816, fields: [] }) }}
+              <button onClick={() => { setView('designer'); setDesignerTemplate({ name: '', description: '', backgroundUrl: '', width: CERT_WIDTH, height: CERT_HEIGHT, fields: [] }) }}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'designer' ? 'bg-[var(--dict-blue)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                 🎨 Designer
               </button>
-              <button onClick={() => setView('generator')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'generator' ? 'bg-[var(--dict-blue)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-                ⚡ Generate
-              </button>
-              <button onClick={() => setView('gallery')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'gallery' ? 'bg-[var(--dict-blue)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-                🖼️ Gallery
-              </button>
+              {selectedTemplate && (
+                <button onClick={() => setView('generate')}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'generate' ? 'bg-[var(--dict-blue)] text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  ⚡ Generate
+                </button>
+              )}
             </nav>
             <UserButton afterSignOutUrl="/sign-in"/>
           </div>
@@ -434,12 +390,12 @@ export default function CertificatesPage() {
       </header>
 
       <main className="max-w-screen-2xl mx-auto px-6 py-8">
-        {view === 'list' && (
+        {view === 'templates' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="font-display font-bold text-2xl text-gray-800">Certificate Templates</h2>
-                <p className="text-sm text-gray-500 mt-1">{templates.length} templates available</p>
+                <p className="text-sm text-gray-500 mt-1">{templates.length} templates • Standard A4 Landscape (1122×794px)</p>
               </div>
               <button onClick={() => setView('designer')}
                 className="px-6 py-3 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all">
@@ -464,7 +420,7 @@ export default function CertificatesPage() {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {templates.map(template => (
                   <div key={template.id} className="glass rounded-2xl p-6 hover:shadow-xl transition-all border-2 border-transparent hover:border-blue-200">
-                    <div className="aspect-[4/3] bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl mb-4 overflow-hidden relative">
+                    <div className="aspect-[1122/794] bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl mb-4 overflow-hidden relative">
                       {template.backgroundUrl ? (
                         <img src={template.backgroundUrl} alt={template.name} className="w-full h-full object-cover"/>
                       ) : (
@@ -477,9 +433,9 @@ export default function CertificatesPage() {
                     <h3 className="font-bold text-lg text-gray-800 mb-1">{template.name}</h3>
                     {template.description && <p className="text-sm text-gray-500 mb-3">{template.description}</p>}
                     <div className="flex gap-2">
-                      <button onClick={() => { setSelectedTemplate(template); setView('generator') }}
+                      <button onClick={() => { setSelectedTemplate(template); setView('generate') }}
                         className="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm font-bold hover:bg-green-600 transition-all">
-                        Generate
+                        Use Template
                       </button>
                       <button onClick={() => { setDesignerTemplate(template); setView('designer') }}
                         className="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all">
@@ -498,7 +454,7 @@ export default function CertificatesPage() {
             <div className="flex items-center justify-between">
               <h2 className="font-display font-bold text-2xl text-gray-800">Certificate Designer</h2>
               <div className="flex gap-3">
-                <button onClick={() => setView('list')}
+                <button onClick={() => setView('templates')}
                   className="px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">
                   Cancel
                 </button>
@@ -509,9 +465,9 @@ export default function CertificatesPage() {
               </div>
             </div>
 
-            <div className="grid lg:grid-cols-3 gap-6">
+            <div className="grid lg:grid-cols-4 gap-6">
               <div className="glass rounded-2xl p-6 space-y-4 max-h-[800px] overflow-y-auto">
-                <h3 className="font-bold text-lg text-gray-800 mb-4">Template Settings</h3>
+                <h3 className="font-bold text-lg text-gray-800 mb-4">Settings</h3>
                 <div>
                   <label className="text-xs font-semibold text-gray-600 block mb-1.5">Template Name *</label>
                   <input value={designerTemplate.name} onChange={e => setDesignerTemplate(prev => ({ ...prev, name: e.target.value }))}
@@ -521,7 +477,7 @@ export default function CertificatesPage() {
                 <div>
                   <label className="text-xs font-semibold text-gray-600 block mb-1.5">Description</label>
                   <textarea value={designerTemplate.description} onChange={e => setDesignerTemplate(prev => ({ ...prev, description: e.target.value }))}
-                    rows={2} placeholder="Optional description"
+                    rows={2} placeholder="Optional"
                     className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 resize-none"/>
                 </div>
                 <div>
@@ -529,18 +485,15 @@ export default function CertificatesPage() {
                   <input type="file" accept="image/*" onChange={handleBackgroundUpload}
                     className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500"/>
                   {uploadingImage && <p className="text-xs text-blue-500 mt-1">Uploading...</p>}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1.5">Width (px)</label>
-                    <input type="number" value={designerTemplate.width} onChange={e => setDesignerTemplate(prev => ({ ...prev, width: parseInt(e.target.value) || 1056 }))}
-                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500"/>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1.5">Height (px)</label>
-                    <input type="number" value={designerTemplate.height} onChange={e => setDesignerTemplate(prev => ({ ...prev, height: parseInt(e.target.value) || 816 }))}
-                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500"/>
-                  </div>
+                  {designerTemplate.backgroundUrl && (
+                    <div className="mt-2 relative">
+                      <img src={designerTemplate.backgroundUrl} alt="Background" className="w-full h-20 object-cover rounded-lg"/>
+                      <button onClick={() => setDesignerTemplate(prev => ({ ...prev, backgroundUrl: '' }))}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">
+                        ✕
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-4 border-t border-gray-200">
@@ -563,51 +516,129 @@ export default function CertificatesPage() {
                         onClick={() => setSelectedLayer(layer.id)}
                         className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedLayer === layer.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                         <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="text-lg">{layer.type === 'text' ? '📝' : '🖼️'}</span>
                             <input value={layer.name} onChange={e => handleUpdateLayer(layer.id, { name: e.target.value })}
                               onClick={e => e.stopPropagation()}
-                              className="font-semibold text-sm text-gray-800 bg-transparent border-none outline-none"
+                              className="font-semibold text-sm text-gray-800 bg-transparent border-none outline-none flex-1 min-w-0"
                             />
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             <button onClick={(e) => { e.stopPropagation(); moveLayerUp(layer.id) }}
-                              className="text-gray-400 hover:text-gray-700 text-xs px-1">
-                              ▲
-                            </button>
+                              className="text-gray-400 hover:text-gray-700 text-xs px-1">▲</button>
                             <button onClick={(e) => { e.stopPropagation(); moveLayerDown(layer.id) }}
-                              className="text-gray-400 hover:text-gray-700 text-xs px-1">
-                              ▼
-                            </button>
+                              className="text-gray-400 hover:text-gray-700 text-xs px-1">▼</button>
                             <button onClick={(e) => { e.stopPropagation(); handleUpdateLayer(layer.id, { visible: !layer.visible }) }}
-                              className="text-gray-400 hover:text-gray-700 text-xs px-1">
-                              {layer.visible ? '👁️' : '🚫'}
-                            </button>
+                              className="text-gray-400 hover:text-gray-700 text-xs px-1">{layer.visible ? '👁️' : '🚫'}</button>
                             <button onClick={(e) => { e.stopPropagation(); handleUpdateLayer(layer.id, { locked: !layer.locked }) }}
-                              className="text-gray-400 hover:text-gray-700 text-xs px-1">
-                              {layer.locked ? '🔒' : '🔓'}
-                            </button>
+                              className="text-gray-400 hover:text-gray-700 text-xs px-1">{layer.locked ? '🔒' : '🔓'}</button>
                             <button onClick={(e) => { e.stopPropagation(); handleDeleteLayer(layer.id) }}
-                              className="text-red-500 hover:text-red-700 text-xs px-1">
-                              ✕
-                            </button>
+                              className="text-red-500 hover:text-red-700 text-xs px-1">✕</button>
                           </div>
                         </div>
-                        <p className="text-xs text-gray-400">Z-Index: {layer.zIndex} | Pos: ({Math.round(layer.x)}, {Math.round(layer.y)})</p>
+                        <p className="text-xs text-gray-400">Z: {layer.zIndex} | ({Math.round(layer.x)}, {Math.round(layer.y)})</p>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                {selectedLayer && designerTemplate.fields?.find(f => f.id === selectedLayer) && (
+                  <div className="pt-4 border-t border-gray-200">
+                    <h4 className="font-bold text-sm text-gray-800 mb-3">Layer Properties</h4>
+                    {(() => {
+                      const layer = designerTemplate.fields.find(f => f.id === selectedLayer)!
+                      return layer.type === 'text' ? (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">Text</label>
+                            <input value={layer.text} onChange={e => handleUpdateLayer(layer.id, { text: e.target.value })}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">Data Key (for CSV)</label>
+                            <input value={layer.key} onChange={e => handleUpdateLayer(layer.id, { key: e.target.value })}
+                              placeholder="e.g. fullName"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600 block mb-1">Font Size</label>
+                              <input type="number" value={layer.fontSize} onChange={e => handleUpdateLayer(layer.id, { fontSize: parseInt(e.target.value) || 24 })}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600 block mb-1">Color</label>
+                              <input type="color" value={layer.color} onChange={e => handleUpdateLayer(layer.id, { color: e.target.value })}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm h-9"/>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">Font</label>
+                            <select value={layer.fontFamily} onChange={e => handleUpdateLayer(layer.id, { fontFamily: e.target.value })}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+                              <option value="Arial">Arial</option>
+                              <option value="Times New Roman">Times New Roman</option>
+                              <option value="Georgia">Georgia</option>
+                              <option value="Courier New">Courier New</option>
+                              <option value="Verdana">Verdana</option>
+                            </select>
+                          </div>
+                          <div className="flex gap-3">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" checked={layer.bold} onChange={e => handleUpdateLayer(layer.id, { bold: e.target.checked })}
+                                className="w-4 h-4"/>
+                              <span className="text-sm font-semibold text-gray-700">Bold</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" checked={layer.italic} onChange={e => handleUpdateLayer(layer.id, { italic: e.target.checked })}
+                                className="w-4 h-4"/>
+                              <span className="text-sm font-semibold text-gray-700">Italic</span>
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">Upload Image</label>
+                            <input type="file" accept="image/*" onChange={e => handleLayerImageUpload(e, layer.id)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
+                          </div>
+                          {layer.imageUrl && (
+                            <div className="relative">
+                              <img src={layer.imageUrl} alt="Layer" className="w-full h-32 object-contain rounded-lg border-2 border-gray-200"/>
+                              <button onClick={() => handleUpdateLayer(layer.id, { imageUrl: '' })}
+                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">
+                                ✕
+                              </button>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600 block mb-1">Width</label>
+                              <input type="number" value={layer.imageWidth} onChange={e => handleUpdateLayer(layer.id, { imageWidth: parseInt(e.target.value) || 200 })}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600 block mb-1">Height</label>
+                              <input type="number" value={layer.imageHeight} onChange={e => handleUpdateLayer(layer.id, { imageHeight: parseInt(e.target.value) || 200 })}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
 
-              <div className="lg:col-span-2 glass rounded-2xl p-6">
-                <h3 className="font-bold text-lg text-gray-800 mb-4">Canvas Preview</h3>
-                <div className="bg-gray-100 rounded-xl p-4 overflow-auto">
+              <div className="lg:col-span-3 glass rounded-2xl p-6">
+                <h3 className="font-bold text-lg text-gray-800 mb-4">Canvas Preview (A4 Landscape)</h3>
+                <div className="bg-gray-100 rounded-xl p-4 overflow-auto flex justify-center">
                   <div ref={canvasRef}
-                    className="mx-auto bg-white shadow-2xl relative"
+                    className="bg-white shadow-2xl relative"
                     style={{
-                      width: `${(designerTemplate.width || 1056) * scale}px`,
-                      height: `${(designerTemplate.height || 816) * scale}px`,
+                      width: `${(designerTemplate.width || CERT_WIDTH) * scale}px`,
+                      height: `${(designerTemplate.height || CERT_HEIGHT) * scale}px`,
                       backgroundImage: designerTemplate.backgroundUrl ? `url(${designerTemplate.backgroundUrl})` : 'none',
                       backgroundSize: 'cover',
                       backgroundPosition: 'center'
@@ -654,237 +685,133 @@ export default function CertificatesPage() {
                     ))}
                   </div>
                 </div>
-
-                {selectedLayer && designerTemplate.fields?.find(f => f.id === selectedLayer) && (
-                  <div className="mt-6 p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
-                    <h4 className="font-bold text-sm text-gray-800 mb-3">Edit Layer</h4>
-                    {(() => {
-                      const layer = designerTemplate.fields.find(f => f.id === selectedLayer)!
-                      return layer.type === 'text' ? (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="col-span-2">
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Text Content</label>
-                            <input value={layer.text} onChange={e => handleUpdateLayer(layer.id, { text: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Data Key</label>
-                            <input value={layer.key} onChange={e => handleUpdateLayer(layer.id, { key: e.target.value })}
-                              placeholder="e.g. fullName"
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Font Size</label>
-                            <input type="number" value={layer.fontSize} onChange={e => handleUpdateLayer(layer.id, { fontSize: parseInt(e.target.value) || 24 })}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Color</label>
-                            <input type="color" value={layer.color} onChange={e => handleUpdateLayer(layer.id, { color: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm h-9"/>
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Font Family</label>
-                            <select value={layer.fontFamily} onChange={e => handleUpdateLayer(layer.id, { fontFamily: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
-                              <option value="Arial">Arial</option>
-                              <option value="Times New Roman">Times New Roman</option>
-                              <option value="Georgia">Georgia</option>
-                              <option value="Courier New">Courier New</option>
-                              <option value="Verdana">Verdana</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Align</label>
-                            <select value={layer.align} onChange={e => handleUpdateLayer(layer.id, { align: e.target.value as any })}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
-                              <option value="left">Left</option>
-                              <option value="center">Center</option>
-                              <option value="right">Right</option>
-                            </select>
-                          </div>
-                          <div className="col-span-2 flex gap-3">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input type="checkbox" checked={layer.bold} onChange={e => handleUpdateLayer(layer.id, { bold: e.target.checked })}
-                                className="w-4 h-4"/>
-                              <span className="text-sm font-semibold text-gray-700">Bold</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input type="checkbox" checked={layer.italic} onChange={e => handleUpdateLayer(layer.id, { italic: e.target.checked })}
-                                className="w-4 h-4"/>
-                              <span className="text-sm font-semibold text-gray-700">Italic</span>
-                            </label>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Upload Image</label>
-                            <input type="file" accept="image/*" onChange={e => handleLayerImageUpload(e, layer.id)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="text-xs font-semibold text-gray-600 block mb-1">Width (px)</label>
-                              <input type="number" value={layer.imageWidth} onChange={e => handleUpdateLayer(layer.id, { imageWidth: parseInt(e.target.value) || 200 })}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
-                            </div>
-                            <div>
-                              <label className="text-xs font-semibold text-gray-600 block mb-1">Height (px)</label>
-                              <input type="number" value={layer.imageHeight} onChange={e => handleUpdateLayer(layer.id, { imageHeight: parseInt(e.target.value) || 200 })}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"/>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })()}
-                  </div>
-                )}
               </div>
             </div>
           </div>
         )}
 
-        {view === 'generator' && (
+        {view === 'generate' && selectedTemplate && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="font-display font-bold text-2xl text-gray-800">Generate Certificates</h2>
-              <button onClick={() => setView('list')}
+              <div>
+                <h2 className="font-display font-bold text-2xl text-gray-800">Generate Certificates</h2>
+                <p className="text-sm text-gray-500 mt-1">Using template: {selectedTemplate.name}</p>
+              </div>
+              <button onClick={() => setView('templates')}
                 className="px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">
-                Back to Templates
+                Change Template
               </button>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-6">
+            {generatedCerts.length === 0 ? (
               <div className="glass rounded-2xl p-6">
-                <h3 className="font-bold text-lg text-gray-800 mb-4">Single Certificate</h3>
+                <h3 className="font-bold text-lg text-gray-800 mb-4">Upload Data (CSV/Excel)</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1.5">Select Template</label>
-                    <select value={selectedTemplate?.id || ''} onChange={e => setSelectedTemplate(templates.find(t => t.id === e.target.value) || null)}
-                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500">
-                      <option value="">Choose a template...</option>
-                      {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-
-                  {selectedTemplate && selectedTemplate.fields.filter(f => f.type === 'text' && f.key).map(field => (
-                    <div key={field.id}>
-                      <label className="text-xs font-semibold text-gray-600 block mb-1.5">{field.name}</label>
-                      <input value={generatorData[field.key!] || ''} onChange={e => setGeneratorData(prev => ({ ...prev, [field.key!]: e.target.value }))}
-                        placeholder={`Enter ${field.name.toLowerCase()}`}
-                        className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500"/>
-                    </div>
-                  ))}
-
-                  <button onClick={handleSingleGenerate} disabled={!selectedTemplate || saving}
-                    className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold disabled:opacity-50">
-                    {saving ? 'Generating...' : 'Generate & Download Certificate'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="glass rounded-2xl p-6">
-                <h3 className="font-bold text-lg text-gray-800 mb-4">Bulk Generation (CSV/Excel)</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1.5">Select Template</label>
-                    <select value={selectedTemplate?.id || ''} onChange={e => setSelectedTemplate(templates.find(t => t.id === e.target.value) || null)}
-                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500">
-                      <option value="">Choose a template...</option>
-                      {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1.5">Upload CSV/Excel File</label>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1.5">Upload File</label>
                     <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload}
                       className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500"/>
-                    <p className="text-xs text-gray-400 mt-1">Column names should match field keys in the template</p>
+                    <p className="text-xs text-gray-400 mt-1">Column names should match field keys: {selectedTemplate.fields.filter(f => f.key).map(f => f.key).join(', ')}</p>
                   </div>
 
                   {csvData.length > 0 && (
                     <div className="p-4 bg-green-50 border-2 border-green-200 rounded-xl">
                       <p className="text-sm font-semibold text-green-800">✓ {csvData.length} rows loaded</p>
                       <p className="text-xs text-green-600 mt-1">Columns: {Object.keys(csvData[0]).join(', ')}</p>
+                      <button onClick={handleGeneratePreviews} disabled={generating}
+                        className="mt-3 w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">
+                        {generating ? 'Generating Previews...' : `Generate ${csvData.length} Certificate Previews`}
+                      </button>
                     </div>
                   )}
-
-                  <button onClick={handleBulkGenerate} disabled={!selectedTemplate || csvData.length === 0 || saving}
-                    className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">
-                    {saving ? 'Generating...' : `Generate ${csvData.length} Certificates`}
-                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="glass rounded-2xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg text-gray-800">{generatedCerts.length} Certificates Generated</h3>
+                    <div className="flex gap-3">
+                      <button onClick={() => { setGeneratedCerts([]); setCsvData([]) }}
+                        className="px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                        Start Over
+                      </button>
+                      <button onClick={downloadAllCertificates}
+                        className="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold">
+                        Download All PDFs
+                      </button>
+                    </div>
+                  </div>
 
-            {selectedTemplate && Object.keys(generatorData).length > 0 && (
-              <div className="glass rounded-2xl p-6">
-                <h3 className="font-bold text-lg text-gray-800 mb-4">Live Preview</h3>
-                <div className="bg-gray-100 rounded-xl p-4 flex justify-center">
-                  <div ref={certificatePreviewRef}
-                    className="bg-white shadow-2xl relative"
-                    style={{
-                      width: `${selectedTemplate.width}px`,
-                      height: `${selectedTemplate.height}px`,
-                      backgroundImage: selectedTemplate.backgroundUrl ? `url(${selectedTemplate.backgroundUrl})` : 'none',
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                      transform: 'scale(0.5)',
-                      transformOrigin: 'top center'
-                    }}>
-                    {selectedTemplate.fields.sort((a, b) => a.zIndex - b.zIndex).filter(l => l.visible).map(layer => (
-                      <div key={layer.id}
-                        className="absolute"
-                        style={{
-                          left: `${layer.x}px`,
-                          top: `${layer.y}px`,
-                          zIndex: layer.zIndex
-                        }}>
-                        {layer.type === 'text' ? (
-                          <div style={{
-                            fontSize: `${layer.fontSize}px`,
-                            fontFamily: layer.fontFamily,
-                            color: layer.color,
-                            textAlign: layer.align,
-                            fontWeight: layer.bold ? 'bold' : 'normal',
-                            fontStyle: layer.italic ? 'italic' : 'normal',
-                            whiteSpace: 'nowrap'
-                          }}>
-                            {layer.key && generatorData[layer.key] ? generatorData[layer.key] : layer.text}
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {generatedCerts.map((cert, idx) => (
+                      <div key={cert.id} className="border-2 border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-all">
+                        {cert.preview ? (
+                          <img src={cert.preview} alt={`Certificate ${idx + 1}`} className="w-full rounded-lg mb-3"/>
+                        ) : (
+                          <div className="w-full aspect-[1122/794] bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
+                            <span className="text-gray-400">Generating...</span>
                           </div>
-                        ) : layer.imageUrl && (
-                          <img src={layer.imageUrl} alt={layer.name}
-                            style={{
-                              width: `${layer.imageWidth}px`,
-                              height: `${layer.imageHeight}px`,
-                              objectFit: 'contain'
-                            }}
-                          />
                         )}
+                        <p className="text-sm font-semibold text-gray-800 mb-1">{cert.data.fullName || `Certificate ${idx + 1}`}</p>
+                        <p className="text-xs text-gray-500 mb-3">{Object.entries(cert.data).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(' • ')}</p>
+                        <button onClick={() => downloadCertificate(cert)}
+                          className="w-full py-2 bg-blue-500 text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all">
+                          Download PDF
+                        </button>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {view === 'gallery' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display font-bold text-2xl text-gray-800">Certificate Gallery</h2>
-              <button onClick={() => setView('list')}
-                className="px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">
-                Back to Templates
-              </button>
-            </div>
-
-            <div className="glass rounded-2xl p-6 text-center py-20">
-              <p className="text-6xl mb-4">🖼️</p>
-              <p className="text-gray-500 font-medium text-lg">Generated certificates will appear here</p>
-              <p className="text-sm text-gray-400 mt-2">Generate certificates to see them in the gallery</p>
+            {/* Hidden certificate render elements */}
+            <div className="hidden">
+              {csvData.map((data, idx) => (
+                <div key={`cert-${idx}`} ref={el => certRefs.current[`cert-${idx}`] = el}
+                  className="bg-white"
+                  style={{
+                    width: `${CERT_WIDTH}px`,
+                    height: `${CERT_HEIGHT}px`,
+                    backgroundImage: selectedTemplate.backgroundUrl ? `url(${selectedTemplate.backgroundUrl})` : 'none',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    position: 'relative'
+                  }}>
+                  {selectedTemplate.fields.sort((a, b) => a.zIndex - b.zIndex).filter(l => l.visible).map(layer => (
+                    <div key={layer.id}
+                      style={{
+                        position: 'absolute',
+                        left: `${layer.x}px`,
+                        top: `${layer.y}px`,
+                        zIndex: layer.zIndex
+                      }}>
+                      {layer.type === 'text' ? (
+                        <div style={{
+                          fontSize: `${layer.fontSize}px`,
+                          fontFamily: layer.fontFamily,
+                          color: layer.color,
+                          textAlign: layer.align,
+                          fontWeight: layer.bold ? 'bold' : 'normal',
+                          fontStyle: layer.italic ? 'italic' : 'normal',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {layer.key && data[layer.key] ? data[layer.key] : layer.text}
+                        </div>
+                      ) : layer.imageUrl && (
+                        <img src={layer.imageUrl} alt={layer.name}
+                          style={{
+                            width: `${layer.imageWidth}px`,
+                            height: `${layer.imageHeight}px`,
+                            objectFit: 'contain'
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
         )}

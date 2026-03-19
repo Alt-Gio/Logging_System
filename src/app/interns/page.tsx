@@ -94,7 +94,7 @@ const ATTENDANCE_STATUS_META: Record<AttendanceStatus, { label: string; color: s
   HOLIDAY:  { label: 'Holiday',  color: 'bg-purple-100 text-purple-700', icon: '🎉' },
 }
 
-type NavSection = 'overview' | 'interns' | 'attendance' | 'tasks' | 'documents' | 'reports'
+type NavSection = 'overview' | 'interns' | 'attendance' | 'tasks' | 'documents' | 'certificates' | 'reports'
 
 const NAV_ITEMS: { id: NavSection; label: string; icon: string; description: string }[] = [
   { id: 'overview',    label: 'Overview',       icon: '📊', description: 'Dashboard & stats' },
@@ -102,6 +102,7 @@ const NAV_ITEMS: { id: NavSection; label: string; icon: string; description: str
   { id: 'attendance',  label: 'Attendance/DTR', icon: '📅', description: 'Time records' },
   { id: 'tasks',       label: 'Tasks',          icon: '✅', description: 'Assign & track' },
   { id: 'documents',   label: 'Documents',      icon: '📁', description: 'Files & records' },
+  { id: 'certificates', label: 'Certificates',  icon: '📜', description: 'Generate certificates' },
   { id: 'reports',     label: 'Reports',        icon: '📈', description: 'Summaries' },
 ]
 
@@ -1269,6 +1270,26 @@ export default function InternsPage() {
                 <p className="text-4xl mb-3">📁</p>
                 <p className="text-gray-600 font-semibold">Document Upload Coming Soon</p>
                 <p className="text-sm text-gray-400 mt-1">You'll be able to upload and organize intern files here</p>
+              </div>
+            </div>
+          )}
+
+          {/* ══ CERTIFICATES ═════════════════════════════════════════════════════ */}
+          {activeSection === 'certificates' && (
+            <div className="space-y-5">
+              <div>
+                <h1 className="font-display font-bold text-2xl text-gray-800">Certificate Generator</h1>
+                <p className="text-sm text-gray-500 mt-0.5">Create and manage intern certificates</p>
+              </div>
+
+              <div className="glass rounded-2xl p-6 text-center">
+                <p className="text-5xl mb-3">📜</p>
+                <p className="text-gray-600 font-medium">Certificate system is being integrated</p>
+                <p className="text-sm text-gray-400 mt-2">Advanced certificate designer with templates, bulk generation, and PDF export</p>
+                <a href="/certificates" 
+                  className="inline-block mt-4 px-6 py-2.5 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold hover:shadow-lg transition-all">
+                  Open Certificate Designer
+                </a>
               </div>
             </div>
           )}
