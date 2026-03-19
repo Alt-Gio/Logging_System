@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useUser, UserButton } from '@clerk/nextjs'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
-import { format, differenceInDays } from 'date-fns'
+import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth, isToday, parseISO } from 'date-fns'
 import * as XLSX from 'xlsx'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -95,18 +95,38 @@ const ATTENDANCE_STATUS_META: Record<AttendanceStatus, { label: string; color: s
   HOLIDAY:  { label: 'Holiday',  color: 'bg-purple-100 text-purple-700', icon: '🎉' },
 }
 
-type NavSection = 'overview' | 'interns' | 'attendance' | 'tasks' | 'timeline' | 'documents' | 'certificates' | 'reports'
+type NavSection = 'overview' | 'interns' | 'attendance' | 'tasks' | 'calendar' | 'timeline' | 'documents' | 'certificates' | 'reports'
 
 const NAV_ITEMS: { id: NavSection; label: string; icon: string; description: string }[] = [
-  { id: 'overview',    label: 'Overview',       icon: '📊', description: 'Dashboard & stats' },
-  { id: 'interns',     label: 'Intern Roster',  icon: '👥', description: 'Manage interns' },
-  { id: 'attendance',  label: 'Attendance/DTR', icon: '📅', description: 'Time records' },
-  { id: 'tasks',       label: 'Tasks',          icon: '✅', description: 'Assign & track' },
-  { id: 'timeline',    label: 'Timeline',       icon: '🗓️', description: 'Intern gallery timeline' },
-  { id: 'documents',   label: 'Documents',      icon: '📁', description: 'Files & records' },
-  { id: 'certificates', label: 'Certificates',  icon: '📜', description: 'Generate certificates' },
-  { id: 'reports',     label: 'Reports',        icon: '📈', description: 'Summaries' },
+  { id: 'overview',     label: 'Overview',       icon: '📊', description: 'Dashboard & stats' },
+  { id: 'interns',      label: 'Intern Roster',  icon: '👥', description: 'Manage interns' },
+  { id: 'attendance',   label: 'Attendance/DTR', icon: '📅', description: 'Time records' },
+  { id: 'tasks',        label: 'Tasks',          icon: '✅', description: 'Assign & track' },
+  { id: 'calendar',     label: 'Calendar',       icon: '🗓️', description: 'Events & due dates' },
+  { id: 'timeline',     label: 'Timeline',       icon: '⏳', description: 'Intern progress gallery' },
+  { id: 'documents',    label: 'Documents',      icon: '📁', description: 'Files & records' },
+  { id: 'certificates', label: 'Certificates',   icon: '📜', description: 'Generate certificates' },
+  { id: 'reports',      label: 'Reports',        icon: '📈', description: 'Summaries' },
 ]
+
+// ─── School colour palette ────────────────────────────────────────────────────
+const SCHOOL_PALETTE = [
+  { bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500',   ring: 'ring-blue-200',   grad: 'from-blue-500 to-indigo-600',   light: 'bg-blue-50',   border: 'border-blue-200'   },
+  { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500', ring: 'ring-purple-200', grad: 'from-purple-500 to-purple-700', light: 'bg-purple-50', border: 'border-purple-200' },
+  { bg: 'bg-emerald-100',text: 'text-emerald-700',dot: 'bg-emerald-500',ring: 'ring-emerald-200',grad: 'from-emerald-500 to-green-600',  light: 'bg-emerald-50',border: 'border-emerald-200'},
+  { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500', ring: 'ring-orange-200', grad: 'from-orange-500 to-amber-500',  light: 'bg-orange-50', border: 'border-orange-200' },
+  { bg: 'bg-rose-100',   text: 'text-rose-700',   dot: 'bg-rose-500',   ring: 'ring-rose-200',   grad: 'from-rose-500 to-pink-600',    light: 'bg-rose-50',   border: 'border-rose-200'   },
+  { bg: 'bg-teal-100',   text: 'text-teal-700',   dot: 'bg-teal-500',   ring: 'ring-teal-200',   grad: 'from-teal-500 to-cyan-600',    light: 'bg-teal-50',   border: 'border-teal-200'   },
+  { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500', ring: 'ring-indigo-200', grad: 'from-indigo-500 to-blue-600',  light: 'bg-indigo-50', border: 'border-indigo-200' },
+  { bg: 'bg-amber-100',  text: 'text-amber-700',  dot: 'bg-amber-500',  ring: 'ring-amber-200',  grad: 'from-amber-500 to-yellow-500', light: 'bg-amber-50',  border: 'border-amber-200'  },
+  { bg: 'bg-cyan-100',   text: 'text-cyan-700',   dot: 'bg-cyan-500',   ring: 'ring-cyan-200',   grad: 'from-cyan-500 to-sky-600',     light: 'bg-cyan-50',   border: 'border-cyan-200'   },
+  { bg: 'bg-fuchsia-100',text: 'text-fuchsia-700',dot: 'bg-fuchsia-500',ring: 'ring-fuchsia-200',grad: 'from-fuchsia-500 to-pink-600', light: 'bg-fuchsia-50',border: 'border-fuchsia-200'},
+]
+function getSchoolColor(school: string) {
+  let hash = 0
+  for (let i = 0; i < school.length; i++) hash = (school.charCodeAt(i) + ((hash << 5) - hash)) | 0
+  return SCHOOL_PALETTE[Math.abs(hash) % SCHOOL_PALETTE.length]
+}
 
 // ─── Spinner ───────────────────────────────────────────────────────────────────
 function Spinner() {
@@ -188,6 +208,9 @@ export default function InternsPage() {
   const [emailData, setEmailData] = useState({ subject: '', message: '', type: 'general', senderName: 'DTC Supervisor' })
   const [emailSending, setEmailSending] = useState(false)
   const [emailResult, setEmailResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [calendarDate, setCalendarDate] = useState(new Date())
+  const [calendarSelectedDay, setCalendarSelectedDay] = useState<Date | null>(null)
+  const [filterSchool, setFilterSchool] = useState<string>('all')
 
   // ─── Data Fetching ────────────────────────────────────────────────────────────
   const fetchInterns = useCallback(async () => {
@@ -215,6 +238,7 @@ export default function InternsPage() {
   const filteredInterns = useMemo(() => {
     let list = interns
     if (filterStatus !== 'all') list = list.filter(i => i.status === filterStatus)
+    if (filterSchool !== 'all') list = list.filter(i => i.school === filterSchool)
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       list = list.filter(i =>
@@ -224,10 +248,42 @@ export default function InternsPage() {
       )
     }
     return list
-  }, [interns, filterStatus, searchQuery])
+  }, [interns, filterStatus, filterSchool, searchQuery])
 
-  const allTasks = useMemo(() => interns.flatMap(i => i.tasks.map(t => ({ ...t, internName: i.fullName }))), [interns])
+  const allTasks = useMemo(() => interns.flatMap(i => i.tasks.map(t => ({ ...t, internName: i.fullName, internPhoto: i.photoUrl }))), [interns])
   const pendingTasksCount = useMemo(() => allTasks.filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length, [allTasks])
+
+  const schoolGroups = useMemo(() => {
+    const map = new Map<string, Intern[]>()
+    interns.forEach(i => {
+      if (!map.has(i.school)) map.set(i.school, [])
+      map.get(i.school)!.push(i)
+    })
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [interns])
+
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, typeof allTasks>()
+    allTasks.forEach(t => {
+      if (!t.dueDate) return
+      const key = t.dueDate.split('T')[0]
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(t)
+    })
+    return map
+  }, [allTasks])
+
+  const attendanceByDate = useMemo(() => {
+    const map = new Map<string, AttendanceRecord[]>()
+    interns.forEach(intern => {
+      intern.attendance.forEach(a => {
+        const key = a.date.split('T')[0]
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(a)
+      })
+    })
+    return map
+  }, [interns])
 
   const totalHoursLogged = useMemo(() => interns.reduce((s, i) => s + i.totalHours, 0), [interns])
 
@@ -1034,7 +1090,7 @@ export default function InternsPage() {
             </div>
 
             {/* Nav items */}
-            <nav className="flex-1 px-2 pb-4 space-y-1">
+            <nav className="flex-shrink-0 px-2 pt-1 space-y-1">
               {NAV_ITEMS.map(item => {
                 const active = activeSection === item.id
                 return (
@@ -1064,6 +1120,58 @@ export default function InternsPage() {
                 )
               })}
             </nav>
+
+            {/* ── School Directory ────────────────────────────────────────────── */}
+            {sidebarOpen && schoolGroups.length > 0 && (
+              <div className="flex-1 px-3 py-3 min-h-0 overflow-y-auto">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <span className="flex-1 h-px bg-gray-200"/>
+                  Schools
+                  <span className="flex-1 h-px bg-gray-200"/>
+                </p>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => { setFilterSchool('all'); setSelectedIntern(null); setActiveSection('interns') }}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs transition-all ${
+                      filterSchool === 'all' && activeSection === 'interns' ? 'bg-[var(--dict-blue)]/10 text-[var(--dict-blue)] font-bold' : 'text-gray-600 hover:bg-gray-100'
+                    }`}>
+                    <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0"/>
+                    <span className="truncate font-semibold">All Schools</span>
+                    <span className="ml-auto text-[10px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 font-bold flex-shrink-0">{interns.length}</span>
+                  </button>
+                  {schoolGroups.map(([school, members]) => {
+                    const sc = getSchoolColor(school)
+                    const active = filterSchool === school && activeSection === 'interns'
+                    const activeCount = members.filter(m => m.status === 'ACTIVE').length
+                    const completedCount = members.filter(m => m.status === 'COMPLETED').length
+                    return (
+                      <button key={school}
+                        onClick={() => { setFilterSchool(school); setSelectedIntern(null); setActiveSection('interns') }}
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs transition-all ${
+                          active ? `${sc.light} ${sc.text} font-bold ring-1 ${sc.ring}` : 'text-gray-600 hover:bg-gray-100'
+                        }`}>
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sc.dot}`}/>
+                        <div className="flex-1 text-left min-w-0">
+                          <p className="truncate font-semibold leading-tight">{school}</p>
+                          <p className="text-[10px] text-gray-400 leading-tight">{activeCount} active{completedCount > 0 ? ` · ${completedCount} done` : ''}</p>
+                        </div>
+                        <span className={`text-[10px] ${sc.bg} ${sc.text} rounded-full px-1.5 py-0.5 font-bold flex-shrink-0`}>{members.length}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {/* collapsed school dots */}
+            {!sidebarOpen && schoolGroups.length > 0 && (
+              <div className="flex flex-col items-center gap-1.5 py-2">
+                {schoolGroups.map(([school]) => {
+                  const sc = getSchoolColor(school)
+                  return <span key={school} title={school} className={`w-2.5 h-2.5 rounded-full ${sc.dot} cursor-pointer`}
+                    onClick={() => { setFilterSchool(school); setSelectedIntern(null); setActiveSection('interns') }}/>
+                })}
+              </div>
+            )}
 
             {/* Quick action at bottom */}
             {sidebarOpen && (
@@ -1241,18 +1349,45 @@ export default function InternsPage() {
               </div>
 
               {/* Filters */}
-              <div className="glass rounded-2xl p-3 flex flex-wrap gap-2 items-center">
-                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, school, or course..."
-                  className="flex-1 min-w-[200px] border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-                <div className="flex gap-2">
-                  {['all', 'ACTIVE', 'COMPLETED', 'INACTIVE', 'ON_LEAVE'].map(s => (
-                    <button key={s} onClick={() => { setFilterStatus(s); setSelectedIntern(null) }}
-                      className={`text-xs px-3 py-2 rounded-xl font-semibold transition-all ${filterStatus === s ? 'bg-[var(--dict-blue)] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      {s === 'all' ? 'All' : INTERN_STATUS_META[s as InternStatus].label}
-                    </button>
-                  ))}
+              <div className="glass rounded-2xl p-3 space-y-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Search by name, school, or course..."
+                    className="flex-1 min-w-[180px] border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['all', 'ACTIVE', 'COMPLETED', 'INACTIVE', 'ON_LEAVE'].map(s => (
+                      <button key={s} onClick={() => { setFilterStatus(s); setSelectedIntern(null) }}
+                        className={`text-xs px-3 py-1.5 rounded-xl font-semibold transition-all ${filterStatus === s ? 'bg-[var(--dict-blue)] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                        {s === 'all' ? 'All' : INTERN_STATUS_META[s as InternStatus].label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                {/* School filter chips */}
+                {schoolGroups.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1">School:</span>
+                    <button onClick={() => { setFilterSchool('all'); setSelectedIntern(null) }}
+                      className={`text-xs px-3 py-1 rounded-full font-semibold transition-all border ${
+                        filterSchool === 'all' ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                      }`}>All</button>
+                    {schoolGroups.map(([school, members]) => {
+                      const sc = getSchoolColor(school)
+                      const isActive = filterSchool === school
+                      return (
+                        <button key={school} onClick={() => { setFilterSchool(school); setSelectedIntern(null) }}
+                          className={`text-xs px-3 py-1 rounded-full font-semibold transition-all border flex items-center gap-1.5 ${
+                            isActive ? `${sc.dot.replace('bg-','bg-')} text-white border-transparent` : `bg-white ${sc.text} ${sc.border} hover:${sc.light}`
+                          }`}
+                          style={isActive ? { background: sc.dot.includes('blue') ? '#3b82f6' : sc.dot.includes('purple') ? '#a855f7' : sc.dot.includes('emerald') ? '#10b981' : sc.dot.includes('orange') ? '#f97316' : sc.dot.includes('rose') ? '#f43f5e' : sc.dot.includes('teal') ? '#14b8a6' : sc.dot.includes('indigo') ? '#6366f1' : sc.dot.includes('amber') ? '#f59e0b' : sc.dot.includes('cyan') ? '#06b6d4' : '#d946ef', color: 'white' } : {}}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white/70' : sc.dot}`}/>
+                          {school}
+                          <span className={`text-[10px] font-bold ${isActive ? 'bg-white/20 text-white' : sc.bg + ' ' + sc.text} rounded-full px-1.5`}>{members.length}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Intern selected detail view */}
@@ -1431,115 +1566,157 @@ export default function InternsPage() {
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-gray-50 border-b-2 border-gray-100">
-                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Intern</th>
-                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">School / Course</th>
-                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Start Date</th>
-                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">End Date</th>
-                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3 min-w-[160px]">Hours Progress</th>
-                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Status</th>
-                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Days Left</th>
-                            <th className="text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {filteredInterns.map(intern => {
-                            const sm = INTERN_STATUS_META[intern.status]
-                            const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
-                            const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
-                            const barColor = pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-blue-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-red-400'
-                            return (
-                              <tr key={intern.id}
-                                className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
-                                onClick={() => setSelectedIntern(intern)}>
-                                {/* Name + avatar */}
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-3">
-                                    <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
-                                    <div className="min-w-0">
-                                      <p className="font-bold text-sm text-gray-800 truncate max-w-[140px]">{intern.fullName}</p>
-                                      {intern.supervisor && <p className="text-xs text-gray-400 truncate">👤 {intern.supervisor}</p>}
-                                    </div>
-                                  </div>
-                                </td>
-                                {/* School / course */}
-                                <td className="px-4 py-3">
-                                  <p className="text-sm font-semibold text-gray-700 truncate max-w-[160px]">{intern.school}</p>
-                                  <p className="text-xs text-gray-400 truncate">{intern.course}</p>
-                                </td>
-                                {/* Start date */}
-                                <td className="px-4 py-3">
-                                  <p className="text-sm font-semibold text-gray-700">{format(new Date(intern.startDate), 'MMM d, yyyy')}</p>
-                                  <p className="text-xs text-gray-400">{format(new Date(intern.startDate), 'EEEE')}</p>
-                                </td>
-                                {/* End date */}
-                                <td className="px-4 py-3">
-                                  <p className="text-sm font-semibold text-gray-700">{format(new Date(intern.endDate), 'MMM d, yyyy')}</p>
-                                  <p className="text-xs text-gray-400">{format(new Date(intern.endDate), 'EEEE')}</p>
-                                </td>
-                                {/* Hours progress */}
-                                <td className="px-4 py-3 min-w-[160px]">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs text-gray-500">{Math.round(intern.totalHours)}h / {intern.requiredHours}h</span>
-                                    <span className={`text-xs font-bold ${pct >= 100 ? 'text-green-600' : pct >= 70 ? 'text-blue-600' : 'text-orange-600'}`}>{pct}%</span>
-                                  </div>
-                                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }}/>
-                                  </div>
-                                </td>
-                                {/* Status */}
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sm.dot}`}/>
-                                    <span className={`text-xs px-2 py-1 rounded-full border font-semibold whitespace-nowrap ${sm.badge}`}>{sm.label}</span>
-                                  </div>
-                                </td>
-                                {/* Days left */}
-                                <td className="px-4 py-3">
-                                  {daysLeft > 30 ? (
-                                    <span className="text-sm font-bold text-gray-700">{daysLeft}d</span>
-                                  ) : daysLeft > 7 ? (
-                                    <span className="text-sm font-bold text-orange-600">{daysLeft}d</span>
-                                  ) : daysLeft > 0 ? (
-                                    <span className="text-sm font-bold text-red-600 animate-pulse">{daysLeft}d left!</span>
-                                  ) : daysLeft === 0 ? (
-                                    <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">Last day!</span>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">{Math.abs(daysLeft)}d ago</span>
-                                  )}
-                                </td>
-                                {/* Actions */}
-                                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => { setNewAttendance(f => ({ ...f, internId: intern.id })); setShowAddAttendance(true) }}
-                                      title="Log attendance"
-                                      className="w-7 h-7 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 flex items-center justify-center text-xs font-bold transition-all">
-                                      ✓
-                                    </button>
-                                    <button
-                                      onClick={() => { setNewTask(f => ({ ...f, internId: intern.id })); setShowAddTask(true) }}
-                                      title="Assign task"
-                                      className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 flex items-center justify-center text-xs transition-all">
-                                      +
-                                    </button>
-                                    <button
-                                      onClick={() => setSelectedIntern(intern)}
-                                      title="View profile"
-                                      className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center justify-center text-xs transition-all">
-                                      →
-                                    </button>
-                                  </div>
-                                </td>
+                      {/* School-grouped table */}
+                      {(() => {
+                        const groups = filterSchool !== 'all'
+                          ? [[filterSchool, filteredInterns] as [string, Intern[]]]
+                          : (() => {
+                              const map = new Map<string, Intern[]>()
+                              filteredInterns.forEach(i => {
+                                if (!map.has(i.school)) map.set(i.school, [])
+                                map.get(i.school)!.push(i)
+                              })
+                              return Array.from(map.entries()).sort((a,b) => a[0].localeCompare(b[0]))
+                            })()
+                        return (
+                          <table className="w-full">
+                            <thead>
+                              <tr className="bg-gray-50 border-b-2 border-gray-100">
+                                <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Intern</th>
+                                <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Course</th>
+                                <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Period</th>
+                                <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3 min-w-[150px]">Progress</th>
+                                <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Status</th>
+                                <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Days Left</th>
+                                <th className="text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Actions</th>
                               </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-                        Showing {filteredInterns.length} of {interns.length} interns · Click any row to view full profile
+                            </thead>
+                            <tbody>
+                              {groups.map(([school, members]) => {
+                                const sc = getSchoolColor(school)
+                                const activeCount = members.filter(m => m.status === 'ACTIVE').length
+                                const completedCount = members.filter(m => m.status === 'COMPLETED').length
+                                return (
+                                  <React.Fragment key={school}>
+                                    {/* School group header */}
+                                    <tr>
+                                      <td colSpan={7} className="px-4 pt-4 pb-1">
+                                        <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl ${sc.light} ${sc.border} border`}>
+                                          <span className={`w-3 h-3 rounded-full flex-shrink-0 ${sc.dot}`}/>
+                                          <span className={`text-sm font-bold ${sc.text} truncate flex-1`}>🏫 {school}</span>
+                                          <div className="flex items-center gap-2 flex-shrink-0">
+                                            {activeCount > 0 && <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">{activeCount} active</span>}
+                                            {completedCount > 0 && <span className="text-xs bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">✓ {completedCount} done</span>}
+                                            <span className={`text-xs ${sc.bg} ${sc.text} font-bold px-2 py-0.5 rounded-full`}>{members.length} intern{members.length !== 1 ? 's' : ''}</span>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                    {/* Intern rows */}
+                                    {members.map(intern => {
+                                      const sm = INTERN_STATUS_META[intern.status]
+                                      const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
+                                      const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
+                                      const isCompleted = intern.status === 'COMPLETED'
+                                      const isInactive = intern.status === 'INACTIVE'
+                                      const rowStyle = isCompleted
+                                        ? 'bg-gradient-to-r from-green-50/80 to-emerald-50/60 hover:from-green-100/80'
+                                        : isInactive ? 'bg-gray-50/80 opacity-70 hover:opacity-100'
+                                        : 'hover:bg-blue-50/40'
+                                      return (
+                                        <tr key={intern.id}
+                                          className={`border-b border-gray-50 transition-all cursor-pointer group ${rowStyle}`}
+                                          onClick={() => setSelectedIntern(intern)}>
+                                          {/* Name + avatar */}
+                                          <td className="px-4 py-3">
+                                            <div className="flex items-center gap-3">
+                                              <div className="relative flex-shrink-0">
+                                                <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
+                                                {isCompleted && (
+                                                  <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-[9px] font-bold shadow">✓</span>
+                                                )}
+                                              </div>
+                                              <div className="min-w-0">
+                                                <p className={`font-bold text-sm truncate max-w-[140px] ${isCompleted ? 'text-green-800' : 'text-gray-800'}`}>{intern.fullName}</p>
+                                                {intern.supervisor && <p className="text-xs text-gray-400 truncate">👤 {intern.supervisor}</p>}
+                                              </div>
+                                            </div>
+                                          </td>
+                                          {/* Course */}
+                                          <td className="px-4 py-3">
+                                            <p className="text-xs text-gray-600 font-medium truncate max-w-[160px]">{intern.course}</p>
+                                          </td>
+                                          {/* Period */}
+                                          <td className="px-4 py-3 whitespace-nowrap">
+                                            <p className="text-xs text-gray-600">{format(new Date(intern.startDate), 'MMM d')} – {format(new Date(intern.endDate), 'MMM d, yyyy')}</p>
+                                          </td>
+                                          {/* Progress */}
+                                          <td className="px-4 py-3 min-w-[150px]">
+                                            <div className="flex items-center justify-between mb-1">
+                                              <span className="text-xs text-gray-500">{Math.round(intern.totalHours)}h / {intern.requiredHours}h</span>
+                                              <span className={`text-xs font-bold ${
+                                                pct >= 100 ? 'text-green-600' : pct >= 70 ? 'text-blue-600' : pct >= 40 ? 'text-yellow-600' : 'text-red-500'
+                                              }`}>{pct}%</span>
+                                            </div>
+                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                              <div className={`h-2 rounded-full transition-all bg-gradient-to-r ${
+                                                pct >= 100 ? 'from-green-400 to-emerald-500' :
+                                                pct >= 70  ? 'from-blue-400 to-indigo-500' :
+                                                pct >= 40  ? 'from-yellow-400 to-orange-400' :
+                                                             'from-red-400 to-rose-500'
+                                              }`} style={{ width: `${pct}%` }}/>
+                                            </div>
+                                          </td>
+                                          {/* Status */}
+                                          <td className="px-4 py-3">
+                                            <span className={`text-xs px-2 py-1 rounded-full border font-semibold whitespace-nowrap ${sm.badge}`}>{sm.label}</span>
+                                          </td>
+                                          {/* Days left */}
+                                          <td className="px-4 py-3">
+                                            {isCompleted ? (
+                                              <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">🎓 Done</span>
+                                            ) : daysLeft > 30 ? (
+                                              <span className="text-sm font-bold text-gray-700">{daysLeft}d</span>
+                                            ) : daysLeft > 7 ? (
+                                              <span className="text-sm font-bold text-orange-600">{daysLeft}d</span>
+                                            ) : daysLeft > 0 ? (
+                                              <span className="text-sm font-bold text-red-600 animate-pulse">{daysLeft}d!</span>
+                                            ) : daysLeft === 0 ? (
+                                              <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">Last day!</span>
+                                            ) : (
+                                              <span className="text-xs text-gray-400">{Math.abs(daysLeft)}d ago</span>
+                                            )}
+                                          </td>
+                                          {/* Actions */}
+                                          <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                              {!isCompleted && (
+                                                <button onClick={() => { setNewAttendance(f => ({ ...f, internId: intern.id })); setShowAddAttendance(true) }}
+                                                  title="Log attendance" className="w-7 h-7 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 flex items-center justify-center text-xs font-bold transition-all">✓</button>
+                                              )}
+                                              <button onClick={() => { setNewTask(f => ({ ...f, internId: intern.id })); setShowAddTask(true) }}
+                                                title="Assign task" className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 flex items-center justify-center text-xs transition-all">+</button>
+                                              <button onClick={() => setSelectedIntern(intern)}
+                                                title="View profile" className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center justify-center text-xs transition-all">→</button>
+                                              <button onClick={() => { setEmailTarget(intern); setEmailResult(null); setShowEmailModal(true) }}
+                                                title="Send message" className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center justify-center text-xs transition-all">✉️</button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </React.Fragment>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        )
+                      })()}
+                      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
+                        <span>Showing {filteredInterns.length} of {interns.length} interns{filterSchool !== 'all' ? ` · filtered by ${filterSchool}` : ''} · Click row to view profile</span>
+                        {filterSchool !== 'all' && (
+                          <button onClick={() => setFilterSchool('all')} className="text-xs text-blue-600 hover:underline font-semibold">Clear school filter ×</button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1883,6 +2060,283 @@ export default function InternsPage() {
               </div>
             </div>
           )}
+
+          {/* ══ CALENDAR ════════════════════════════════════════════════════════ */}
+          {activeSection === 'calendar' && (() => {
+            const monthStart  = startOfMonth(calendarDate)
+            const monthEnd    = endOfMonth(calendarDate)
+            const gridStart   = startOfWeek(monthStart, { weekStartsOn: 0 })
+            const gridEnd     = endOfWeek(monthEnd,    { weekStartsOn: 0 })
+            const days        = eachDayOfInterval({ start: gridStart, end: gridEnd })
+            const selectedKey = calendarSelectedDay ? format(calendarSelectedDay, 'yyyy-MM-dd') : null
+            const selectedTasks = selectedKey ? (tasksByDate.get(selectedKey) || []) : []
+            const selectedAttendance = selectedKey ? (attendanceByDate.get(selectedKey) || []) : []
+
+            // Upcoming tasks (next 30 days with due dates)
+            const upcoming = allTasks
+              .filter(t => t.dueDate && t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
+              .map(t => ({ ...t, due: parseISO(t.dueDate!.split('T')[0]) }))
+              .filter(t => t.due >= new Date())
+              .sort((a, b) => a.due.getTime() - b.due.getTime())
+              .slice(0, 12)
+
+            const PRIORITY_COLORS: Record<string, string> = {
+              LOW:    'bg-gray-400',
+              MEDIUM: 'bg-yellow-400',
+              HIGH:   'bg-orange-500',
+              URGENT: 'bg-red-500',
+            }
+
+            return (
+              <div className="space-y-5">
+                {/* Header */}
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h1 className="font-display font-bold text-2xl text-gray-800">Calendar</h1>
+                    <p className="text-sm text-gray-500 mt-0.5">Task due dates, attendance events &amp; intern milestones</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowAddTask(true)}
+                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold shadow hover:shadow-lg transition-all flex items-center gap-2">
+                      + Assign Task
+                    </button>
+                    <button onClick={() => setShowAddAttendance(true)}
+                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold shadow hover:shadow-lg transition-all flex items-center gap-2">
+                      ✓ Log Attendance
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid lg:grid-cols-3 gap-5">
+                  {/* ── Calendar grid ── */}
+                  <div className="lg:col-span-2 glass rounded-2xl overflow-hidden">
+                    {/* Month navigator */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                      <button onClick={() => setCalendarDate(d => subMonths(d, 1))}
+                        className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all font-bold text-lg">‹</button>
+                      <div className="text-center">
+                        <p className="font-display font-bold text-lg text-gray-800">{format(calendarDate, 'MMMM yyyy')}</p>
+                        <p className="text-xs text-gray-400">{allTasks.filter(t => t.dueDate?.startsWith(format(calendarDate,'yyyy-MM'))).length} task{allTasks.filter(t => t.dueDate?.startsWith(format(calendarDate,'yyyy-MM'))).length !== 1 ? 's' : ''} this month</p>
+                      </div>
+                      <button onClick={() => setCalendarDate(d => addMonths(d, 1))}
+                        className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all font-bold text-lg">›</button>
+                    </div>
+
+                    {/* Day-of-week labels */}
+                    <div className="grid grid-cols-7 border-b border-gray-100">
+                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                        <div key={d} className="py-2 text-center text-xs font-bold text-gray-400 uppercase tracking-wide">{d}</div>
+                      ))}
+                    </div>
+
+                    {/* Day cells */}
+                    <div className="grid grid-cols-7">
+                      {days.map((day, idx) => {
+                        const key     = format(day, 'yyyy-MM-dd')
+                        const dayTasks = tasksByDate.get(key) || []
+                        const dayAtt  = attendanceByDate.get(key) || []
+                        const inMonth = isSameMonth(day, calendarDate)
+                        const today   = isToday(day)
+                        const sel     = calendarSelectedDay && isSameDay(day, calendarSelectedDay)
+                        const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                        return (
+                          <div key={idx}
+                            onClick={() => setCalendarSelectedDay(sel ? null : day)}
+                            className={`min-h-[80px] p-1.5 border-b border-r border-gray-50 cursor-pointer transition-all ${
+                              !inMonth ? 'bg-gray-50/40' : isWeekend ? 'bg-blue-50/20' : 'bg-white'
+                            } ${sel ? 'ring-2 ring-inset ring-[var(--dict-blue)] bg-blue-50' : 'hover:bg-blue-50/40'}`}>
+                            {/* Date number */}
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mb-1 mx-auto ${
+                              today ? 'bg-[var(--dict-blue)] text-white shadow-md' :
+                              sel   ? 'bg-blue-100 text-blue-700' :
+                              !inMonth ? 'text-gray-300' :
+                              isWeekend ? 'text-blue-400' : 'text-gray-700'
+                            }`}>
+                              {format(day, 'd')}
+                            </div>
+
+                            {/* Task dots */}
+                            {dayTasks.length > 0 && (
+                              <div className="flex flex-wrap gap-0.5 justify-center mb-0.5">
+                                {dayTasks.slice(0, 3).map((t, i) => (
+                                  <span key={i} className={`w-1.5 h-1.5 rounded-full ${PRIORITY_COLORS[t.priority] || 'bg-gray-400'}`}
+                                    title={`${t.title} (${t.priority})`}/>
+                                ))}
+                                {dayTasks.length > 3 && <span className="text-[9px] text-gray-400 font-bold">+{dayTasks.length - 3}</span>}
+                              </div>
+                            )}
+
+                            {/* Attendance dot */}
+                            {dayAtt.length > 0 && (
+                              <div className="flex justify-center gap-0.5">
+                                {dayAtt.slice(0, 4).map((a, i) => {
+                                  const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
+                                  return <span key={i} className={`w-1.5 h-1.5 rounded-full ${m.color.split(' ')[0].replace('bg-','bg-').replace('-100','-400')}`}
+                                    title={m.label}/>
+                                })}
+                              </div>
+                            )}
+
+                            {/* Task mini labels (only if few) */}
+                            {dayTasks.length > 0 && dayTasks.length <= 2 && (
+                              <div className="space-y-0.5 mt-0.5">
+                                {dayTasks.map((t, i) => {
+                                  const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
+                                  return (
+                                    <p key={i} className={`text-[9px] font-semibold px-1 rounded truncate ${pm.color}`}>{t.title}</p>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex flex-wrap gap-4 px-5 py-3 border-t border-gray-100 bg-gray-50">
+                      <span className="text-xs text-gray-500 font-semibold flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-[var(--dict-blue)]"/>Today
+                      </span>
+                      {[
+                        { color: 'bg-gray-400',   label: 'Low task' },
+                        { color: 'bg-yellow-400', label: 'Medium task' },
+                        { color: 'bg-orange-500', label: 'High task' },
+                        { color: 'bg-red-500',    label: 'Urgent task' },
+                        { color: 'bg-green-400',  label: 'Present' },
+                        { color: 'bg-red-400',    label: 'Absent' },
+                      ].map(l => (
+                        <span key={l.label} className="text-xs text-gray-500 font-semibold flex items-center gap-1.5">
+                          <span className={`w-2.5 h-2.5 rounded-full ${l.color}`}/>{l.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Right panel ── */}
+                  <div className="space-y-4">
+                    {/* Selected day detail */}
+                    {calendarSelectedDay && (
+                      <div className="glass rounded-2xl overflow-hidden">
+                        <div className="px-5 py-4 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white">
+                          <p className="font-display font-bold text-lg">{format(calendarSelectedDay, 'MMMM d, yyyy')}</p>
+                          <p className="text-blue-200 text-xs mt-0.5">{format(calendarSelectedDay, 'EEEE')}</p>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          {selectedTasks.length === 0 && selectedAttendance.length === 0 ? (
+                            <p className="text-center text-gray-400 text-sm py-4">No events on this day</p>
+                          ) : null}
+                          {selectedTasks.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tasks Due</p>
+                              <div className="space-y-2">
+                                {selectedTasks.map(t => {
+                                  const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
+                                  const tm = TASK_STATUS_META[t.status as TaskStatus]
+                                  return (
+                                    <div key={t.id} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                                      <span className="text-sm mt-0.5">{tm.icon}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-gray-800 truncate">{t.title}</p>
+                                        <p className="text-xs text-gray-400">{(t as any).internName}</p>
+                                      </div>
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${pm.color}`}>{pm.label}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {selectedAttendance.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Attendance</p>
+                              <div className="space-y-2">
+                                {selectedAttendance.map(a => {
+                                  const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
+                                  const intern = interns.find(i => i.id === (a as any).internId)
+                                  return (
+                                    <div key={a.id} className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${m.color} border-current/20`}>
+                                      <span className="font-bold">{m.icon}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold truncate">{intern?.fullName || 'Unknown'}</p>
+                                        {a.hours && <p className="text-xs opacity-70">{a.hours}h logged</p>}
+                                      </div>
+                                      <span className="text-xs font-bold">{m.label}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Upcoming tasks */}
+                    <div className="glass rounded-2xl overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+                          <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center text-sm">📋</span>
+                          Upcoming Tasks
+                        </h3>
+                        <span className="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">{upcoming.length}</span>
+                      </div>
+                      {upcoming.length === 0 ? (
+                        <p className="text-center text-gray-400 text-sm py-6">No upcoming task deadlines</p>
+                      ) : (
+                        <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto">
+                          {upcoming.map(t => {
+                            const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
+                            const dDays = differenceInDays(t.due, new Date())
+                            const urgency = dDays === 0 ? 'text-red-600 bg-red-50 border-red-200' :
+                                            dDays <= 2  ? 'text-orange-600 bg-orange-50 border-orange-200' :
+                                            dDays <= 7  ? 'text-yellow-700 bg-yellow-50 border-yellow-200' :
+                                                          'text-gray-600 bg-gray-50 border-gray-100'
+                            return (
+                              <div key={t.id} className={`flex items-start gap-2.5 p-2.5 rounded-xl border ${urgency}`}
+                                onClick={() => setCalendarSelectedDay(t.due)}>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold truncate">{t.title}</p>
+                                  <p className="text-xs opacity-70">{(t as any).internName} · {format(t.due, 'MMM d')}</p>
+                                </div>
+                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${pm.color}`}>{pm.label}</span>
+                                  <span className="text-[10px] font-bold">
+                                    {dDays === 0 ? 'Today!' : dDays === 1 ? 'Tomorrow' : `${dDays}d`}
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Today's quick summary */}
+                    <div className="glass rounded-2xl p-4">
+                      <h3 className="font-display font-semibold text-gray-800 mb-3 flex items-center gap-2 text-sm">
+                        <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-xs">📅</span>
+                        Today — {format(new Date(), 'MMM d, yyyy')}
+                      </h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { label: 'Tasks Due', value: (tasksByDate.get(format(new Date(),'yyyy-MM-dd'))||[]).length, color: 'bg-purple-50 text-purple-700' },
+                          { label: 'Present', value: todayAttendance.filter(a=>a.status==='PRESENT').length, color: 'bg-green-50 text-green-700' },
+                          { label: 'Overdue', value: allTasks.filter(t=>t.dueDate && new Date(t.dueDate)<new Date() && t.status!=='COMPLETED' && t.status!=='CANCELLED').length, color: 'bg-red-50 text-red-700' },
+                          { label: 'Active', value: activeInterns.length, color: 'bg-blue-50 text-blue-700' },
+                        ].map(s => (
+                          <div key={s.label} className={`p-3 rounded-xl text-center ${s.color}`}>
+                            <p className="text-xl font-bold">{s.value}</p>
+                            <p className="text-xs font-semibold mt-0.5">{s.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* ══ TIMELINE ═════════════════════════════════════════════════════════ */}
           {activeSection === 'timeline' && (
