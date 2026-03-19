@@ -431,6 +431,9 @@ export default function AdminPage() {
   const [pingHistory, setPingHistory] = useState<{ ip: string; alive: boolean; responseTime: number | null; timestamp: Date; pcName?: string | null }[]>([])
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [pcError, setPcError] = useState<string | null>(null)
+  const [opError, setOpError] = useState<string | null>(null)
   // ── Pusher real-time + browser notifications ──────────────────────────────
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   useEffect(() => {
@@ -479,20 +482,23 @@ export default function AdminPage() {
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
-    const r = await fetch('/api/stats'); if (r.ok) setStats(await r.json())
+    try { const r = await fetch('/api/stats'); if (r.ok) setStats(await r.json()) } catch {}
   }, [])
   const fetchLogs = useCallback(async () => {
-    const p = new URLSearchParams()
-    if (search) p.set('search', search)
-    if (dateFilter) p.set('date', dateFilter)
-    p.set('limit', '200')
-    const r = await fetch(`/api/logs?${p}`)
-    if (r.ok) { const d = await r.json(); setAllLogs(Array.isArray(d) ? d : (d.logs || [])) }
+    try {
+      const p = new URLSearchParams()
+      if (search) p.set('search', search)
+      if (dateFilter) p.set('date', dateFilter)
+      p.set('limit', '200')
+      const r = await fetch(`/api/logs?${p}`)
+      if (r.ok) { const d = await r.json(); setAllLogs(Array.isArray(d) ? d : (d.logs || [])) }
+    } catch {}
   }, [search, dateFilter])
   const fetchPcs = useCallback(async () => {
-    const r = await fetch('/api/pcs'); if (r.ok) setPcs(await r.json())
+    try { const r = await fetch('/api/pcs'); if (r.ok) setPcs(await r.json()) } catch {}
   }, [])
   const fetchSettings = async () => {
+    try {
     const r = await fetch('/api/settings')
     if (r.ok) {
       const data = await r.json()
@@ -518,19 +524,24 @@ export default function AdminPage() {
         applyBgToPage(data.bgImageUrl)
       }
     }
+    } catch {}
   }
 
 
   const fetchLiveStats = useCallback(async () => {
-    const r = await fetch('/api/stats/live')
-    if (r.ok) setLiveStats(await r.json())
+    try { const r = await fetch('/api/stats/live'); if (r.ok) setLiveStats(await r.json()) } catch {}
   }, [])
 
   useEffect(() => {
     if (!isSignedIn) return
     fetchStats(); fetchPcs(); fetchSettings(); fetchLogs(); fetchLiveStats()
-    const t = setInterval(() => { fetchStats(); fetchPcs(); fetchLiveStats() }, 15000)
-    return () => clearInterval(t)
+    // Core stats + PCs every 15 s for real-time feel
+    const fastPoll = setInterval(() => { fetchStats(); fetchPcs(); fetchLiveStats() }, 15_000)
+    // Logs every 60 s (less frequent — Pusher handles real-time new entries)
+    const logPoll = setInterval(() => fetchLogs(), 60_000)
+    // Settings every 2 min (office hours, access code)
+    const settingsPoll = setInterval(() => fetchSettings(), 120_000)
+    return () => { clearInterval(fastPoll); clearInterval(logPoll); clearInterval(settingsPoll) }
   }, [isSignedIn, fetchStats, fetchPcs, fetchLogs])
   useEffect(() => { if (isSignedIn && tab === 'logs') fetchLogs() }, [isSignedIn, tab, fetchLogs])
 
@@ -572,37 +583,52 @@ export default function AdminPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   const handleCheckout = async (logId: string) => {
-    await fetch(`/api/logs/${logId}/timeout`, { method: 'PATCH' })
-    fetchLogs(); fetchStats(); fetchPcs(); fetchLiveStats()
+    try {
+      await fetch(`/api/logs/${logId}/timeout`, { method: 'PATCH' })
+      fetchLogs(); fetchStats(); fetchPcs(); fetchLiveStats()
+    } catch { setOpError('Checkout failed — please try again.') }
   }
   const handleSaveLog = async (id: string, data: Partial<Log>) => {
-    await fetch(`/api/logs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-    setEditLog(null); fetchLogs(); fetchStats()
+    try {
+      const r = await fetch(`/api/logs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      if (!r.ok) { setOpError('Failed to save log entry.'); return }
+      setEditLog(null); setOpError(null); fetchLogs(); fetchStats()
+    } catch { setOpError('Network error — log could not be saved.') }
   }
   const archiveLog = async (id: string) => {
-    await fetch(`/api/logs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: true }) })
-    fetchLogs(); fetchStats()
+    try {
+      await fetch(`/api/logs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: true }) })
+      fetchLogs(); fetchStats()
+    } catch { setOpError('Failed to archive log entry.') }
   }
   const handleSavePc = async (id: string, data: Partial<PC>) => {
     // Check for PC stacking - prevent placing PC in occupied cell
     if (data.gridRow && data.gridCol) {
       const existingPc = pcs.find(p => p.id !== id && p.gridRow === data.gridRow && p.gridCol === data.gridCol)
       if (existingPc) {
-        alert(`Cell (${data.gridCol}, ${data.gridRow}) is already occupied by ${existingPc.name}. Please choose an empty cell.`)
+        setPcError(`Cell (${data.gridCol}, ${data.gridRow}) is already occupied by ${existingPc.name}. Please choose an empty cell.`)
         return
       }
     }
-    await fetch(`/api/pcs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-    setEditingPc(null); fetchPcs()
+    setPcError(null)
+    try {
+      await fetch(`/api/pcs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      setEditingPc(null); fetchPcs()
+    } catch { setPcError('Network error — workstation could not be saved.') }
   }
   const addPc = async () => {
     if (!newPc.name || !newPc.ipAddress) return
-    await fetch('/api/pcs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPc) })
-    setNewPc({ name: '', ipAddress: '', location: '' }); fetchPcs()
+    try {
+      const r = await fetch('/api/pcs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPc) })
+      if (!r.ok) { setPcError('Failed to add workstation — check name and IP.'); return }
+      setPcError(null); setNewPc({ name: '', ipAddress: '', location: '' }); fetchPcs()
+    } catch { setPcError('Network error — workstation could not be added.') }
   }
   const deletePc = async (id: string) => {
-    if (!confirm('Delete this workstation?')) return
-    await fetch(`/api/pcs/${id}`, { method: 'DELETE' }); fetchPcs()
+    if (!confirm('Delete this workstation? This cannot be undone.')) return
+    try {
+      await fetch(`/api/pcs/${id}`, { method: 'DELETE' }); fetchPcs()
+    } catch { setPcError('Failed to delete workstation.') }
   }
   const pingPc = async (pc: PC) => {
     setPingingId(pc.id)
@@ -842,21 +868,22 @@ export default function AdminPage() {
         }, 2000)
         
         // Timeout after 60 seconds
-        setTimeout(() => {
+        const scanTimeout = setTimeout(() => {
           clearInterval(pollInterval)
-          if (scanning) {
-            setScanning(false)
-            alert('Scan timeout. Bridge agent may not be running.')
-          }
+          setScanning(false)
+          setScanError('Scan timed out — bridge agent may not be running.')
         }, 60000)
+        // Clear timeout when poll completes
+        const origPoll = pollInterval
+        void origPoll
+        void scanTimeout
       } else {
-        const error = await res.json()
-        alert(error.error || 'Failed to start scan')
+        const error = await res.json().catch(() => ({}))
+        setScanError(error.error || 'Failed to start scan — check bridge agent connection.')
         setScanning(false)
       }
-    } catch (e) {
-      console.error(e)
-      alert('Failed to start scan. Check console for details.')
+    } catch {
+      setScanError('Failed to start scan — network error.')
       setScanning(false)
     }
   }
@@ -882,11 +909,14 @@ export default function AdminPage() {
   }
 
   const saveSettings = async () => {
-    await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) })
-    // Apply BG immediately so admin sees the change without page reload
-    applyBgToPage(settings.bgImageUrl || '')
-    setSettingsSaved(true); try { localStorage.removeItem('dtc_settings_cache') } catch {}
-    setTimeout(() => setSettingsSaved(false), 3000)
+    try {
+      const r = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) })
+      if (!r.ok) { setOpError('Failed to save settings — please try again.'); return }
+      applyBgToPage(settings.bgImageUrl || '')
+      setSettingsSaved(true); setOpError(null)
+      try { localStorage.removeItem('dtc_settings_cache') } catch {}
+      setTimeout(() => setSettingsSaved(false), 3000)
+    } catch { setOpError('Network error — settings could not be saved.') }
   }
 
   // Drag and drop for PC grid
@@ -988,6 +1018,15 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6" style={{position:"relative",zIndex:1}}>
+
+        {/* Global operation error toast */}
+        {opError && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-red-600 text-white px-5 py-3 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+            <span className="text-lg">⚠️</span>
+            <p className="text-sm font-semibold">{opError}</p>
+            <button onClick={()=>setOpError(null)} className="ml-2 text-red-200 hover:text-white font-bold text-lg leading-none">&times;</button>
+          </div>
+        )}
 
         {/* ══════════════════════════════════════════════════════════ DASHBOARD */}
         {tab === 'dashboard' && s && (
@@ -1157,6 +1196,11 @@ export default function AdminPage() {
                   className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm flex-1 min-w-28 outline-none focus:border-[var(--dict-blue)]"/>
                 <button onClick={addPc} className="px-5 py-2.5 bg-[var(--dict-blue)] text-white rounded-xl text-sm font-medium whitespace-nowrap">+ Add</button>
               </div>
+              {pcError && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                  <span>⚠️</span><span className="flex-1">{pcError}</span><button onClick={()=>setPcError(null)} className="text-red-400 hover:text-red-600 font-bold">×</button>
+                </div>
+              )}
             </div>
 
             {/* Toolbar */}
@@ -1508,10 +1552,15 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
-                    <button onClick={handleScan} disabled={scanning}
+                    <button onClick={()=>{setScanError(null);handleScan()}} disabled={scanning}
                       className="w-full py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 hover:from-purple-600 hover:to-purple-700 shadow-md hover:shadow-lg transition-all">
                       {scanning ? <><Spinner /> Scanning {scanConfig.baseIp}.{scanConfig.start}–{scanConfig.end}...</> : '🔍 Scan Network Range'}
                     </button>
+                    {scanError && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                        <span>⚠️</span><span className="flex-1">{scanError}</span><button onClick={()=>setScanError(null)} className="text-amber-500 hover:text-amber-700 font-bold">×</button>
+                      </div>
+                    )}
 
                     {scanResults.length > 0 && (
                       <div className="mt-4">

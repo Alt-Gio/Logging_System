@@ -66,9 +66,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-  // Rate limit public submissions: 10 per minute per IP
+  // Rate limit public submissions: 30 per minute per IP (shared NAT offices can have many concurrent users)
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
-  if (!checkApiRateLimit(`log_post:${ip}`, 10)) {
+  if (!checkApiRateLimit(`log_post:${ip}`, 30)) {
     return NextResponse.json({ error: 'Too many submissions. Please wait.' }, { status: 429 })
   }
 

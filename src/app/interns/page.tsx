@@ -210,6 +210,7 @@ export default function InternsPage() {
   })
 
   const [saving, setSaving] = useState(false)
+  const [opError, setOpError] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [draggedTask, setDraggedTask] = useState<{ taskId: string; internId: string; fromStatus: TaskStatus } | null>(null)
@@ -249,7 +250,11 @@ export default function InternsPage() {
   }, [])
 
   useEffect(() => {
-    if (isSignedIn) fetchInterns()
+    if (!isSignedIn) return
+    fetchInterns()
+    // Keep intern data fresh every 60 s (attendance, tasks, status can change)
+    const poll = setInterval(() => fetchInterns(), 60_000)
+    return () => clearInterval(poll)
   }, [isSignedIn, fetchInterns])
 
   // Live clock tick for Time In/Out counter
@@ -360,59 +365,65 @@ export default function InternsPage() {
 
   const handleAddIntern = async () => {
     if (!newIntern.fullName || !newIntern.school || !newIntern.course || !newIntern.startDate || !newIntern.endDate) return
-    setSaving(true)
+    setSaving(true); setOpError(null)
     try {
       const r = await fetch('/api/interns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...newIntern, photoUrl: internPhotoPreview || null })
       })
-      if (r.ok) {
-        const intern = await r.json()
-        for (const doc of internDocFiles) {
-          await fetch(`/api/interns/${intern.id}/documents`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: doc.name, type: doc.type, url: doc.data })
-          })
-        }
-        await fetchInterns()
-        setShowAddIntern(false)
-        setNewIntern({ fullName: '', school: '', course: '', department: '', supervisor: '', startDate: '', endDate: '', requiredHours: '486', email: '', phone: '', notes: '' })
-        setInternPhotoPreview(null)
-        setInternDocFiles([])
+      if (!r.ok) { const d = await r.json().catch(()=>({})); setOpError(d.error || 'Failed to add intern.'); return }
+      const intern = await r.json()
+      for (const doc of internDocFiles) {
+        await fetch(`/api/interns/${intern.id}/documents`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: doc.name, type: doc.type, url: doc.data })
+        }).catch(() => {})
       }
-    } finally { setSaving(false) }
+      await fetchInterns()
+      setShowAddIntern(false)
+      setNewIntern({ fullName: '', school: '', course: '', department: '', supervisor: '', startDate: '', endDate: '', requiredHours: '486', email: '', phone: '', notes: '' })
+      setInternPhotoPreview(null)
+      setInternDocFiles([])
+    } catch { setOpError('Network error — intern could not be added.') }
+    finally { setSaving(false) }
   }
 
   const handleResendTask = async (internId: string, task: Task) => {
-    await fetch(`/api/interns/${internId}/tasks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: task.title, description: task.description, priority: task.priority, dueDate: task.dueDate })
-    })
-    fetchInterns()
+    try {
+      await fetch(`/api/interns/${internId}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: task.title, description: task.description, priority: task.priority, dueDate: task.dueDate })
+      })
+      fetchInterns()
+    } catch { setOpError('Failed to re-assign task.') }
   }
 
   const handleStatusChange = async (internId: string, status: InternStatus) => {
-    await fetch(`/api/interns/${internId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    })
-    fetchInterns()
+    try {
+      await fetch(`/api/interns/${internId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      })
+      fetchInterns()
+    } catch { setOpError('Failed to update intern status.') }
   }
 
   const handleDeleteIntern = async (internId: string) => {
     if (!confirm('Delete this intern and all their records? This cannot be undone.')) return
-    await fetch(`/api/interns/${internId}`, { method: 'DELETE' })
-    if (selectedIntern?.id === internId) setSelectedIntern(null)
-    fetchInterns()
+    try {
+      await fetch(`/api/interns/${internId}`, { method: 'DELETE' })
+      if (selectedIntern?.id === internId) setSelectedIntern(null)
+      fetchInterns()
+    } catch { setOpError('Failed to delete intern.') }
   }
 
   const handleEditIntern = async () => {
     if (!selectedIntern) return
-    setSaving(true)
+    setSaving(true); setOpError(null)
     try {
       const r = await fetch(`/api/interns/${selectedIntern.id}`, {
         method: 'PATCH',
@@ -427,11 +438,10 @@ export default function InternsPage() {
           notes: editInternData.notes || null,
         })
       })
-      if (r.ok) {
-        setShowEditIntern(false)
-        await fetchInterns()
-      }
-    } finally { setSaving(false) }
+      if (!r.ok) { const d = await r.json().catch(()=>({})); setOpError(d.error || 'Failed to update intern.'); return }
+      setShowEditIntern(false); await fetchInterns()
+    } catch { setOpError('Network error — intern could not be updated.') }
+    finally { setSaving(false) }
   }
 
   const handleSendEmail = async () => {
@@ -459,10 +469,10 @@ export default function InternsPage() {
     if (!newAttendance.internId) return
     // Block future dates
     if (newAttendance.date > format(new Date(), 'yyyy-MM-dd')) {
-      alert('Cannot log attendance for a future date.')
+      setOpError('Cannot log attendance for a future date.')
       return
     }
-    setSaving(true)
+    setSaving(true); setOpError(null)
     try {
       const date = newAttendance.date
       const timeIn = newAttendance.timeIn ? `${date}T${newAttendance.timeIn}:00` : null
@@ -473,48 +483,54 @@ export default function InternsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, timeIn, timeOut, status: newAttendance.status, notes: newAttendance.notes })
       })
-      if (r.ok) {
-        await fetchInterns()
-        setShowAddAttendance(false)
-        setNewAttendance({ internId: '', date: format(new Date(), 'yyyy-MM-dd'), timeIn: '08:00', timeOut: '17:00', status: 'PRESENT', notes: '' })
-      }
-    } finally { setSaving(false) }
+      if (!r.ok) { const d = await r.json().catch(()=>({})); setOpError(d.error || 'Failed to log attendance.'); return }
+      await fetchInterns()
+      setShowAddAttendance(false)
+      setNewAttendance({ internId: '', date: format(new Date(), 'yyyy-MM-dd'), timeIn: '08:00', timeOut: '17:00', status: 'PRESENT', notes: '' })
+    } catch { setOpError('Network error — attendance could not be saved.') }
+    finally { setSaving(false) }
   }
 
   const handleAddTask = async () => {
     if (!newTask.internId || !newTask.title) return
-    setSaving(true)
+    setSaving(true); setOpError(null)
     try {
       const r = await fetch(`/api/interns/${newTask.internId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTask)
       })
-      if (r.ok) {
-        await fetchInterns()
-        setShowAddTask(false)
-        setNewTask({ internId: '', title: '', description: '', priority: 'MEDIUM', dueDate: '' })
-      }
-    } finally { setSaving(false) }
+      if (!r.ok) { const d = await r.json().catch(()=>({})); setOpError(d.error || 'Failed to add task.'); return }
+      await fetchInterns()
+      setShowAddTask(false)
+      setNewTask({ internId: '', title: '', description: '', priority: 'MEDIUM', dueDate: '' })
+    } catch { setOpError('Network error — task could not be added.') }
+    finally { setSaving(false) }
   }
 
   const handleTaskStatusChange = async (internId: string, taskId: string, status: TaskStatus) => {
-    await fetch(`/api/interns/${internId}/tasks`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId, status })
-    })
-    fetchInterns()
+    try {
+      await fetch(`/api/interns/${internId}/tasks`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId, status })
+      })
+      fetchInterns()
+    } catch { setOpError('Failed to update task status.') }
   }
 
   const handleDeleteTask = async (internId: string, taskId: string) => {
-    await fetch(`/api/interns/${internId}/tasks?taskId=${taskId}`, { method: 'DELETE' })
-    fetchInterns()
+    try {
+      await fetch(`/api/interns/${internId}/tasks?taskId=${taskId}`, { method: 'DELETE' })
+      fetchInterns()
+    } catch { setOpError('Failed to delete task.') }
   }
 
   const handleDeleteAttendance = async (internId: string, recordId: string) => {
-    await fetch(`/api/interns/${internId}/attendance?recordId=${recordId}`, { method: 'DELETE' })
-    fetchInterns()
+    try {
+      await fetch(`/api/interns/${internId}/attendance?recordId=${recordId}`, { method: 'DELETE' })
+      fetchInterns()
+    } catch { setOpError('Failed to delete attendance record.') }
   }
 
   const exportDTR = (intern: Intern) => {
@@ -622,6 +638,15 @@ export default function InternsPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+
+      {/* Global operation error toast */}
+      {opError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 bg-red-600 text-white px-5 py-3 rounded-2xl shadow-2xl" style={{minWidth:'260px'}}>
+          <span className="text-lg">⚠️</span>
+          <p className="text-sm font-semibold flex-1">{opError}</p>
+          <button onClick={()=>setOpError(null)} className="text-red-200 hover:text-white font-bold text-lg leading-none ml-2">&times;</button>
+        </div>
+      )}
 
       {/* ══ ADD INTERN MODAL ═══════════════════════════════════════════════════════ */}
       {showAddIntern && (

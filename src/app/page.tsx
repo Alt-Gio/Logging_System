@@ -9,6 +9,7 @@ import { syncOfflineData, saveSetting, getSetting } from '@/lib/indexedDB'
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STORAGE_KEY_AUTH = 'dtc_access_granted'
 const STORAGE_KEY_SETTINGS = 'dtc_settings_cache'
+const STORAGE_KEY_OTP = 'dtc_otp_verified'
 
 const PURPOSE_SUGGESTIONS = [
   'Online Job Application',
@@ -743,6 +744,7 @@ export default function LogbookPage() {
   const [pinging, setPinging] = useState(false)
   const [pingingId, setPingingId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [submittedLog, setSubmittedLog] = useState<Record<string, unknown> | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [usageDuration, setUsageDuration] = useState('1')
@@ -754,6 +756,15 @@ export default function LogbookPage() {
   const [showPCCountModal, setShowPCCountModal] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  // ── OTP verification state ────────────────────────────────────────────────────
+  const [otpChannel, setOtpChannel] = useState<'email' | 'phone'>('email')
+  const [otpContact, setOtpContact] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
+  const [otpVerified, setOtpVerified] = useState(false)
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [otpError, setOtpError] = useState<string | null>(null)
+  const [otpCountdown, setOtpCountdown] = useState(0)
   const [form, setForm] = useState({ fullName: '', agency: '', purpose: '', equipmentUsed: [] as string[], pcId: '', contactEmail: '', contactPhone: '' })
   const [pcTerms, setPcTerms] = useState(PC_TERMS.map(() => false))
   const [wifiTerms, setWifiTerms] = useState(WIFI_TERMS.map(() => false))
@@ -798,9 +809,25 @@ export default function LogbookPage() {
         console.log(`Synced ${result.synced} offline entries`)
       }
     }).catch(err => console.error('Offline sync failed:', err))
-    
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
+
+    const clockTick = setInterval(() => setNow(new Date()), 1000)
+
+    // Keep PC availability fresh every 30 s so stale data doesn't cause 409s
+    const pcPoll = setInterval(() => fetchPCs(), 30_000)
+
+    // Keep settings (office hours, access code) fresh every 2 min
+    const settingsPoll = setInterval(() => {
+      fetch('/api/settings').then(r => r.json()).then((s: Settings) => {
+        setSettings(s)
+        try { localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(s)) } catch {}
+      }).catch(() => {})
+    }, 120_000)
+
+    return () => {
+      clearInterval(clockTick)
+      clearInterval(pcPoll)
+      clearInterval(settingsPoll)
+    }
   }, [])
 
   // ── Apply dynamic background from settings ──────────────────────────────────
@@ -827,10 +854,21 @@ export default function LogbookPage() {
       .catch(() => {})
   }, [])
 
-  // ── Access code ──────────────────────────────────────────────────────────────
+  // ── Access code + OTP session restore ─────────────────────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (sessionStorage.getItem(STORAGE_KEY_AUTH) === 'true') setAccessGranted(true)
+    try {
+      const stored = sessionStorage.getItem(STORAGE_KEY_OTP)
+      if (stored) {
+        const { contact, channel } = JSON.parse(stored)
+        setOtpVerified(true)
+        setOtpContact(contact)
+        setOtpChannel(channel as 'email' | 'phone')
+        if (channel === 'email') setForm(f => ({ ...f, contactEmail: contact }))
+        else setForm(f => ({ ...f, contactPhone: contact }))
+      }
+    } catch {}
   }, [])
 
   const submitAccess = () => {
@@ -914,15 +952,21 @@ export default function LogbookPage() {
 
   // ── Toggle equipment — allow both ────────────────────────────────────────────
   const toggleEquipment = (item: string) => {
+    const isAdding = !form.equipmentUsed.includes(item)
     setForm(f => ({
       ...f,
       equipmentUsed: f.equipmentUsed.includes(item)
         ? f.equipmentUsed.filter(e => e !== item)
         : [...f.equipmentUsed, item]
     }))
-    // Reset terms when toggling off
-    if (item === 'Desktop Computer' && form.equipmentUsed.includes(item)) setPcTerms(PC_TERMS.map(() => false))
-    if (item === 'Internet Only' && form.equipmentUsed.includes(item)) setWifiTerms(WIFI_TERMS.map(() => false))
+    if (item === 'Desktop Computer') {
+      if (!isAdding) setPcTerms(PC_TERMS.map(() => false))
+      else if (otpVerified) setPcTerms(PC_TERMS.map(() => true))
+    }
+    if (item === 'Internet Only') {
+      if (!isAdding) setWifiTerms(WIFI_TERMS.map(() => false))
+      else if (otpVerified) setWifiTerms(WIFI_TERMS.map(() => true))
+    }
   }
 
   // ── Validation ───────────────────────────────────────────────────────────────
@@ -961,10 +1005,83 @@ export default function LogbookPage() {
     else { handleSubmit() }
   }
 
+  // ── OTP helpers ──────────────────────────────────────────────────────────────
+  const sendOtp = async () => {
+    if (!otpContact.trim()) return
+    setOtpLoading(true); setOtpError(null)
+    try {
+      const res = await fetch('/api/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact: otpContact.trim(),
+          contactType: otpChannel,
+          purpose: 'logbook_entry',
+          name: form.fullName.trim() || 'Client',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setOtpError(data.error || 'Failed to send code. Please try again.'); return }
+      setOtpSent(true)
+      setOtpCode('')
+      setOtpCountdown(60)
+    } catch { setOtpError('Network error — could not send code.') }
+    finally { setOtpLoading(false) }
+  }
+
+  const verifyOtp = async () => {
+    if (otpCode.length !== 6) return
+    setOtpLoading(true); setOtpError(null)
+    try {
+      const res = await fetch('/api/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact: otpContact.trim(), otpCode: otpCode.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setOtpError(data.error || 'Incorrect code. Please try again.'); return }
+      setOtpVerified(true)
+      // Auto-check all applicable terms
+      setPcTerms(PC_TERMS.map(() => true))
+      setWifiTerms(WIFI_TERMS.map(() => true))
+      setConsentChecked(true)
+      // Pre-fill contact info from verified contact
+      if (otpChannel === 'email') setForm(f => ({ ...f, contactEmail: otpContact.trim() }))
+      else setForm(f => ({ ...f, contactPhone: otpContact.trim() }))
+      // Persist for this browser session
+      try { sessionStorage.setItem(STORAGE_KEY_OTP, JSON.stringify({ contact: otpContact.trim(), channel: otpChannel })) } catch {}
+    } catch { setOtpError('Network error — could not verify code.') }
+    finally { setOtpLoading(false) }
+  }
+
+  const clearOtp = () => {
+    setOtpVerified(false); setOtpSent(false); setOtpCode(''); setOtpError(null)
+    setOtpCountdown(0); setOtpContact(''); setOtpChannel('email')
+    setPcTerms(PC_TERMS.map(() => false))
+    setWifiTerms(WIFI_TERMS.map(() => false))
+    setConsentChecked(false)
+    try { sessionStorage.removeItem(STORAGE_KEY_OTP) } catch {}
+  }
+
+  // OTP resend countdown
+  useEffect(() => {
+    if (otpCountdown <= 0) return
+    const t = setTimeout(() => setOtpCountdown(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [otpCountdown])
+
   const pingAllPcs = async () => {
     setPinging(true)
     try {
-      await fetch('/api/network/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pingAll: true }) })
+      const ac = new AbortController()
+      const pingTimeout = setTimeout(() => ac.abort(), 12_000)
+      await fetch('/api/network/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pingAll: true }),
+        signal: ac.signal,
+      }).catch(() => {})
+      clearTimeout(pingTimeout)
       await fetchPCs()
     } catch {}
     setPinging(false)
@@ -1004,30 +1121,37 @@ export default function LogbookPage() {
       const data = await res.json()
       
       if (!res.ok) {
-        // Show detailed validation errors if available
+        if (res.status === 429) throw new Error('TOO_MANY')
         if (data.details) {
           const errorMsg = Object.entries(data.details.fieldErrors || {})
-            .map(([field, errors]) => `${field}: ${(errors as string[]).join(', ')}`)
-            .join('\n') || data.error
+            .map(([field, errs]) => `${field}: ${(errs as string[]).join(', ')}`)
+            .join(' · ') || data.error
           throw new Error(errorMsg)
         }
         throw new Error(data.error || 'Submission failed')
       }
-      
-      setSubmittedLog(data); stopCamera(); setStep('success')
+
+      setSubmitError(null); setSubmittedLog(data); stopCamera(); setStep('success')
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      alert(`Submission Error:\n\n${errorMessage}\n\nPlease check your entries and try again.`)
+      const raw = err instanceof Error ? err.message : String(err)
+      const msg = raw === 'TOO_MANY'
+        ? 'The system is busy — please wait a moment and tap Submit again.'
+        : raw
+      setSubmitError(msg)
       setStep('form')
     } finally { setSubmitting(false) }
   }
 
   const resetForm = () => {
     setForm({ fullName: '', agency: '', purpose: '', equipmentUsed: [], pcId: '', contactEmail: '', contactPhone: '' })
-    setErrors({}); setSubmittedLog(null); setPhoto(null)
+    setErrors({}); setSubmitError(null); setSubmittedLog(null); setPhoto(null)
     setUsageDuration('1'); setCustomDuration(''); setShowCustom(false)
     setPcTerms(PC_TERMS.map(() => false)); setWifiTerms(WIFI_TERMS.map(() => false))
     setConsentChecked(false); stopCamera(); setStep('form'); fetchPCs()
+    // Clear OTP state for next user (new person at the kiosk)
+    setOtpVerified(false); setOtpSent(false); setOtpCode(''); setOtpError(null)
+    setOtpCountdown(0); setOtpContact(''); setOtpChannel('email')
+    try { sessionStorage.removeItem(STORAGE_KEY_OTP) } catch {}
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -1614,8 +1738,165 @@ export default function LogbookPage() {
             {errors.equipment && <p className="text-red-500 text-xs mt-2 flex items-center gap-1">⚠ {errors.equipment}</p>}
           </div>
 
+          {/* ── OTP Identity Verification ─────────────────────────────────────────── */}
+          {(hasPC || hasWifi) && (
+            <div className={`rounded-2xl border-2 overflow-hidden transition-all duration-300 ${
+              otpVerified ? 'border-green-300 bg-green-50' : 'border-indigo-200 bg-indigo-50/40'
+            }`}>
+              {otpVerified ? (
+                /* ─ Verified state ─ */
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shadow-md flex-shrink-0">
+                    <span className="text-white text-lg font-bold">✓</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-green-700 text-sm">Identity Verified</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {otpChannel === 'email' ? '📧' : '📱'} {otpContact}
+                      <span className="ml-2 text-green-600 font-medium">— Terms auto-accepted ✓</span>
+                    </p>
+                  </div>
+                  <button type="button" onClick={clearOtp}
+                    className="text-xs text-gray-400 hover:text-red-500 underline flex-shrink-0 transition-colors">
+                    Change
+                  </button>
+                </div>
+              ) : (
+                /* ─ Verification flow ─ */
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🔐</span>
+                    <div>
+                      <p className="font-bold text-gray-700 text-sm">Verify Your Identity</p>
+                      <p className="text-xs text-gray-400">Enter a code to auto-accept all terms of use</p>
+                    </div>
+                  </div>
+
+                  {/* Channel tabs */}
+                  <div className="flex gap-2">
+                    {(['email', 'phone'] as const).map(ch => (
+                      <button key={ch} type="button"
+                        onClick={() => { if (otpChannel !== ch) { setOtpChannel(ch); setOtpSent(false); setOtpCode(''); setOtpError(null) } }}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all ${
+                          otpChannel === ch
+                            ? 'bg-[var(--dict-blue)] border-[var(--dict-blue)] text-white shadow-sm'
+                            : 'border-gray-200 text-gray-500 hover:border-blue-200 bg-white'
+                        }`}>
+                        {ch === 'email' ? '📧 Email' : '📱 Phone'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {!otpSent ? (
+                    /* Contact input + send button */
+                    <div className="flex gap-2">
+                      <input
+                        type={otpChannel === 'email' ? 'email' : 'tel'}
+                        value={otpContact}
+                        onChange={e => setOtpContact(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && sendOtp()}
+                        placeholder={otpChannel === 'email' ? 'your@email.com' : '09XX-XXX-XXXX'}
+                        className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] bg-white transition-colors"
+                      />
+                      <button type="button" onClick={sendOtp}
+                        disabled={otpLoading || !otpContact.trim() || !form.fullName.trim()}
+                        className="px-4 py-2.5 bg-[var(--dict-blue)] text-white rounded-xl text-sm font-bold disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5 transition-opacity">
+                        {otpLoading
+                          ? <><span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/> Sending</>
+                          : 'Send Code'
+                        }
+                      </button>
+                    </div>
+                  ) : (
+                    /* OTP code entry */
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500 text-center">
+                        Code sent to <strong>{otpContact}</strong>
+                        {otpChannel === 'email' && <span className="text-gray-400"> — check inbox &amp; spam</span>}
+                      </p>
+
+                      {/* 6 digit boxes */}
+                      <div className="flex gap-2 justify-center">
+                        {[0,1,2,3,4,5].map(i => (
+                          <input
+                            key={i}
+                            id={`otp-box-${i}`}
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={1}
+                            value={otpCode[i] || ''}
+                            onChange={e => {
+                              const v = e.target.value.replace(/\D/g, '')
+                              const arr = otpCode.padEnd(6, ' ').split('')
+                              arr[i] = v || ' '
+                              const newCode = arr.join('').replace(/ /g, '')
+                              setOtpCode(newCode)
+                              if (v && i < 5) (document.getElementById(`otp-box-${i+1}`) as HTMLInputElement)?.focus()
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Backspace') {
+                                if (otpCode[i]) {
+                                  const arr = otpCode.padEnd(6, ' ').split('')
+                                  arr[i] = ' '
+                                  setOtpCode(arr.join('').replace(/ /g, ''))
+                                } else if (i > 0) {
+                                  (document.getElementById(`otp-box-${i-1}`) as HTMLInputElement)?.focus()
+                                }
+                              }
+                            }}
+                            onPaste={i === 0 ? e => {
+                              e.preventDefault()
+                              const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+                              setOtpCode(pasted)
+                              const nextBox = document.getElementById(`otp-box-${Math.min(pasted.length, 5)}`) as HTMLInputElement
+                              nextBox?.focus()
+                            } : undefined}
+                            className={`w-11 h-12 text-center text-xl font-mono font-bold border-2 rounded-xl outline-none transition-all ${
+                              otpCode[i] ? 'border-[var(--dict-blue)] bg-blue-50' : 'border-gray-200 bg-white focus:border-[var(--dict-blue)]'
+                            }`}
+                          />
+                        ))}
+                      </div>
+
+                      <button type="button" onClick={verifyOtp}
+                        disabled={otpLoading || otpCode.length !== 6}
+                        className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 transition-colors shadow-sm">
+                        {otpLoading
+                          ? <><span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/> Verifying…</>
+                          : '✓ Verify Code'
+                        }
+                      </button>
+
+                      <div className="text-center">
+                        {otpCountdown > 0
+                          ? <p className="text-xs text-gray-400">Resend available in {otpCountdown}s</p>
+                          : <button type="button" onClick={() => { setOtpSent(false); setOtpCode(''); setOtpError(null) }}
+                              className="text-xs text-[var(--dict-blue)] underline">
+                              Resend or change contact
+                            </button>
+                        }
+                      </div>
+                    </div>
+                  )}
+
+                  {otpError && (
+                    <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                      <span>⚠️</span><span className="flex-1">{otpError}</span>
+                      <button type="button" onClick={() => setOtpError(null)} className="text-red-400 hover:text-red-600 font-bold">×</button>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Verifying auto-accepts all terms of use below.
+                    {!form.fullName.trim() && <span className="text-amber-500"> Fill in your name first.</span>}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Contact info — required when PC is selected ── */}
-          {hasPC && (
+          {hasPC && !otpVerified && (
             <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 overflow-hidden">
               {/* Notice header */}
               <div className="flex items-start gap-3 px-4 py-3 bg-[var(--dict-blue)]">
@@ -1723,6 +2004,18 @@ export default function LogbookPage() {
             <div><p className="text-xs text-gray-400 mb-0.5">Time In</p><p className="font-mono text-[var(--dict-blue)] font-bold text-sm">{format(now, 'hh:mm:ss a')}</p></div>
             <div><p className="text-xs text-gray-400 mb-0.5">Closes At</p><p className="font-bold text-amber-600 text-sm">{officeCloseStr}</p></div>
           </div>
+
+          {/* Inline submission error */}
+          {submitError && (
+            <div className="flex items-start gap-3 bg-red-50 border-2 border-red-300 rounded-xl px-4 py-3 animate-in fade-in slide-in-from-top-2 duration-300">
+              <span className="text-red-500 text-lg flex-shrink-0 mt-0.5">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-red-700">Submission Error</p>
+                <p className="text-xs text-red-600 mt-0.5 leading-relaxed">{submitError}</p>
+              </div>
+              <button onClick={() => setSubmitError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0 text-lg leading-none">×</button>
+            </div>
+          )}
 
           {/* Submit */}
           <button onClick={handleNext}
