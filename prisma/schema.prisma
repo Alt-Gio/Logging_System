@@ -194,17 +194,109 @@ enum TaskStatus {
   CANCELLED
 }
 
-model OtpVerification {
-  id          String   @id @default(cuid())
-  contact     String
-  contactType String
-  otpCode     String
-  purpose     String
-  verified    Boolean  @default(false)
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
+model CertificateTemplate {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  backgroundUrl String?
+  width         Int           @default(1056)
+  height        Int           @default(816)
+  fields        Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  certificates  Certificate[]
 
-  @@index([contact])
-  @@index([expiresAt])
-  @@map("otp_verifications")
+  @@map("certificate_templates")
+}
+
+model Certificate {
+  id         String              @id @default(cuid())
+  internId   String?
+  templateId String
+  data       Json
+  pdfUrl     String?
+  issuedAt   DateTime            @default(now())
+  createdAt  DateTime            @default(now())
+  template   CertificateTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  intern     Intern?             @relation(fields: [internId], references: [id], onDelete: SetNull)
+
+  @@index([internId])
+  @@index([templateId])
+  @@map("certificates")
+}
+
+model Intern {
+  id            String             @id @default(cuid())
+  fullName      String
+  school        String
+  course        String
+  department    String?
+  supervisor    String?
+  startDate     DateTime
+  endDate       DateTime
+  requiredHours Int                @default(486)
+  status        InternStatus       @default(ACTIVE)
+  email         String?
+  phone         String?
+  photoUrl      String?
+  notes         String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  attendance    InternAttendance[]
+  tasks         InternTask[]
+  documents     InternDocument[]
+  certificates  Certificate[]
+
+  @@index([status])
+  @@index([startDate])
+  @@map("interns")
+}
+
+model InternAttendance {
+  id        String           @id @default(cuid())
+  internId  String
+  date      DateTime
+  timeIn    DateTime?
+  timeOut   DateTime?
+  hours     Float?
+  status    AttendanceStatus @default(PRESENT)
+  notes     String?
+  createdAt DateTime         @default(now())
+  intern    Intern           @relation(fields: [internId], references: [id], onDelete: Cascade)
+
+  @@index([internId])
+  @@index([date])
+  @@map("intern_attendance")
+}
+
+model InternTask {
+  id          String     @id @default(cuid())
+  internId    String
+  title       String
+  description String?
+  status      TaskStatus @default(PENDING)
+  priority    String     @default("MEDIUM")
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  intern      Intern     @relation(fields: [internId], references: [id], onDelete: Cascade)
+
+  @@index([internId])
+  @@index([status])
+  @@map("intern_tasks")
+}
+
+model InternDocument {
+  id         String   @id @default(cuid())
+  internId   String
+  name       String
+  type       String
+  url        String
+  uploadedBy String?
+  createdAt  DateTime @default(now())
+  intern     Intern   @relation(fields: [internId], references: [id], onDelete: Cascade)
+
+  @@index([internId])
+  @@map("intern_documents")
 }
