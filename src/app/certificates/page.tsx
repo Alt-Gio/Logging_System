@@ -97,12 +97,48 @@ export default function CertificatesPage() {
     setLoading(false)
   }
 
+  const handleDeleteTemplate = async (templateId: string, templateName: string) => {
+    if (!confirm(`Are you sure you want to delete "${templateName}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/certificates/templates/${templateId}`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        await fetchTemplates()
+        if (selectedTemplate?.id === templateId) {
+          setSelectedTemplate(null)
+        }
+        alert('Template deleted successfully')
+      } else {
+        alert('Failed to delete template')
+      }
+    } catch (error) {
+      console.error('Error deleting template:', error)
+      alert('Error deleting template')
+    }
+  }
+
   const handleImageUpload = async (file: File): Promise<string | null> => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file')
+      return null
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB')
+      return null
+    }
+
     setUploadingImage(true)
     try {
       const reader = new FileReader()
-      const base64 = await new Promise<string>((resolve) => {
+      const base64 = await new Promise<string>((resolve, reject) => {
         reader.onload = (e) => resolve(e.target?.result as string)
+        reader.onerror = (e) => reject(e)
         reader.readAsDataURL(file)
       })
       setUploadingImage(false)
@@ -110,6 +146,7 @@ export default function CertificatesPage() {
     } catch (error) {
       console.error('Upload error:', error)
       setUploadingImage(false)
+      alert('Failed to upload image. Please try again.')
       return null
     }
   }
@@ -441,6 +478,10 @@ export default function CertificatesPage() {
                         className="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all">
                         Edit
                       </button>
+                      <button onClick={() => handleDeleteTemplate(template.id, template.name)}
+                        className="px-3 py-2 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 transition-all">
+                        🗑️
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -769,7 +810,7 @@ export default function CertificatesPage() {
             {/* Hidden certificate render elements */}
             <div className="hidden">
               {csvData.map((data, idx) => (
-                <div key={`cert-${idx}`} ref={el => certRefs.current[`cert-${idx}`] = el}
+                <div key={`cert-${idx}`} ref={el => { certRefs.current[`cert-${idx}`] = el }}
                   className="bg-white"
                   style={{
                     width: `${CERT_WIDTH}px`,
