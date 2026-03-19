@@ -27,6 +27,7 @@ const isPublicRoute = createRouteMatcher([
 
 const isAdminRoute = createRouteMatcher([
   '/admin(.*)',
+  '/interns(.*)',
   '/api/admin-logs(.*)',
   '/api/admins(.*)',
   '/api/cameras(.*)',
@@ -35,6 +36,7 @@ const isAdminRoute = createRouteMatcher([
   '/api/logs/export(.*)',
   '/api/logs/(.+)',
   '/api/invitations(.*)',
+  '/api/interns(.*)',
 ])
 
 function applySecurityHeaders(res: NextResponse) {

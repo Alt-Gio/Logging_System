@@ -171,3 +171,40 @@ enum AnnouncementType {
   MAINTENANCE
   HOLIDAY
 }
+
+enum InternStatus {
+  ACTIVE
+  COMPLETED
+  INACTIVE
+  ON_LEAVE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+  HOLIDAY
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model OtpVerification {
+  id          String   @id @default(cuid())
+  contact     String
+  contactType String
+  otpCode     String
+  purpose     String
+  verified    Boolean  @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([contact])
+  @@index([expiresAt])
+  @@map("otp_verifications")
+}

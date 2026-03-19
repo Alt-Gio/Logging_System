@@ -962,6 +962,10 @@ export default function AdminPage() {
                   {t==='pcs'?'🖥 Stations':t==='network'?'📡 Network':t==='dashboard'?'📊 Dashboard':t==='settings'?'⚙️ Settings':t==='announcements'?'📢 Notices':t==='analytics'?'📊 Analytics':'📋 Logs'}
                 </button>
               ))}
+              <a href="/interns"
+                className="px-4 py-2 rounded-t-lg text-sm font-medium transition-all text-blue-200 hover:text-white hover:bg-white/10 flex items-center gap-1.5">
+                🎓 Interns
+              </a>
             </nav>
             <div className="flex items-center gap-3">
 
