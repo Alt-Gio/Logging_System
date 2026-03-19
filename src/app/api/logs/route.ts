@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
   }
 
   const { fullName, agency, purpose, equipmentUsed, pcId, photoDataUrl,
-          plannedDurationHours, serviceType, staffNotes } = parsed.data
+          plannedDurationHours, serviceType, staffNotes,
+          contactEmail, contactPhone } = parsed.data
 
   // Verify PC exists and is selectable
   if (pcId) {
@@ -94,6 +95,8 @@ export async function POST(req: NextRequest) {
       fullName, agency, purpose, equipmentUsed,
       plannedDurationHours, pcId: pcId ?? null,
       serviceType, staffNotes: staffNotes ?? null,
+      contactEmail: contactEmail ?? null,
+      contactPhone: contactPhone ?? null,
       photoDataUrl: null, photoUrl: null,
     },
     include: { pc: { select: { id: true, name: true } } },

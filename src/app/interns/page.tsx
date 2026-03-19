@@ -128,6 +128,22 @@ function getSchoolColor(school: string) {
   return SCHOOL_PALETTE[Math.abs(hash) % SCHOOL_PALETTE.length]
 }
 
+// ─── ICT Department badges ──────────────────────────────────────────────────
+const DEPT_META: { key: string; label: string; short: string; color: string; icon: string }[] = [
+  { key: 'miss',         label: 'Management Information Systems',  short: 'MIS/S',        color: 'bg-sky-100 text-sky-700 border-sky-300',          icon: '🖥️' },
+  { key: 'cyber',        label: 'Cybersecurity',                   short: 'Cybersec',     color: 'bg-red-100 text-red-700 border-red-300',           icon: '🔒' },
+  { key: 'gdtb',         label: 'Geospatial Data & Tech Branch',  short: 'GDTB',         color: 'bg-green-100 text-green-700 border-green-300',     icon: '🗺️' },
+  { key: 'imb',          label: 'Information Management Branch',  short: 'IMB',          color: 'bg-purple-100 text-purple-700 border-purple-300',  icon: '📊' },
+  { key: 'graphic',      label: 'Graphic Design / Multimedia',    short: 'Graphic',      color: 'bg-pink-100 text-pink-700 border-pink-300',        icon: '🎨' },
+  { key: 'web',          label: 'Web Development',                short: 'Web Dev',      color: 'bg-indigo-100 text-indigo-700 border-indigo-300',  icon: '🌐' },
+  { key: 'network',      label: 'Network Engineering',            short: 'Network',      color: 'bg-orange-100 text-orange-700 border-orange-300',  icon: '📡' },
+  { key: 'database',     label: 'Database Administration',        short: 'DBA',          color: 'bg-teal-100 text-teal-700 border-teal-300',        icon: '🗄️' },
+]
+function getDeptBadge(intern: { department?: string | null; course?: string }) {
+  const haystack = ((intern.department || '') + ' ' + (intern.course || '')).toLowerCase()
+  return DEPT_META.find(d => haystack.includes(d.key)) || null
+}
+
 // ─── Spinner ───────────────────────────────────────────────────────────────────
 function Spinner() {
   return <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"/>
@@ -211,6 +227,9 @@ export default function InternsPage() {
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [calendarSelectedDay, setCalendarSelectedDay] = useState<Date | null>(null)
   const [filterSchool, setFilterSchool] = useState<string>('all')
+  // Time In/Out live timers: internId → { startTime, intervalId }
+  const [activeClockIn, setActiveClockIn] = useState<Record<string, { startTime: Date; display: string }>>({}) 
+  const [taskInternFilter, setTaskInternFilter] = useState<string>('all')
 
   // ─── Data Fetching ────────────────────────────────────────────────────────────
   const fetchInterns = useCallback(async () => {
@@ -232,6 +251,27 @@ export default function InternsPage() {
   useEffect(() => {
     if (isSignedIn) fetchInterns()
   }, [isSignedIn, fetchInterns])
+
+  // Live clock tick for Time In/Out counter
+  useEffect(() => {
+    const id = setInterval(() => {
+      setActiveClockIn(prev => {
+        const next: typeof prev = {}
+        let changed = false
+        Object.entries(prev).forEach(([internId, entry]) => {
+          const secs = Math.floor((Date.now() - entry.startTime.getTime()) / 1000)
+          const h = String(Math.floor(secs / 3600)).padStart(2, '0')
+          const m = String(Math.floor((secs % 3600) / 60)).padStart(2, '0')
+          const s = String(secs % 60).padStart(2, '0')
+          const display = `${h}:${m}:${s}`
+          if (display !== entry.display) changed = true
+          next[internId] = { ...entry, display }
+        })
+        return changed ? next : prev
+      })
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   // ─── Derived data ─────────────────────────────────────────────────────────────
   const activeInterns = useMemo(() => interns.filter(i => i.status === 'ACTIVE'), [interns])
@@ -1244,21 +1284,43 @@ export default function InternsPage() {
                   <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
                     {activeInterns.map(intern => {
                       const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
+                      const sc = getSchoolColor(intern.school)
+                      const dept = getDeptBadge(intern)
+                      const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
                       return (
                         <div key={intern.id}
-                          className="p-4 rounded-xl border-2 border-gray-100 hover:border-[var(--dict-blue)] hover:bg-blue-50/50 transition-all cursor-pointer"
+                          className="rounded-2xl border-2 border-gray-100 hover:border-[var(--dict-blue)] hover:shadow-lg transition-all cursor-pointer overflow-hidden group"
                           onClick={() => { setSelectedIntern(intern); setActiveSection('interns') }}>
-                          <div className="flex items-center gap-3 mb-3">
-                            <Avatar name={intern.fullName} photo={intern.photoUrl} size="md"/>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-bold text-sm text-gray-800 truncate">{intern.fullName}</p>
-                              <p className="text-xs text-gray-500 truncate">{intern.course} · {intern.school}</p>
+                          {/* School color strip */}
+                          <div className={`h-1.5 bg-gradient-to-r ${sc.grad}`}/>
+                          <div className="p-4">
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className="relative flex-shrink-0">
+                                <Avatar name={intern.fullName} photo={intern.photoUrl} size="lg"/>
+                                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm"/>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-sm text-gray-800 truncate leading-tight">{intern.fullName}</p>
+                                <p className="text-xs text-gray-500 truncate mt-0.5">{intern.course}</p>
+                                <p className={`text-xs font-semibold truncate mt-0.5 ${sc.text}`}>{intern.school}</p>
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {dept && (
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${dept.color}`}>{dept.icon} {dept.short}</span>
+                                  )}
+                                  {intern.department && !dept && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full border font-bold bg-gray-100 text-gray-600 border-gray-200">{intern.department}</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <HoursProgress current={intern.totalHours} required={intern.requiredHours}/>
-                          <div className="flex items-center justify-between mt-2">
-                            <span className="text-xs text-gray-400">{daysLeft > 0 ? `${daysLeft} days left` : 'Ended'}</span>
-                            <span className="text-xs text-gray-400">{intern.tasks.filter(t => t.status === 'PENDING').length} pending tasks</span>
+                            <HoursProgress current={intern.totalHours} required={intern.requiredHours}/>
+                            <div className="flex items-center justify-between mt-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pct >= 100 ? 'bg-green-100 text-green-700' : pct >= 70 ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{pct}%</span>
+                                <span className="text-xs text-gray-400">{daysLeft > 0 ? `${daysLeft}d left` : '⚠️ Ended'}</span>
+                              </div>
+                              <span className="text-xs text-gray-400 group-hover:text-blue-500 transition-colors">{intern.tasks.filter(t => t.status === 'PENDING').length} tasks →</span>
+                            </div>
                           </div>
                         </div>
                       )
@@ -1757,33 +1819,99 @@ export default function InternsPage() {
                 return (
                   <div key={intern.id} className="glass rounded-2xl overflow-hidden">
                     {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-wrap gap-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
-                        <div>
-                          <p className="font-bold text-gray-800 text-sm">{intern.fullName}</p>
-                          <p className="text-xs text-gray-500">{intern.course} · {intern.school}</p>
+                    <div className="p-4 border-b border-gray-100">
+                      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <Avatar name={intern.fullName} photo={intern.photoUrl} size="md"/>
+                            {activeClockIn[intern.id] && (
+                              <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse"/>
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{intern.fullName}</p>
+                            <p className="text-xs text-gray-500">{intern.course} · {intern.school}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-gray-400">Week: <strong className="text-gray-700">{Math.round(weekHours*10)/10}h</strong></span>
+                              <span className="text-xs text-gray-400">Total: <strong className="text-[var(--dict-blue)]">{Math.round(intern.totalHours*10)/10}h/{intern.requiredHours}h</strong></span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <div className="text-right">
-                          <p className="text-xs text-gray-400">This week</p>
-                          <p className="font-bold text-gray-700 text-sm">{Math.round(weekHours*10)/10}h</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-gray-400">Total</p>
-                          <p className="font-bold text-[var(--dict-blue)] text-sm">{Math.round(intern.totalHours*10)/10}h / {intern.requiredHours}h</p>
-                        </div>
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
                           <button onClick={() => exportDTR(intern)}
-                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-200 transition-all flex items-center gap-1">
+                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-200 transition-all">
                             ↓ DTR
                           </button>
                           <button onClick={() => { setNewAttendance(f => ({ ...f, internId: intern.id })); setShowAddAttendance(true) }}
-                            className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-all">
-                            + Log
+                            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200 transition-all">
+                            + Manual
                           </button>
                         </div>
+                      </div>
+
+                      {/* ── Time In / Time Out live buttons ── */}
+                      <div className={`rounded-xl p-3 flex items-center gap-3 flex-wrap ${activeClockIn[intern.id] ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-100'}`}>
+                        {!activeClockIn[intern.id] ? (
+                          <>
+                            <button
+                              onClick={() => {
+                                const now = new Date()
+                                setActiveClockIn(prev => ({ ...prev, [intern.id]: { startTime: now, display: '00:00:00' } }))
+                                setNewAttendance(f => ({
+                                  ...f, internId: intern.id,
+                                  date: format(now, 'yyyy-MM-dd'),
+                                  timeIn: format(now, 'HH:mm'),
+                                  status: 'PRESENT',
+                                }))
+                              }}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-sm shadow hover:shadow-md transition-all">
+                              <span className="w-2.5 h-2.5 rounded-full bg-white/70"/>
+                              Time In
+                            </button>
+                            <p className="text-xs text-gray-400 italic">Click to start today's clock</p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"/>
+                                <span className="font-mono font-bold text-2xl text-green-700 tracking-widest tabular-nums">
+                                  {activeClockIn[intern.id].display}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-green-700">Clocked in since</p>
+                                <p className="text-xs text-gray-500">{format(activeClockIn[intern.id].startTime, 'h:mm a')} · {format(activeClockIn[intern.id].startTime, 'MMM d, yyyy')}</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                const entry = activeClockIn[intern.id]
+                                if (!entry) return
+                                const timeOut = new Date()
+                                const hours = Math.round(((timeOut.getTime() - entry.startTime.getTime()) / (1000 * 3600)) * 100) / 100
+                                // submit attendance record
+                                await fetch(`/api/interns/${intern.id}/attendance`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    date: format(entry.startTime, 'yyyy-MM-dd'),
+                                    timeIn: entry.startTime.toISOString(),
+                                    timeOut: timeOut.toISOString(),
+                                    hours,
+                                    status: 'PRESENT',
+                                    notes: `Auto-logged via Time In/Out`,
+                                  }),
+                                })
+                                setActiveClockIn(prev => { const n = { ...prev }; delete n[intern.id]; return n })
+                                fetchInterns()
+                              }}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl font-bold text-sm shadow hover:shadow-md transition-all">
+                              <span className="w-2.5 h-2.5 rounded-full bg-white/70"/>
+                              Time Out
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -1883,7 +2011,7 @@ export default function InternsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h1 className="font-display font-bold text-2xl text-gray-800">Task Board</h1>
-                  <p className="text-sm text-gray-500 mt-0.5">{allTasks.length} total · {allTasks.filter(t=>t.status==='PENDING').length} pending · {allTasks.filter(t=>t.status==='IN_PROGRESS').length} in progress · {allTasks.filter(t=>t.status==='COMPLETED').length} done — <span className="text-blue-500 font-semibold">drag cards to move between columns</span></p>
+                  <p className="text-sm text-gray-500 mt-0.5">{allTasks.length} total · {allTasks.filter(t=>t.status==='PENDING').length} pending · {allTasks.filter(t=>t.status==='IN_PROGRESS').length} in progress · {allTasks.filter(t=>t.status==='COMPLETED').length} done</p>
                 </div>
                 <button onClick={() => setShowAddTask(true)}
                   className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
@@ -1891,10 +2019,78 @@ export default function InternsPage() {
                 </button>
               </div>
 
+              {/* ── Active Intern Face Row ── */}
+              <div className="glass rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filter by Intern</p>
+                  {taskInternFilter !== 'all' && (
+                    <button onClick={() => setTaskInternFilter('all')} className="text-xs text-blue-600 hover:underline font-semibold">Clear ×</button>
+                  )}
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+                  {/* All button */}
+                  <button onClick={() => setTaskInternFilter('all')}
+                    className={`flex flex-col items-center gap-1.5 flex-shrink-0 p-2 rounded-xl transition-all ${taskInternFilter === 'all' ? 'bg-[var(--dict-blue)]/10 ring-2 ring-[var(--dict-blue)]' : 'hover:bg-gray-100'}`}>
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-xl font-bold text-gray-500">★</div>
+                    <span className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">All</span>
+                  </button>
+                  {interns.filter(i => i.tasks.length > 0).map(intern => {
+                    const active = taskInternFilter === intern.id
+                    const sc = getSchoolColor(intern.school)
+                    const pendingCount = intern.tasks.filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length
+                    return (
+                      <button key={intern.id} onClick={() => setTaskInternFilter(intern.id)}
+                        className={`flex flex-col items-center gap-1.5 flex-shrink-0 p-2 rounded-xl transition-all ${active ? `${sc.light} ring-2 ${sc.ring}` : 'hover:bg-gray-100'}`}>
+                        <div className="relative">
+                          <Avatar name={intern.fullName} photo={intern.photoUrl} size="lg"/>
+                          {pendingCount > 0 && (
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full text-white text-[9px] font-bold flex items-center justify-center shadow">{pendingCount}</span>
+                          )}
+                        </div>
+                        <span className={`text-[10px] font-semibold whitespace-nowrap max-w-[56px] truncate ${active ? sc.text : 'text-gray-600'}`}>{intern.fullName.split(' ')[0]}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* ── Selected intern quick stats (when filtered) ── */}
+              {taskInternFilter !== 'all' && (() => {
+                const fi = interns.find(i => i.id === taskInternFilter)
+                if (!fi) return null
+                const dept = getDeptBadge(fi)
+                const sc = getSchoolColor(fi.school)
+                return (
+                  <div className={`rounded-2xl p-4 flex items-center gap-4 ${sc.light} border ${sc.border}`}>
+                    <Avatar name={fi.fullName} photo={fi.photoUrl} size="lg"/>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={`font-bold text-lg ${sc.text}`}>{fi.fullName}</p>
+                        {dept && <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${dept.color}`}>{dept.icon} {dept.short}</span>}
+                      </div>
+                      <p className="text-xs text-gray-500">{fi.course} · {fi.school}</p>
+                      <div className="flex gap-3 mt-1.5 flex-wrap">
+                        {[
+                          { label: 'Pending', val: fi.tasks.filter(t=>t.status==='PENDING').length, c: 'text-gray-700 bg-gray-100' },
+                          { label: 'In Progress', val: fi.tasks.filter(t=>t.status==='IN_PROGRESS').length, c: 'text-blue-700 bg-blue-100' },
+                          { label: 'Done', val: fi.tasks.filter(t=>t.status==='COMPLETED').length, c: 'text-green-700 bg-green-100' },
+                        ].map(s => (
+                          <span key={s.label} className={`text-xs font-bold px-2.5 py-1 rounded-full ${s.c}`}>{s.val} {s.label}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => { setNewTask(f => ({ ...f, internId: fi.id })); setShowAddTask(true) }}
+                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold shadow hover:shadow-md transition-all flex-shrink-0">
+                      + Task
+                    </button>
+                  </div>
+                )
+              })()}
+
               {/* Kanban board */}
               <div className="grid md:grid-cols-4 gap-4">
                 {(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as TaskStatus[]).map(status => {
-                  const statusTasks = allTasks.filter(t => t.status === status)
+                  const statusTasks = allTasks.filter(t => t.status === status && (taskInternFilter === 'all' || t.internId === taskInternFilter))
                   const tm = TASK_STATUS_META[status]
                   const isOver = dragOverCol === status
                   const colAccent: Record<TaskStatus, string> = {
@@ -2071,259 +2267,190 @@ export default function InternsPage() {
             const selectedKey = calendarSelectedDay ? format(calendarSelectedDay, 'yyyy-MM-dd') : null
             const selectedTasks = selectedKey ? (tasksByDate.get(selectedKey) || []) : []
             const selectedAttendance = selectedKey ? (attendanceByDate.get(selectedKey) || []) : []
+            const todayKey = format(new Date(), 'yyyy-MM-dd')
+            const todayTasks = tasksByDate.get(todayKey) || []
+            const overdueCount = allTasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'COMPLETED' && t.status !== 'CANCELLED').length
+            const PRIORITY_COLORS: Record<string, string> = { LOW: 'bg-gray-400', MEDIUM: 'bg-yellow-400', HIGH: 'bg-orange-500', URGENT: 'bg-red-500' }
 
-            // Upcoming tasks (next 30 days with due dates)
-            const upcoming = allTasks
-              .filter(t => t.dueDate && t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
-              .map(t => ({ ...t, due: parseISO(t.dueDate!.split('T')[0]) }))
-              .filter(t => t.due >= new Date())
-              .sort((a, b) => a.due.getTime() - b.due.getTime())
-              .slice(0, 12)
-
-            const PRIORITY_COLORS: Record<string, string> = {
-              LOW:    'bg-gray-400',
-              MEDIUM: 'bg-yellow-400',
-              HIGH:   'bg-orange-500',
-              URGENT: 'bg-red-500',
-            }
+            // Build attendance marquee data for interns with today's attendance or any recent record
+            const marqueeInterns = interns.flatMap(intern =>
+              intern.attendance.slice().sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0,1).map(a => ({
+                intern, att: a,
+              }))
+            )
 
             return (
               <div className="space-y-5">
-                {/* Header */}
+                {/* Header with today's date prominent */}
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div>
                     <h1 className="font-display font-bold text-2xl text-gray-800">Calendar</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Task due dates, attendance events &amp; intern milestones</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-sm font-bold text-[var(--dict-blue)]">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
+                      <span className="text-xs text-gray-400">· {activeInterns.length} active intern{activeInterns.length !== 1 ? 's' : ''}</span>
+                    </div>
                   </div>
                   <div className="flex gap-2">
+                    <button onClick={() => setCalendarDate(new Date())} className="px-3 py-2 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all">Today</button>
                     <button onClick={() => setShowAddTask(true)}
-                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold shadow hover:shadow-lg transition-all flex items-center gap-2">
-                      + Assign Task
+                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold shadow hover:shadow-lg transition-all">
+                      + Task
                     </button>
                     <button onClick={() => setShowAddAttendance(true)}
-                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold shadow hover:shadow-lg transition-all flex items-center gap-2">
-                      ✓ Log Attendance
+                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold shadow hover:shadow-lg transition-all">
+                      ✓ Attend
                     </button>
                   </div>
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-5">
-                  {/* ── Calendar grid ── */}
-                  <div className="lg:col-span-2 glass rounded-2xl overflow-hidden">
-                    {/* Month navigator */}
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                      <button onClick={() => setCalendarDate(d => subMonths(d, 1))}
-                        className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all font-bold text-lg">‹</button>
-                      <div className="text-center">
-                        <p className="font-display font-bold text-lg text-gray-800">{format(calendarDate, 'MMMM yyyy')}</p>
-                        <p className="text-xs text-gray-400">{allTasks.filter(t => t.dueDate?.startsWith(format(calendarDate,'yyyy-MM'))).length} task{allTasks.filter(t => t.dueDate?.startsWith(format(calendarDate,'yyyy-MM'))).length !== 1 ? 's' : ''} this month</p>
+                  {/* ── Calendar grid + attendance below ── */}
+                  <div className="lg:col-span-2 space-y-4">
+                    <div className="glass rounded-2xl overflow-hidden">
+                      {/* Month navigator */}
+                      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                        <button onClick={() => setCalendarDate(d => subMonths(d, 1))}
+                          className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all font-bold text-lg">‹</button>
+                        <div className="text-center">
+                          <p className="font-display font-bold text-lg text-gray-800">{format(calendarDate, 'MMMM yyyy')}</p>
+                          <p className="text-xs text-gray-400">{allTasks.filter(t => t.dueDate?.startsWith(format(calendarDate,'yyyy-MM'))).length} task{allTasks.filter(t => t.dueDate?.startsWith(format(calendarDate,'yyyy-MM'))).length !== 1 ? 's' : ''} this month</p>
+                        </div>
+                        <button onClick={() => setCalendarDate(d => addMonths(d, 1))}
+                          className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all font-bold text-lg">›</button>
                       </div>
-                      <button onClick={() => setCalendarDate(d => addMonths(d, 1))}
-                        className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all font-bold text-lg">›</button>
-                    </div>
-
-                    {/* Day-of-week labels */}
-                    <div className="grid grid-cols-7 border-b border-gray-100">
-                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-                        <div key={d} className="py-2 text-center text-xs font-bold text-gray-400 uppercase tracking-wide">{d}</div>
-                      ))}
-                    </div>
-
-                    {/* Day cells */}
-                    <div className="grid grid-cols-7">
-                      {days.map((day, idx) => {
-                        const key     = format(day, 'yyyy-MM-dd')
-                        const dayTasks = tasksByDate.get(key) || []
-                        const dayAtt  = attendanceByDate.get(key) || []
-                        const inMonth = isSameMonth(day, calendarDate)
-                        const today   = isToday(day)
-                        const sel     = calendarSelectedDay && isSameDay(day, calendarSelectedDay)
-                        const isWeekend = day.getDay() === 0 || day.getDay() === 6
-                        return (
-                          <div key={idx}
-                            onClick={() => setCalendarSelectedDay(sel ? null : day)}
-                            className={`min-h-[80px] p-1.5 border-b border-r border-gray-50 cursor-pointer transition-all ${
-                              !inMonth ? 'bg-gray-50/40' : isWeekend ? 'bg-blue-50/20' : 'bg-white'
-                            } ${sel ? 'ring-2 ring-inset ring-[var(--dict-blue)] bg-blue-50' : 'hover:bg-blue-50/40'}`}>
-                            {/* Date number */}
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mb-1 mx-auto ${
-                              today ? 'bg-[var(--dict-blue)] text-white shadow-md' :
-                              sel   ? 'bg-blue-100 text-blue-700' :
-                              !inMonth ? 'text-gray-300' :
-                              isWeekend ? 'text-blue-400' : 'text-gray-700'
-                            }`}>
-                              {format(day, 'd')}
+                      {/* Day-of-week labels */}
+                      <div className="grid grid-cols-7 border-b border-gray-100">
+                        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                          <div key={d} className="py-2 text-center text-xs font-bold text-gray-400 uppercase tracking-wide">{d}</div>
+                        ))}
+                      </div>
+                      {/* Day cells */}
+                      <div className="grid grid-cols-7">
+                        {days.map((day, idx) => {
+                          const key      = format(day, 'yyyy-MM-dd')
+                          const dayTasks = tasksByDate.get(key) || []
+                          const dayAtt   = attendanceByDate.get(key) || []
+                          const inMonth  = isSameMonth(day, calendarDate)
+                          const today    = isToday(day)
+                          const sel      = calendarSelectedDay && isSameDay(day, calendarSelectedDay)
+                          const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                          return (
+                            <div key={idx} onClick={() => setCalendarSelectedDay(sel ? null : day)}
+                              className={`min-h-[80px] p-1.5 border-b border-r border-gray-50 cursor-pointer transition-all ${
+                                !inMonth ? 'bg-gray-50/40' : isWeekend ? 'bg-blue-50/20' : 'bg-white'
+                              } ${sel ? 'ring-2 ring-inset ring-[var(--dict-blue)] bg-blue-50' : 'hover:bg-blue-50/40'}`}>
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mb-1 mx-auto ${
+                                today ? 'bg-[var(--dict-blue)] text-white shadow-md' :
+                                sel   ? 'bg-blue-100 text-blue-700' :
+                                !inMonth ? 'text-gray-300' : isWeekend ? 'text-blue-400' : 'text-gray-700'
+                              }`}>{format(day, 'd')}</div>
+                              {dayTasks.length > 0 && (
+                                <div className="flex flex-wrap gap-0.5 justify-center mb-0.5">
+                                  {dayTasks.slice(0, 3).map((t, i) => (
+                                    <span key={i} className={`w-1.5 h-1.5 rounded-full ${PRIORITY_COLORS[t.priority] || 'bg-gray-400'}`} title={t.title}/>
+                                  ))}
+                                  {dayTasks.length > 3 && <span className="text-[9px] text-gray-400 font-bold">+{dayTasks.length - 3}</span>}
+                                </div>
+                              )}
+                              {dayAtt.length > 0 && (
+                                <div className="flex justify-center gap-0.5">
+                                  {dayAtt.slice(0, 4).map((a, i) => {
+                                    const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
+                                    return <span key={i} className={`w-1.5 h-1.5 rounded-full ${m.color.split(' ')[0].replace('-100','-400')}`} title={m.label}/>
+                                  })}
+                                </div>
+                              )}
+                              {dayTasks.length > 0 && dayTasks.length <= 2 && (
+                                <div className="space-y-0.5 mt-0.5">
+                                  {dayTasks.map((t, i) => {
+                                    const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
+                                    return <p key={i} className={`text-[9px] font-semibold px-1 rounded truncate ${pm.color}`}>{t.title}</p>
+                                  })}
+                                </div>
+                              )}
                             </div>
+                          )
+                        })}
+                      </div>
+                      {/* Legend */}
+                      <div className="flex flex-wrap gap-3 px-5 py-3 border-t border-gray-100 bg-gray-50">
+                        {[
+                          { color: 'bg-[var(--dict-blue)]', label: 'Today' },
+                          { color: 'bg-gray-400',   label: 'Low' },
+                          { color: 'bg-yellow-400', label: 'Medium' },
+                          { color: 'bg-orange-500', label: 'High' },
+                          { color: 'bg-red-500',    label: 'Urgent' },
+                          { color: 'bg-green-400',  label: 'Present' },
+                        ].map(l => (
+                          <span key={l.label} className="text-xs text-gray-500 font-semibold flex items-center gap-1">
+                            <span className={`w-2.5 h-2.5 rounded-full ${l.color}`}/>{l.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
 
-                            {/* Task dots */}
-                            {dayTasks.length > 0 && (
-                              <div className="flex flex-wrap gap-0.5 justify-center mb-0.5">
-                                {dayTasks.slice(0, 3).map((t, i) => (
-                                  <span key={i} className={`w-1.5 h-1.5 rounded-full ${PRIORITY_COLORS[t.priority] || 'bg-gray-400'}`}
-                                    title={`${t.title} (${t.priority})`}/>
-                                ))}
-                                {dayTasks.length > 3 && <span className="text-[9px] text-gray-400 font-bold">+{dayTasks.length - 3}</span>}
-                              </div>
-                            )}
-
-                            {/* Attendance dot */}
-                            {dayAtt.length > 0 && (
-                              <div className="flex justify-center gap-0.5">
-                                {dayAtt.slice(0, 4).map((a, i) => {
-                                  const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
-                                  return <span key={i} className={`w-1.5 h-1.5 rounded-full ${m.color.split(' ')[0].replace('bg-','bg-').replace('-100','-400')}`}
-                                    title={m.label}/>
-                                })}
-                              </div>
-                            )}
-
-                            {/* Task mini labels (only if few) */}
-                            {dayTasks.length > 0 && dayTasks.length <= 2 && (
-                              <div className="space-y-0.5 mt-0.5">
-                                {dayTasks.map((t, i) => {
-                                  const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
-                                  return (
-                                    <p key={i} className={`text-[9px] font-semibold px-1 rounded truncate ${pm.color}`}>{t.title}</p>
-                                  )
-                                })}
-                              </div>
-                            )}
+                    {/* ── Attendance Marquee (floating circles, infinite scroll) ── */}
+                    {marqueeInterns.length > 0 && (
+                      <div className="glass rounded-2xl overflow-hidden">
+                        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                          <h3 className="font-display font-semibold text-gray-700 text-sm flex items-center gap-2">
+                            <span className="w-5 h-5 bg-green-100 text-green-600 rounded-lg flex items-center justify-center text-xs">📋</span>
+                            Attendance — Latest Records
+                          </h3>
+                          <button onClick={() => setShowAddAttendance(true)} className="text-xs text-green-600 font-bold hover:underline">+ Log</button>
+                        </div>
+                        <div className="relative overflow-hidden py-4">
+                          <style>{`@keyframes marquee-scroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`}</style>
+                          <div className="flex gap-4 w-max" style={{ animation: `marquee-scroll ${Math.max(10, marqueeInterns.length * 3)}s linear infinite` }}>
+                            {/* Duplicate the list for seamless loop */}
+                            {[...marqueeInterns, ...marqueeInterns].map(({ intern, att }, idx) => {
+                              const m = ATTENDANCE_STATUS_META[att.status as AttendanceStatus]
+                              const sc = getSchoolColor(intern.school)
+                              return (
+                                <div key={idx}
+                                  className={`flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group`}
+                                  onClick={() => { setCalendarSelectedDay(new Date(att.date)); setCalendarDate(new Date(att.date)) }}>
+                                  <div className="relative">
+                                    <div className={`w-14 h-14 rounded-full border-3 border-white shadow-lg ring-2 ${sc.ring} overflow-hidden flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                                      {intern.photoUrl
+                                        ? <img src={intern.photoUrl} alt={intern.fullName} className="w-full h-full object-cover"/>
+                                        : <div className={`w-full h-full bg-gradient-to-br ${sc.grad} flex items-center justify-center text-white text-lg font-bold`}>
+                                            {intern.fullName.split(' ').slice(0,2).map(w=>w[0]).join('')}
+                                          </div>
+                                      }
+                                    </div>
+                                    <span className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-xs shadow ${
+                                      att.status === 'PRESENT' ? 'bg-green-500' :
+                                      att.status === 'ABSENT'  ? 'bg-red-500'  :
+                                      att.status === 'HALF_DAY'? 'bg-yellow-500' : 'bg-gray-400'
+                                    }`}>{m.icon}</span>
+                                  </div>
+                                  <p className="text-[10px] font-semibold text-gray-700 text-center whitespace-nowrap max-w-[60px] truncate">{intern.fullName.split(' ')[0]}</p>
+                                  <p className="text-[9px] text-gray-400 text-center">{format(new Date(att.date), 'MMM d')}</p>
+                                </div>
+                              )
+                            })}
                           </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Legend */}
-                    <div className="flex flex-wrap gap-4 px-5 py-3 border-t border-gray-100 bg-gray-50">
-                      <span className="text-xs text-gray-500 font-semibold flex items-center gap-1.5">
-                        <span className="w-3 h-3 rounded-full bg-[var(--dict-blue)]"/>Today
-                      </span>
-                      {[
-                        { color: 'bg-gray-400',   label: 'Low task' },
-                        { color: 'bg-yellow-400', label: 'Medium task' },
-                        { color: 'bg-orange-500', label: 'High task' },
-                        { color: 'bg-red-500',    label: 'Urgent task' },
-                        { color: 'bg-green-400',  label: 'Present' },
-                        { color: 'bg-red-400',    label: 'Absent' },
-                      ].map(l => (
-                        <span key={l.label} className="text-xs text-gray-500 font-semibold flex items-center gap-1.5">
-                          <span className={`w-2.5 h-2.5 rounded-full ${l.color}`}/>{l.label}
-                        </span>
-                      ))}
-                    </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* ── Right panel ── */}
                   <div className="space-y-4">
-                    {/* Selected day detail */}
-                    {calendarSelectedDay && (
-                      <div className="glass rounded-2xl overflow-hidden">
-                        <div className="px-5 py-4 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white">
-                          <p className="font-display font-bold text-lg">{format(calendarSelectedDay, 'MMMM d, yyyy')}</p>
-                          <p className="text-blue-200 text-xs mt-0.5">{format(calendarSelectedDay, 'EEEE')}</p>
-                        </div>
-                        <div className="p-4 space-y-3">
-                          {selectedTasks.length === 0 && selectedAttendance.length === 0 ? (
-                            <p className="text-center text-gray-400 text-sm py-4">No events on this day</p>
-                          ) : null}
-                          {selectedTasks.length > 0 && (
-                            <div>
-                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tasks Due</p>
-                              <div className="space-y-2">
-                                {selectedTasks.map(t => {
-                                  const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
-                                  const tm = TASK_STATUS_META[t.status as TaskStatus]
-                                  return (
-                                    <div key={t.id} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                                      <span className="text-sm mt-0.5">{tm.icon}</span>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-gray-800 truncate">{t.title}</p>
-                                        <p className="text-xs text-gray-400">{(t as any).internName}</p>
-                                      </div>
-                                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${pm.color}`}>{pm.label}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-                          {selectedAttendance.length > 0 && (
-                            <div>
-                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Attendance</p>
-                              <div className="space-y-2">
-                                {selectedAttendance.map(a => {
-                                  const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
-                                  const intern = interns.find(i => i.id === (a as any).internId)
-                                  return (
-                                    <div key={a.id} className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${m.color} border-current/20`}>
-                                      <span className="font-bold">{m.icon}</span>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold truncate">{intern?.fullName || 'Unknown'}</p>
-                                        {a.hours && <p className="text-xs opacity-70">{a.hours}h logged</p>}
-                                      </div>
-                                      <span className="text-xs font-bold">{m.label}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Upcoming tasks */}
+                    {/* TODAY summary — always at top */}
                     <div className="glass rounded-2xl overflow-hidden">
-                      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                        <h3 className="font-display font-semibold text-gray-800 flex items-center gap-2">
-                          <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center text-sm">📋</span>
-                          Upcoming Tasks
-                        </h3>
-                        <span className="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">{upcoming.length}</span>
+                      <div className="px-5 py-4 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white">
+                        <p className="text-xs text-blue-200 font-semibold uppercase tracking-wider">Today</p>
+                        <p className="font-display font-bold text-xl mt-0.5">{format(new Date(), 'MMMM d, yyyy')}</p>
+                        <p className="text-blue-200 text-xs">{format(new Date(), 'EEEE')}</p>
                       </div>
-                      {upcoming.length === 0 ? (
-                        <p className="text-center text-gray-400 text-sm py-6">No upcoming task deadlines</p>
-                      ) : (
-                        <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto">
-                          {upcoming.map(t => {
-                            const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
-                            const dDays = differenceInDays(t.due, new Date())
-                            const urgency = dDays === 0 ? 'text-red-600 bg-red-50 border-red-200' :
-                                            dDays <= 2  ? 'text-orange-600 bg-orange-50 border-orange-200' :
-                                            dDays <= 7  ? 'text-yellow-700 bg-yellow-50 border-yellow-200' :
-                                                          'text-gray-600 bg-gray-50 border-gray-100'
-                            return (
-                              <div key={t.id} className={`flex items-start gap-2.5 p-2.5 rounded-xl border ${urgency}`}
-                                onClick={() => setCalendarSelectedDay(t.due)}>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold truncate">{t.title}</p>
-                                  <p className="text-xs opacity-70">{(t as any).internName} · {format(t.due, 'MMM d')}</p>
-                                </div>
-                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${pm.color}`}>{pm.label}</span>
-                                  <span className="text-[10px] font-bold">
-                                    {dDays === 0 ? 'Today!' : dDays === 1 ? 'Tomorrow' : `${dDays}d`}
-                                  </span>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Today's quick summary */}
-                    <div className="glass rounded-2xl p-4">
-                      <h3 className="font-display font-semibold text-gray-800 mb-3 flex items-center gap-2 text-sm">
-                        <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-xs">📅</span>
-                        Today — {format(new Date(), 'MMM d, yyyy')}
-                      </h3>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="p-3 grid grid-cols-2 gap-2">
                         {[
-                          { label: 'Tasks Due', value: (tasksByDate.get(format(new Date(),'yyyy-MM-dd'))||[]).length, color: 'bg-purple-50 text-purple-700' },
-                          { label: 'Present', value: todayAttendance.filter(a=>a.status==='PRESENT').length, color: 'bg-green-50 text-green-700' },
-                          { label: 'Overdue', value: allTasks.filter(t=>t.dueDate && new Date(t.dueDate)<new Date() && t.status!=='COMPLETED' && t.status!=='CANCELLED').length, color: 'bg-red-50 text-red-700' },
-                          { label: 'Active', value: activeInterns.length, color: 'bg-blue-50 text-blue-700' },
+                          { label: 'Tasks Due', value: todayTasks.length,    color: 'bg-purple-50 text-purple-700' },
+                          { label: 'Present',   value: todayAttendance.filter(a=>a.status==='PRESENT').length, color: 'bg-green-50 text-green-700' },
+                          { label: 'Overdue',   value: overdueCount,          color: 'bg-red-50 text-red-700' },
+                          { label: 'Active',    value: activeInterns.length,  color: 'bg-blue-50 text-blue-700' },
                         ].map(s => (
                           <div key={s.label} className={`p-3 rounded-xl text-center ${s.color}`}>
                             <p className="text-xl font-bold">{s.value}</p>
@@ -2332,6 +2459,92 @@ export default function InternsPage() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Today's tasks list */}
+                    <div className="glass rounded-2xl overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                        <h3 className="font-display font-semibold text-gray-800 flex items-center gap-2 text-sm">
+                          <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center text-sm">📋</span>
+                          Today's Tasks
+                        </h3>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${todayTasks.length > 0 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400'}`}>{todayTasks.length}</span>
+                      </div>
+                      {todayTasks.length === 0 ? (
+                        <p className="text-center text-gray-400 text-sm py-5">No tasks due today 🎉</p>
+                      ) : (
+                        <div className="p-3 space-y-2">
+                          {todayTasks.map(t => {
+                            const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
+                            const tm = TASK_STATUS_META[t.status as TaskStatus]
+                            return (
+                              <div key={t.id} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                                <span className="text-sm mt-0.5">{tm.icon}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-gray-800 truncate">{t.title}</p>
+                                  <p className="text-xs text-gray-400">{(t as any).internName}</p>
+                                </div>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${pm.color}`}>{pm.label}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Selected day detail (when a day is clicked) */}
+                    {calendarSelectedDay && (
+                      <div className="glass rounded-2xl overflow-hidden">
+                        <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                          <div>
+                            <p className="font-display font-semibold text-gray-800 text-sm">{format(calendarSelectedDay, 'MMMM d, yyyy')}</p>
+                            <p className="text-xs text-gray-400">{format(calendarSelectedDay, 'EEEE')}</p>
+                          </div>
+                          <button onClick={() => setCalendarSelectedDay(null)} className="text-gray-300 hover:text-gray-500 text-lg font-bold">×</button>
+                        </div>
+                        <div className="p-3 space-y-2.5 max-h-[280px] overflow-y-auto">
+                          {selectedTasks.length === 0 && selectedAttendance.length === 0 && (
+                            <p className="text-center text-gray-400 text-sm py-4">No events on this day</p>
+                          )}
+                          {selectedTasks.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tasks Due</p>
+                              {selectedTasks.map(t => {
+                                const pm = PRIORITY_META[t.priority] || PRIORITY_META.MEDIUM
+                                return (
+                                  <div key={t.id} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-100 mb-1.5">
+                                    <span className="text-sm">{TASK_STATUS_META[t.status as TaskStatus].icon}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold text-gray-800 truncate">{t.title}</p>
+                                      <p className="text-[10px] text-gray-400">{(t as any).internName}</p>
+                                    </div>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${pm.color}`}>{pm.label}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {selectedAttendance.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Attendance</p>
+                              {selectedAttendance.map(a => {
+                                const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
+                                const intern = interns.find(i => i.attendance.some(x => x.id === a.id))
+                                return (
+                                  <div key={a.id} className={`flex items-center gap-2 p-2 rounded-lg border mb-1.5 ${m.color}`}>
+                                    <Avatar name={intern?.fullName} photo={intern?.photoUrl} size="sm"/>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold truncate">{intern?.fullName || 'Unknown'}</p>
+                                      {a.hours && <p className="text-[10px] opacity-70">{a.hours}h</p>}
+                                    </div>
+                                    <span className="text-xs font-bold">{m.icon}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2344,210 +2557,255 @@ export default function InternsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="font-display font-bold text-2xl text-gray-800">Intern Timeline</h1>
-                  <p className="text-sm text-gray-500 mt-0.5">Visual gallery of all interns sorted by internship period</p>
+                  <p className="text-sm text-gray-500 mt-0.5">Grouped by status — click any card to view full profile</p>
                 </div>
+                <button onClick={() => setShowAddIntern(true)} className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow hover:shadow-lg transition-all">+ Add Intern</button>
               </div>
 
-              {/* Gallery grid */}
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {interns
-                  .slice()
-                  .sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
-                  .map((intern, idx) => {
-                    const sm = INTERN_STATUS_META[intern.status]
-                    const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
-                    const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
-                    const tasksDone = intern.tasks.filter(t=>t.status==='COMPLETED').length
-                    const tasksTotal = intern.tasks.length
-                    const presentDays = intern.attendance.filter(a=>a.status==='PRESENT'||a.status==='HALF_DAY').length
-                    return (
-                      <div key={intern.id}
-                        className="glass rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-200 cursor-pointer group"
-                        onClick={() => { setSelectedIntern(intern); setActiveSection('interns') }}>
-                        {/* Color bar by status */}
-                        <div className={`h-1.5 bg-gradient-to-r ${sm.bg}`}/>
-                        {/* Card body */}
-                        <div className="p-5">
-                          <div className="flex items-start gap-3 mb-4">
-                            <div className="relative">
-                              <Avatar name={intern.fullName} photo={intern.photoUrl} size="lg"/>
-                              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${sm.dot}`}/>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-gray-800 leading-tight truncate">{intern.fullName}</p>
-                              <p className="text-xs text-gray-500 truncate mt-0.5">{intern.course}</p>
-                              <p className="text-xs text-gray-400 truncate">{intern.school}</p>
-                            </div>
-                            <span className="text-xs text-gray-400 font-bold">#{idx+1}</span>
-                          </div>
+              {/* Status groups in defined order */}
+              {([ 'ACTIVE', 'ON_LEAVE', 'INACTIVE', 'COMPLETED' ] as InternStatus[]).map(groupStatus => {
+                const groupInterns = interns.filter(i => i.status === groupStatus)
+                  .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+                if (groupInterns.length === 0) return null
+                const sm = INTERN_STATUS_META[groupStatus]
+                const groupBg: Record<InternStatus, string> = {
+                  ACTIVE:    'from-green-500 to-emerald-600',
+                  COMPLETED: 'from-blue-500 to-indigo-600',
+                  INACTIVE:  'from-gray-400 to-slate-500',
+                  ON_LEAVE:  'from-yellow-500 to-amber-500',
+                }
+                const groupLight: Record<InternStatus, string> = {
+                  ACTIVE:    'bg-green-50 border-green-200',
+                  COMPLETED: 'bg-blue-50 border-blue-200',
+                  INACTIVE:  'bg-gray-50 border-gray-200',
+                  ON_LEAVE:  'bg-yellow-50 border-yellow-200',
+                }
+                return (
+                  <div key={groupStatus} className="space-y-2">
+                    {/* Group header */}
+                    <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl bg-gradient-to-r ${groupBg[groupStatus]} text-white shadow`}>
+                      <span className={`w-2.5 h-2.5 rounded-full bg-white/70 flex-shrink-0`}/>
+                      <span className="font-bold text-sm">{sm.label}</span>
+                      <span className="text-xs bg-white/20 rounded-full px-2.5 py-0.5 font-bold">{groupInterns.length} intern{groupInterns.length !== 1 ? 's' : ''}</span>
+                    </div>
 
-                          {/* Hours progress */}
-                          <div className="mb-3">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-gray-500 font-medium">{Math.round(intern.totalHours)}h / {intern.requiredHours}h</span>
-                              <span className={`font-bold ${pct>=100?'text-green-600':pct>=70?'text-blue-600':'text-orange-500'}`}>{pct}%</span>
-                            </div>
-                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className={`h-2 rounded-full transition-all bg-gradient-to-r ${pct>=100?'from-green-400 to-emerald-500':pct>=70?'from-blue-400 to-indigo-500':'from-orange-400 to-red-400'}`}
-                                style={{width:`${pct}%`}}/>
-                            </div>
-                          </div>
-
-                          {/* Stats row */}
-                          <div className="grid grid-cols-3 gap-2 mb-3">
-                            {[
-                              {label:'Days',val:presentDays,icon:'📅'},
-                              {label:'Tasks',val:`${tasksDone}/${tasksTotal}`,icon:'✅'},
-                              {label:daysLeft>0?'Left':'Ended',val:daysLeft>0?`${daysLeft}d`:`${Math.abs(daysLeft)}d`,icon:daysLeft>0?'⏳':'🏁'},
-                            ].map(s=>(
-                              <div key={s.label} className="bg-gray-50 rounded-xl p-2 text-center">
-                                <p className="text-base">{s.icon}</p>
-                                <p className="text-xs font-bold text-gray-800">{s.val}</p>
-                                <p className="text-xs text-gray-400">{s.label}</p>
+                    {/* Cards — profile left, details right */}
+                    <div className="space-y-2 pl-2">
+                      {groupInterns.map((intern) => {
+                        const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
+                        const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
+                        const tasksDone = intern.tasks.filter(t => t.status === 'COMPLETED').length
+                        const presentDays = intern.attendance.filter(a => a.status === 'PRESENT' || a.status === 'HALF_DAY').length
+                        const sc = getSchoolColor(intern.school)
+                        const dept = getDeptBadge(intern)
+                        const elapsedPct = Math.min(100, Math.max(2,
+                          differenceInDays(new Date(), new Date(intern.startDate)) /
+                          Math.max(1, differenceInDays(new Date(intern.endDate), new Date(intern.startDate))) * 100
+                        ))
+                        return (
+                          <div key={intern.id}
+                            className={`glass rounded-2xl overflow-hidden border ${groupLight[groupStatus]} hover:shadow-lg transition-all cursor-pointer group`}
+                            onClick={() => { setSelectedIntern(intern); setActiveSection('interns') }}>
+                            <div className="flex items-stretch">
+                              {/* Left — profile panel */}
+                              <div className={`flex flex-col items-center justify-center gap-2 p-4 min-w-[110px] bg-gradient-to-b ${groupBg[groupStatus]} text-white`}>
+                                <div className="relative">
+                                  <Avatar name={intern.fullName} photo={intern.photoUrl} size="lg"/>
+                                  <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${sm.dot}`}/>
+                                </div>
+                                <p className="text-xs font-bold text-center leading-tight text-white/90 max-w-[90px] truncate">{intern.fullName.split(' ')[0]}</p>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold bg-white/20 text-white border-white/30`}>{sm.label}</span>
                               </div>
-                            ))}
-                          </div>
 
-                          {/* Timeline bar */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-gray-400">
-                              <span>{format(new Date(intern.startDate),'MMM d')}</span>
-                              <span>{format(new Date(intern.endDate),'MMM d, yyyy')}</span>
-                            </div>
-                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-1.5 rounded-full bg-gradient-to-r from-[var(--dict-blue)] to-blue-400"
-                                style={{width:`${Math.min(100,Math.max(2, differenceInDays(new Date(),new Date(intern.startDate))/Math.max(1,differenceInDays(new Date(intern.endDate),new Date(intern.startDate)))*100))}%`}}/>
-                            </div>
-                          </div>
+                              {/* Right — details */}
+                              <div className="flex-1 p-4 min-w-0">
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-gray-800 truncate">{intern.fullName}</p>
+                                    <p className="text-xs text-gray-500 truncate">{intern.course}</p>
+                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                      <span className={`text-[10px] font-semibold ${sc.text} truncate`}>{intern.school}</span>
+                                      {dept && <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-bold ${dept.color}`}>{dept.icon} {dept.short}</span>}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2 text-center flex-shrink-0">
+                                    {[
+                                      { v: presentDays, l: 'Days', c: 'text-green-600' },
+                                      { v: `${tasksDone}/${intern.tasks.length}`, l: 'Tasks', c: 'text-purple-600' },
+                                      { v: groupStatus === 'COMPLETED' ? '🎓' : daysLeft > 0 ? `${daysLeft}d` : `${Math.abs(daysLeft)}d`, l: groupStatus === 'COMPLETED' ? 'Done' : daysLeft > 0 ? 'Left' : 'Ended', c: daysLeft < 0 && groupStatus !== 'COMPLETED' ? 'text-red-500' : 'text-gray-700' },
+                                    ].map(s => (
+                                      <div key={s.l} className="bg-gray-50 rounded-lg px-2 py-1 text-center min-w-[40px]">
+                                        <p className={`text-sm font-bold ${s.c}`}>{s.v}</p>
+                                        <p className="text-[10px] text-gray-400">{s.l}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
 
-                          {/* Badge */}
-                          <div className="mt-3 flex items-center justify-between">
-                            <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${sm.badge}`}>{sm.label}</span>
-                            <span className="text-xs text-gray-400 group-hover:text-blue-500 transition-colors">View profile →</span>
+                                {/* Hours progress */}
+                                <div className="mb-2">
+                                  <div className="flex justify-between text-xs mb-1">
+                                    <span className="text-gray-500">{Math.round(intern.totalHours)}h / {intern.requiredHours}h</span>
+                                    <span className={`font-bold ${pct >= 100 ? 'text-green-600' : pct >= 70 ? 'text-blue-600' : 'text-orange-500'}`}>{pct}%</span>
+                                  </div>
+                                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className={`h-2 rounded-full bg-gradient-to-r ${pct >= 100 ? 'from-green-400 to-emerald-500' : pct >= 70 ? 'from-blue-400 to-indigo-500' : 'from-orange-400 to-red-400'}`}
+                                      style={{ width: `${pct}%` }}/>
+                                  </div>
+                                </div>
+
+                                {/* Timeline bar */}
+                                <div>
+                                  <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                                    <span>{format(new Date(intern.startDate), 'MMM d, yyyy')}</span>
+                                    <span>{format(new Date(intern.endDate), 'MMM d, yyyy')}</span>
+                                  </div>
+                                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className={`h-1.5 rounded-full bg-gradient-to-r ${groupBg[groupStatus]}`} style={{ width: `${elapsedPct}%` }}/>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-              </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
 
               {interns.length === 0 && (
                 <div className="glass rounded-2xl py-20 text-center">
-                  <p className="text-5xl mb-4">🗓️</p>
+                  <p className="text-5xl mb-4">⏳</p>
                   <p className="text-gray-500 font-medium">No interns yet</p>
-                  <button onClick={() => setShowAddIntern(true)} className="mt-3 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">
-                    + Add First Intern
-                  </button>
+                  <button onClick={() => setShowAddIntern(true)} className="mt-3 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">+ Add First Intern</button>
                 </div>
               )}
             </div>
           )}
 
           {/* ══ DOCUMENTS ════════════════════════════════════════════════════════ */}
-          {activeSection === 'documents' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="font-display font-bold text-2xl text-gray-800">Documents</h1>
-                  <p className="text-sm text-gray-500 mt-0.5">Soft copies of all intern-submitted files — upload when adding an intern</p>
-                </div>
-                <button onClick={() => setShowAddIntern(true)}
-                  className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all">
-                  + Add Intern with Docs
-                </button>
-              </div>
-
-              {/* Summary tiles */}
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { icon: '📄', label: 'MOA / Endorsement', color: 'from-blue-500 to-indigo-500' },
-                  { icon: '🪪', label: 'ID & Identification', color: 'from-green-500 to-teal-500' },
-                  { icon: '📝', label: 'Reports & Output', color: 'from-purple-500 to-violet-500' },
-                  { icon: '📋', label: 'Assessment Forms', color: 'from-orange-500 to-red-500' },
-                ].map(cat => {
-                  const count = interns.reduce((s, i) => s + i.documents.filter(d => d.name.toLowerCase().includes(cat.label.split(' ')[0].toLowerCase()) || d.type === cat.label.split(' ')[0]).length, 0)
-                  return (
-                    <div key={cat.label} className="glass rounded-2xl p-4 flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${cat.color} flex items-center justify-center text-xl flex-shrink-0 shadow-md`}>{cat.icon}</div>
-                      <div>
-                        <p className="font-bold text-sm text-gray-800">{cat.label}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{count} file{count !== 1 ? 's' : ''}</p>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Per-intern document cards */}
-              {interns.filter(i => i.documents.length > 0).map(intern => (
-                <div key={intern.id} className="glass rounded-2xl overflow-hidden">
-                  <div className="flex items-center gap-3 p-4 border-b border-gray-100">
-                    <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
-                    <div className="flex-1">
-                      <p className="font-bold text-gray-800 text-sm">{intern.fullName}</p>
-                      <p className="text-xs text-gray-400">{intern.course} · {intern.school}</p>
-                    </div>
-                    <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-3 py-1 font-semibold">{intern.documents.length} file{intern.documents.length !== 1 ? 's' : ''}</span>
+          {activeSection === 'documents' && (() => {
+            const DOC_FOLDERS = [
+              { id: 'moa',        label: 'MOA / Endorsement',  icon: '📄', color: 'from-blue-500 to-indigo-500',   light: 'bg-blue-50 border-blue-200',   text: 'text-blue-700',   keys: ['moa','endorsement','letter'] },
+              { id: 'id',         label: 'IDs & Identification', icon: '🪪', color: 'from-green-500 to-teal-500',  light: 'bg-green-50 border-green-200', text: 'text-green-700', keys: ['id','identification','school id'] },
+              { id: 'report',     label: 'Reports & Output',   icon: '📝', color: 'from-purple-500 to-violet-500', light: 'bg-purple-50 border-purple-200',text: 'text-purple-700',keys: ['report','output','narrative'] },
+              { id: 'assessment', label: 'Assessment Forms',   icon: '📋', color: 'from-orange-500 to-red-500',    light: 'bg-orange-50 border-orange-200',text: 'text-orange-700',keys: ['assessment','evaluation','form'] },
+              { id: 'photo',      label: 'Photos & Media',     icon: '🖼️', color: 'from-pink-500 to-rose-500',     light: 'bg-pink-50 border-pink-200',   text: 'text-pink-700',  keys: ['image','photo','jpg','png'] },
+              { id: 'other',      label: 'Other Files',        icon: '📁', color: 'from-gray-400 to-slate-500',    light: 'bg-gray-50 border-gray-200',   text: 'text-gray-700',  keys: [] },
+            ]
+            const allDocs = interns.flatMap(intern => intern.documents.map(d => ({ ...d, intern })))
+            const getFolder = (doc: { name: string; type: string; url: string }) => {
+              const hay = (doc.name + ' ' + doc.type).toLowerCase()
+              for (const f of DOC_FOLDERS.slice(0, -1)) {
+                if (f.keys.some(k => hay.includes(k))) return f.id
+              }
+              if (doc.type === 'Image' || doc.url.startsWith('data:image')) return 'photo'
+              return 'other'
+            }
+            const totalFiles = allDocs.length
+            return (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="font-display font-bold text-2xl text-gray-800">Documents</h1>
+                    <p className="text-sm text-gray-500 mt-0.5">{totalFiles} file{totalFiles !== 1 ? 's' : ''} across {interns.filter(i => i.documents.length > 0).length} intern{interns.filter(i => i.documents.length > 0).length !== 1 ? 's' : ''}</p>
                   </div>
-                  <div className="p-4 grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {intern.documents.map(doc => {
-                      const isImage = doc.type === 'Image' || doc.url.startsWith('data:image')
-                      const isPDF   = doc.type === 'PDF'  || doc.url.startsWith('data:application/pdf')
-                      return (
-                        <div key={doc.id} className="group rounded-xl border-2 border-gray-100 hover:border-blue-300 overflow-hidden transition-all bg-white shadow-sm hover:shadow-md">
-                          {/* Preview area */}
-                          {isImage ? (
-                            <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                              <div className="h-32 bg-gray-50 overflow-hidden">
-                                <img src={doc.url} alt={doc.name} className="w-full h-full object-cover hover:scale-105 transition-transform"/>
-                              </div>
-                            </a>
-                          ) : (
-                            <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                              className="h-32 bg-gray-50 flex flex-col items-center justify-center gap-2 hover:bg-blue-50 transition-colors">
-                              <span className="text-4xl">{isPDF ? '📄' : '📎'}</span>
-                              <span className="text-xs font-semibold text-gray-500">{doc.type}</span>
-                            </a>
-                          )}
-                          {/* File info + actions */}
-                          <div className="p-2.5">
-                            <p className="text-xs font-semibold text-gray-800 truncate" title={doc.name}>{doc.name}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">{format(new Date(doc.createdAt), 'MMM d, yyyy')}</p>
-                            <div className="flex gap-1.5 mt-2">
-                              <a href={doc.url} download={doc.name}
-                                className="flex-1 text-center text-xs py-1 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100 transition-all">
-                                ↓ Save
-                              </a>
-                              <button
-                                onClick={async () => {
-                                  if (!confirm(`Delete "${doc.name}"?`)) return
-                                  await fetch(`/api/interns/${intern.id}/documents?docId=${doc.id}`, { method: 'DELETE' })
-                                  fetchInterns()
-                                }}
-                                className="px-2 text-xs py-1 bg-red-50 text-red-400 rounded-lg hover:bg-red-100 transition-all">
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-
-              {interns.filter(i => i.documents.length > 0).length === 0 && (
-                <div className="glass rounded-2xl p-12 text-center border-2 border-dashed border-gray-200">
-                  <p className="text-5xl mb-3">📁</p>
-                  <p className="text-gray-600 font-semibold">No documents uploaded yet</p>
-                  <p className="text-sm text-gray-400 mt-1">Attach files when adding a new intern — MOA, IDs, endorsement letters, etc.</p>
-                  <button onClick={() => setShowAddIntern(true)} className="mt-4 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">
-                    + Add Intern with Documents
+                  <button onClick={() => setShowAddIntern(true)}
+                    className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all">
+                    + Add Intern with Docs
                   </button>
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Folder grid */}
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {DOC_FOLDERS.map(folder => {
+                    const folderDocs = allDocs.filter(d => getFolder(d) === folder.id)
+                    if (folderDocs.length === 0) return null
+                    const internCount = new Set(folderDocs.map(d => d.intern.id)).size
+                    return (
+                      <details key={folder.id} className="group glass rounded-2xl overflow-hidden">
+                        <summary className={`flex items-center gap-3 p-4 cursor-pointer select-none hover:bg-gray-50 transition-all list-none border-b border-gray-100`}>
+                          <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${folder.color} flex items-center justify-center text-2xl flex-shrink-0 shadow-md`}>{folder.icon}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm text-gray-800">{folder.label}</p>
+                            <p className="text-xs text-gray-400">{folderDocs.length} file{folderDocs.length !== 1 ? 's' : ''} · {internCount} intern{internCount !== 1 ? 's' : ''}</p>
+                          </div>
+                          <span className="text-gray-300 group-open:rotate-90 transition-transform text-lg">›</span>
+                        </summary>
+                        {/* Per-intern sub-folders */}
+                        <div className="p-3 space-y-3">
+                          {Array.from(new Set(folderDocs.map(d => d.intern.id))).map(internId => {
+                            const intern = interns.find(i => i.id === internId)!
+                            const internDocs = folderDocs.filter(d => d.intern.id === internId)
+                            const sc = getSchoolColor(intern.school)
+                            return (
+                              <details key={internId} className="group/intern">
+                                <summary className={`flex items-center gap-2.5 px-3 py-2 rounded-xl cursor-pointer list-none hover:${sc.light} transition-all border ${sc.border}`}>
+                                  <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-bold ${sc.text} truncate`}>{intern.fullName}</p>
+                                    <p className="text-xs text-gray-400">{internDocs.length} file{internDocs.length !== 1 ? 's' : ''}</p>
+                                  </div>
+                                  <span className="text-gray-300 group-open/intern:rotate-90 transition-transform">›</span>
+                                </summary>
+                                <div className="grid grid-cols-2 gap-2 mt-2 pl-2">
+                                  {internDocs.map(doc => {
+                                    const isImage = doc.type === 'Image' || doc.url.startsWith('data:image')
+                                    const isPDF   = doc.type === 'PDF' || doc.url.startsWith('data:application/pdf')
+                                    return (
+                                      <div key={doc.id} className="group/doc rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm hover:shadow-md transition-all">
+                                        {isImage ? (
+                                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                                            <div className="h-24 bg-gray-50 overflow-hidden">
+                                              <img src={doc.url} alt={doc.name} className="w-full h-full object-cover hover:scale-105 transition-transform"/>
+                                            </div>
+                                          </a>
+                                        ) : (
+                                          <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                                            className="h-24 bg-gray-50 flex flex-col items-center justify-center gap-1.5 hover:bg-blue-50 transition-colors">
+                                            <span className="text-3xl">{isPDF ? '📄' : '📎'}</span>
+                                            <span className="text-xs font-semibold text-gray-400">{doc.type}</span>
+                                          </a>
+                                        )}
+                                        <div className="p-2">
+                                          <p className="text-xs font-semibold text-gray-800 truncate" title={doc.name}>{doc.name}</p>
+                                          <p className="text-[10px] text-gray-400">{format(new Date(doc.createdAt), 'MMM d, yyyy')}</p>
+                                          <div className="flex gap-1 mt-1.5">
+                                            <a href={doc.url} download={doc.name} className="flex-1 text-center text-[10px] py-1 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100">↓</a>
+                                            <button onClick={async () => {
+                                              if (!confirm(`Delete "${doc.name}"?`)) return
+                                              await fetch(`/api/interns/${intern.id}/documents?docId=${doc.id}`, { method: 'DELETE' })
+                                              fetchInterns()
+                                            }} className="px-2 text-[10px] py-1 bg-red-50 text-red-400 rounded-lg hover:bg-red-100">✕</button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </details>
+                            )
+                          })}
+                        </div>
+                      </details>
+                    )
+                  })}
+                </div>
+
+                {totalFiles === 0 && (
+                  <div className="glass rounded-2xl p-12 text-center border-2 border-dashed border-gray-200">
+                    <p className="text-5xl mb-3">📁</p>
+                    <p className="text-gray-600 font-semibold">No documents uploaded yet</p>
+                    <p className="text-sm text-gray-400 mt-1">Attach files when adding a new intern — MOA, IDs, endorsement letters, etc.</p>
+                    <button onClick={() => setShowAddIntern(true)} className="mt-4 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">
+                      + Add Intern with Documents
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* ══ CERTIFICATES ═════════════════════════════════════════════════════ */}
           {activeSection === 'certificates' && (
@@ -2570,77 +2828,206 @@ export default function InternsPage() {
           )}
 
           {/* ══ REPORTS ══════════════════════════════════════════════════════════ */}
-          {activeSection === 'reports' && (
-            <div className="space-y-5">
-              <div>
-                <h1 className="font-display font-bold text-2xl text-gray-800">Reports & Analytics</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Internship program performance and summaries</p>
-              </div>
+          {activeSection === 'reports' && (() => {
+            // Build last-8-weeks hours data
+            const weeks: { label: string; hours: number; tasks: number; present: number }[] = []
+            for (let w = 7; w >= 0; w--) {
+              const wStart = new Date(); wStart.setDate(wStart.getDate() - w * 7 - 6)
+              const wEnd   = new Date(); wEnd.setDate(wEnd.getDate() - w * 7)
+              const wHours = interns.flatMap(i => i.attendance).filter(a => {
+                const d = new Date(a.date)
+                return d >= wStart && d <= wEnd
+              }).reduce((s, a) => s + (a.hours ?? 0), 0)
+              const wTasks = allTasks.filter(t => {
+                if (!t.dueDate) return false
+                const d = new Date(t.dueDate)
+                return d >= wStart && d <= wEnd && t.status === 'COMPLETED'
+              }).length
+              const wPresent = interns.flatMap(i => i.attendance).filter(a => {
+                const d = new Date(a.date)
+                return d >= wStart && d <= wEnd && (a.status === 'PRESENT' || a.status === 'HALF_DAY')
+              }).length
+              weeks.push({ label: format(wEnd, 'MMM d'), hours: Math.round(wHours * 10) / 10, tasks: wTasks, present: wPresent })
+            }
+            const maxHours = Math.max(...weeks.map(w => w.hours), 1)
 
-              {/* Summary stats */}
-              <div className="grid sm:grid-cols-3 gap-4">
-                {[
-                  { label: 'Completion Rate', value: interns.length > 0 ? `${Math.round((interns.filter(i => i.status === 'COMPLETED').length / interns.length) * 100)}%` : '0%', icon: '🎓', desc: `${interns.filter(i => i.status === 'COMPLETED').length} completed internships` },
-                  { label: 'Avg. Hours Logged', value: interns.length > 0 ? `${Math.round(totalHoursLogged / interns.length)}h` : '0h', icon: '⏱️', desc: 'Per intern average' },
-                  { label: 'Task Completion', value: allTasks.length > 0 ? `${Math.round((allTasks.filter(t => t.status === 'COMPLETED').length / allTasks.length) * 100)}%` : 'N/A', icon: '✅', desc: `${allTasks.filter(t => t.status === 'COMPLETED').length} of ${allTasks.length} tasks done` },
-                ].map(s => (
-                  <div key={s.label} className="glass rounded-2xl p-5">
-                    <span className="text-3xl">{s.icon}</span>
-                    <p className="text-3xl font-display font-bold text-gray-800 mt-2">{s.value}</p>
-                    <p className="font-semibold text-gray-700 mt-0.5">{s.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{s.desc}</p>
+            const exportReport = () => {
+              const rows = [
+                ['Week Ending', 'Hours Logged', 'Present Days', 'Tasks Completed'],
+                ...weeks.map(w => [w.label, w.hours, w.present, w.tasks]),
+                [],
+                ['Intern', 'Status', 'School', 'Course', 'Hours Logged', 'Required Hours', 'Progress %', 'Days Present', 'Tasks Done', 'Start Date', 'End Date'],
+                ...interns.map(i => [
+                  i.fullName,
+                  INTERN_STATUS_META[i.status].label,
+                  i.school,
+                  i.course,
+                  Math.round(i.totalHours),
+                  i.requiredHours,
+                  `${Math.min(100, Math.round((i.totalHours / i.requiredHours) * 100))}%`,
+                  i.attendance.filter(a => a.status === 'PRESENT' || a.status === 'HALF_DAY').length,
+                  i.tasks.filter(t => t.status === 'COMPLETED').length,
+                  format(new Date(i.startDate), 'MMM d, yyyy'),
+                  format(new Date(i.endDate), 'MMM d, yyyy'),
+                ]),
+              ]
+              const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+              const blob = new Blob([csv], { type: 'text/csv' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url; a.download = `intern-report-${format(new Date(), 'yyyy-MM-dd')}.csv`
+              a.click(); URL.revokeObjectURL(url)
+            }
+
+            return (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h1 className="font-display font-bold text-2xl text-gray-800">Reports & Analytics</h1>
+                    <p className="text-sm text-gray-500 mt-0.5">Internship program performance and weekly accomplishments</p>
                   </div>
-                ))}
-              </div>
+                  <button onClick={exportReport}
+                    className="px-4 py-2 border-2 border-green-400 text-green-700 rounded-xl text-sm font-bold hover:bg-green-50 transition-all flex items-center gap-2">
+                    ↓ Export CSV Report
+                  </button>
+                </div>
 
-              {/* Per-intern report */}
-              <div className="glass rounded-2xl p-5">
-                <h2 className="font-display font-semibold text-gray-800 mb-4">Individual Intern Reports</h2>
-                <div className="space-y-3">
-                  {interns.map(intern => {
-                    const sm = INTERN_STATUS_META[intern.status]
-                    const tasksDone = intern.tasks.filter(t => t.status === 'COMPLETED').length
-                    const daysPresent = intern.attendance.filter(a => a.status === 'PRESENT' || a.status === 'HALF_DAY').length
-                    const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
-                    return (
-                      <div key={intern.id} className="p-4 rounded-xl border-2 border-gray-100 hover:bg-gray-50 transition-all">
-                        <div className="flex items-center gap-4">
-                          <Avatar name={intern.fullName} photo={intern.photoUrl} size="md"/>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="font-bold text-gray-800">{intern.fullName}</p>
-                              <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${sm.badge}`}>{sm.label}</span>
-                            </div>
-                            <p className="text-xs text-gray-500">{intern.course} · {intern.school}</p>
-                            <div className="mt-2">
-                              <HoursProgress current={intern.totalHours} required={intern.requiredHours}/>
-                            </div>
+                {/* KPI cards */}
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { label: 'Completion Rate', value: interns.length > 0 ? `${Math.round((interns.filter(i=>i.status==='COMPLETED').length/interns.length)*100)}%` : '0%', icon: '🎓', color: 'from-blue-500 to-indigo-600', sub: `${interns.filter(i=>i.status==='COMPLETED').length} completed` },
+                    { label: 'Avg Hours / Intern', value: interns.length > 0 ? `${Math.round(totalHoursLogged/interns.length)}h` : '0h', icon: '⏱️', color: 'from-green-500 to-emerald-600', sub: `${Math.round(totalHoursLogged)}h total` },
+                    { label: 'Task Completion', value: allTasks.length > 0 ? `${Math.round((allTasks.filter(t=>t.status==='COMPLETED').length/allTasks.length)*100)}%` : 'N/A', icon: '✅', color: 'from-purple-500 to-purple-700', sub: `${allTasks.filter(t=>t.status==='COMPLETED').length}/${allTasks.length} tasks` },
+                    { label: 'Attendance Rate', value: (() => { const total = interns.flatMap(i=>i.attendance).length; const present = interns.flatMap(i=>i.attendance).filter(a=>a.status==='PRESENT'||a.status==='HALF_DAY').length; return total > 0 ? `${Math.round((present/total)*100)}%` : 'N/A' })(), icon: '📅', color: 'from-orange-500 to-red-500', sub: 'present days / total' },
+                  ].map(c => (
+                    <div key={c.label} className="glass rounded-2xl p-5">
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${c.color} flex items-center justify-center text-xl mb-3 shadow-md`}>{c.icon}</div>
+                      <p className="text-3xl font-display font-bold text-gray-800">{c.value}</p>
+                      <p className="font-semibold text-gray-700 mt-0.5 text-sm">{c.label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Weekly bar chart */}
+                <div className="glass rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm">📊</span>
+                      Weekly Accomplishments — Hours Logged
+                    </h2>
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gradient-to-t from-blue-600 to-blue-400 inline-block"/> Hours</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gradient-to-t from-green-500 to-emerald-400 inline-block"/> Present</span>
+                    </div>
+                  </div>
+                  <div className="flex items-end gap-2 h-44 overflow-x-auto pb-1">
+                    {weeks.map((w, i) => {
+                      const hPct = (w.hours / maxHours) * 100
+                      const pPct = (w.present / Math.max(...weeks.map(x => x.present), 1)) * 100
+                      const isCurrent = i === weeks.length - 1
+                      return (
+                        <div key={w.label} className="flex-1 min-w-[50px] flex flex-col items-center gap-1 group">
+                          {/* Value labels */}
+                          <div className="text-[10px] font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">{w.hours}h</div>
+                          {/* Bars */}
+                          <div className="w-full flex items-end gap-0.5 h-32">
+                            <div className={`flex-1 rounded-t-lg transition-all bg-gradient-to-t ${isCurrent ? 'from-blue-700 to-blue-400' : 'from-blue-500 to-blue-300'} opacity-90 hover:opacity-100`}
+                              style={{ height: `${Math.max(4, hPct)}%` }}
+                              title={`${w.hours}h logged`}/>
+                            <div className="flex-1 rounded-t-lg transition-all bg-gradient-to-t from-green-500 to-emerald-300 opacity-80 hover:opacity-100"
+                              style={{ height: `${Math.max(4, pPct)}%` }}
+                              title={`${w.present} present`}/>
                           </div>
-                          <div className="hidden sm:grid grid-cols-3 gap-4 text-center flex-shrink-0">
-                            <div>
-                              <p className="text-lg font-bold text-gray-800">{daysPresent}</p>
-                              <p className="text-xs text-gray-400">Days</p>
-                            </div>
-                            <div>
-                              <p className="text-lg font-bold text-gray-800">{tasksDone}/{intern.tasks.length}</p>
-                              <p className="text-xs text-gray-400">Tasks</p>
-                            </div>
-                            <div>
-                              <p className={`text-lg font-bold ${daysLeft > 0 ? 'text-gray-800' : 'text-red-600'}`}>{Math.abs(daysLeft)}{daysLeft < 0 ? ' ago' : 'd'}</p>
-                              <p className="text-xs text-gray-400">{daysLeft < 0 ? 'Ended' : 'Left'}</p>
-                            </div>
-                          </div>
+                          {/* X label */}
+                          <p className={`text-[9px] font-semibold text-center truncate w-full ${isCurrent ? 'text-blue-600' : 'text-gray-400'}`}>{w.label}</p>
+                          {/* Tasks completed badge */}
+                          {w.tasks > 0 && <span className="text-[9px] bg-purple-100 text-purple-600 rounded-full px-1 font-bold">{w.tasks}✓</span>}
                         </div>
-                      </div>
-                    )
-                  })}
-                  {interns.length === 0 && (
-                    <p className="text-center text-gray-400 py-8">No intern data available</p>
-                  )}
+                      )
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2 text-right">Hover bars to see values · Purple badge = tasks completed that week</p>
+                </div>
+
+                {/* Per-intern summary table */}
+                <div className="glass rounded-2xl overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="font-display font-semibold text-gray-800">Individual Intern Reports</h2>
+                    <span className="text-xs text-gray-400">{interns.length} intern{interns.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          {['Intern','Status','School','Progress','Days','Tasks','Days Left'].map(h => (
+                            <th key={h} className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {interns.map(intern => {
+                          const sm = INTERN_STATUS_META[intern.status]
+                          const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
+                          const tasksDone = intern.tasks.filter(t => t.status === 'COMPLETED').length
+                          const daysPresent = intern.attendance.filter(a => a.status === 'PRESENT' || a.status === 'HALF_DAY').length
+                          const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
+                          const dept = getDeptBadge(intern)
+                          const sc = getSchoolColor(intern.school)
+                          const isCompleted = intern.status === 'COMPLETED'
+                          return (
+                            <tr key={intern.id} className={`hover:bg-gray-50 transition-colors cursor-pointer ${isCompleted ? 'bg-green-50/40' : ''}`}
+                              onClick={() => { setSelectedIntern(intern); setActiveSection('interns') }}>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-gray-800 truncate text-sm">{intern.fullName}</p>
+                                    <p className="text-xs text-gray-400 truncate">{intern.course}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap ${sm.badge}`}>{sm.label}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className={`text-xs font-semibold ${sc.text} truncate max-w-[120px]`}>{intern.school}</p>
+                                {dept && <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-bold mt-0.5 inline-block ${dept.color}`}>{dept.icon} {dept.short}</span>}
+                              </td>
+                              <td className="px-4 py-3 min-w-[130px]">
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <span className="text-gray-500">{Math.round(intern.totalHours)}h/{intern.requiredHours}h</span>
+                                  <span className={`font-bold ${pct>=100?'text-green-600':pct>=70?'text-blue-600':'text-orange-500'}`}>{pct}%</span>
+                                </div>
+                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={`h-1.5 rounded-full bg-gradient-to-r ${pct>=100?'from-green-400 to-emerald-500':pct>=70?'from-blue-400 to-indigo-500':'from-orange-400 to-red-400'}`} style={{width:`${pct}%`}}/>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <p className="font-bold text-gray-800">{daysPresent}</p>
+                                <p className="text-xs text-gray-400">present</p>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <p className="font-bold text-gray-800">{tasksDone}/{intern.tasks.length}</p>
+                                <p className="text-xs text-gray-400">done</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                {isCompleted ? <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">🎓 Done</span>
+                                  : daysLeft > 7 ? <span className="text-sm font-bold text-gray-700">{daysLeft}d</span>
+                                  : daysLeft > 0 ? <span className="text-sm font-bold text-orange-600 animate-pulse">{daysLeft}d!</span>
+                                  : <span className="text-xs font-bold text-red-600">{Math.abs(daysLeft)}d ago</span>}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    {interns.length === 0 && <p className="text-center text-gray-400 py-8">No intern data available</p>}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
         </main>
       </div>
     </div>

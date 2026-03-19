@@ -23,6 +23,8 @@ model LogEntry {
   serviceType          ServiceType @default(SELF_SERVICE)
   staffNotes           String?     @db.Text
   satisfactionRating   Int?
+  contactEmail         String?
+  contactPhone         String?
   pcId                 String?
   pc                   PC?         @relation(fields: [pcId], references: [id])
   createdAt            DateTime    @default(now())

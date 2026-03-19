@@ -6,7 +6,7 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY || '')
 }
 
-const FROM_ADDRESS = process.env.EMAIL_FROM || 'DTC Region V <noreply@dict-logbook.up.railway.app>'
+const FROM_ADDRESS = process.env.EMAIL_FROM || 'DTC Region V <onboarding@resend.dev>'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {

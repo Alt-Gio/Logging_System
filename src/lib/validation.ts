@@ -14,6 +14,8 @@ export const LogCreateSchema = z.object({
   serviceType:          z.enum(['SELF_SERVICE', 'STAFF_ASSISTED']).default('SELF_SERVICE'),
   staffNotes:           z.string().max(500).optional().or(z.literal('')).transform(val => val === '' ? undefined : val),
   satisfactionRating:   z.number().int().min(1).max(5).nullable().optional(),
+  contactEmail:         z.string().email().max(200).optional().or(z.literal('')).transform(val => val === '' ? undefined : val),
+  contactPhone:         z.string().max(30).regex(/^[0-9+\-\s()]*$/, 'Invalid phone number').optional().or(z.literal('')).transform(val => val === '' ? undefined : val),
 })
 
 export const LogUpdateSchema = z.object({
