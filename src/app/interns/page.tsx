@@ -179,6 +179,8 @@ export default function InternsPage() {
   const [draggedTask, setDraggedTask] = useState<{ taskId: string; internId: string; fromStatus: TaskStatus } | null>(null)
   const [dragOverCol, setDragOverCol] = useState<TaskStatus | null>(null)
   const [dtrIntern, setDtrIntern] = useState<string>('all')
+  const [internPhotoPreview, setInternPhotoPreview] = useState<string | null>(null)
+  const [internDocFiles, setInternDocFiles] = useState<{ name: string; type: string; data: string }[]>([])
 
   // ─── Data Fetching ────────────────────────────────────────────────────────────
   const fetchInterns = useCallback(async () => {
@@ -228,6 +230,31 @@ export default function InternsPage() {
   }, [interns])
 
   // ─── Handlers ─────────────────────────────────────────────────────────────────
+  const handleInternPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setInternPhotoPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const handleDocFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const docType = file.type.includes('pdf') ? 'PDF' : file.type.includes('image') ? 'Image' : 'Document'
+        setInternDocFiles(prev => [...prev, { name: file.name, type: docType, data: reader.result as string }])
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ''
+  }
+
+  const handleDocFileRemove = (idx: number) => {
+    setInternDocFiles(prev => prev.filter((_, i) => i !== idx))
+  }
+
   const handleAddIntern = async () => {
     if (!newIntern.fullName || !newIntern.school || !newIntern.course || !newIntern.startDate || !newIntern.endDate) return
     setSaving(true)
@@ -235,14 +262,33 @@ export default function InternsPage() {
       const r = await fetch('/api/interns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newIntern)
+        body: JSON.stringify({ ...newIntern, photoUrl: internPhotoPreview || null })
       })
       if (r.ok) {
+        const intern = await r.json()
+        for (const doc of internDocFiles) {
+          await fetch(`/api/interns/${intern.id}/documents`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: doc.name, type: doc.type, url: doc.data })
+          })
+        }
         await fetchInterns()
         setShowAddIntern(false)
         setNewIntern({ fullName: '', school: '', course: '', department: '', supervisor: '', startDate: '', endDate: '', requiredHours: '486', email: '', phone: '', notes: '' })
+        setInternPhotoPreview(null)
+        setInternDocFiles([])
       }
     } finally { setSaving(false) }
+  }
+
+  const handleResendTask = async (internId: string, task: Task) => {
+    await fetch(`/api/interns/${internId}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: task.title, description: task.description, priority: task.priority, dueDate: task.dueDate })
+    })
+    fetchInterns()
   }
 
   const handleStatusChange = async (internId: string, status: InternStatus) => {
@@ -421,196 +467,263 @@ export default function InternsPage() {
     return null
   }
 
-  // ─── Modals ───────────────────────────────────────────────────────────────────
-  const AddInternModal = () => (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddIntern(false)}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h2 className="font-display font-bold text-xl text-gray-800">Add New Intern</h2>
-          <button onClick={() => setShowAddIntern(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Full Name *</label>
-              <input value={newIntern.fullName} onChange={e => setNewIntern(f => ({ ...f, fullName: e.target.value }))}
-                placeholder="e.g. Juan Dela Cruz" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">School / University *</label>
-              <input value={newIntern.school} onChange={e => setNewIntern(f => ({ ...f, school: e.target.value }))}
-                placeholder="e.g. Bicol University" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Course / Program *</label>
-              <input value={newIntern.course} onChange={e => setNewIntern(f => ({ ...f, course: e.target.value }))}
-                placeholder="e.g. BSIT" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Department</label>
-              <input value={newIntern.department} onChange={e => setNewIntern(f => ({ ...f, department: e.target.value }))}
-                placeholder="e.g. ICT Division" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Supervisor</label>
-              <input value={newIntern.supervisor} onChange={e => setNewIntern(f => ({ ...f, supervisor: e.target.value }))}
-                placeholder="e.g. John Smith" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Start Date *</label>
-              <input type="date" value={newIntern.startDate} onChange={e => setNewIntern(f => ({ ...f, startDate: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">End Date *</label>
-              <input type="date" value={newIntern.endDate} onChange={e => setNewIntern(f => ({ ...f, endDate: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Required Hours</label>
-              <input type="number" value={newIntern.requiredHours} onChange={e => setNewIntern(f => ({ ...f, requiredHours: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Email</label>
-              <input type="email" value={newIntern.email} onChange={e => setNewIntern(f => ({ ...f, email: e.target.value }))}
-                placeholder="intern@email.com" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Phone</label>
-              <input value={newIntern.phone} onChange={e => setNewIntern(f => ({ ...f, phone: e.target.value }))}
-                placeholder="09XX-XXX-XXXX" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Notes</label>
-              <textarea value={newIntern.notes} onChange={e => setNewIntern(f => ({ ...f, notes: e.target.value }))}
-                rows={3} placeholder="Any additional notes..." className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100 resize-none"/>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-3 p-6 border-t border-gray-100">
-          <button onClick={() => setShowAddIntern(false)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={handleAddIntern} disabled={saving} className="flex-1 py-2.5 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving ? <><Spinner/>Saving...</> : '+ Add Intern'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-
-  const AddAttendanceModal = () => (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddAttendance(false)}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h2 className="font-display font-bold text-xl text-gray-800">Log Attendance</h2>
-          <button onClick={() => setShowAddAttendance(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Intern *</label>
-            <select value={newAttendance.internId} onChange={e => setNewAttendance(f => ({ ...f, internId: e.target.value }))}
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
-              <option value="">Select intern...</option>
-              {activeInterns.map(i => <option key={i.id} value={i.id}>{i.fullName}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Date</label>
-              <input type="date" value={newAttendance.date} onChange={e => setNewAttendance(f => ({ ...f, date: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Time In</label>
-              <input type="time" value={newAttendance.timeIn} onChange={e => setNewAttendance(f => ({ ...f, timeIn: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Time Out</label>
-              <input type="time" value={newAttendance.timeOut} onChange={e => setNewAttendance(f => ({ ...f, timeOut: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Status</label>
-            <select value={newAttendance.status} onChange={e => setNewAttendance(f => ({ ...f, status: e.target.value }))}
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
-              {Object.entries(ATTENDANCE_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Notes</label>
-            <input value={newAttendance.notes} onChange={e => setNewAttendance(f => ({ ...f, notes: e.target.value }))}
-              placeholder="Optional notes" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-          </div>
-        </div>
-        <div className="flex gap-3 p-6 border-t border-gray-100">
-          <button onClick={() => setShowAddAttendance(false)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={handleAddAttendance} disabled={saving || !newAttendance.internId} className="flex-1 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving ? <><Spinner/>Saving...</> : '✓ Log Attendance'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-
-  const AddTaskModal = () => (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddTask(false)}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h2 className="font-display font-bold text-xl text-gray-800">Assign Task</h2>
-          <button onClick={() => setShowAddTask(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Assign To *</label>
-            <select value={newTask.internId} onChange={e => setNewTask(f => ({ ...f, internId: e.target.value }))}
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
-              <option value="">Select intern...</option>
-              {activeInterns.map(i => <option key={i.id} value={i.id}>{i.fullName}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Task Title *</label>
-            <input value={newTask.title} onChange={e => setNewTask(f => ({ ...f, title: e.target.value }))}
-              placeholder="e.g. Update website content" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Description</label>
-            <textarea value={newTask.description} onChange={e => setNewTask(f => ({ ...f, description: e.target.value }))}
-              rows={3} placeholder="Detailed description of the task" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] resize-none"/>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Priority</label>
-              <select value={newTask.priority} onChange={e => setNewTask(f => ({ ...f, priority: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
-                {Object.entries(PRIORITY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Due Date</label>
-              <input type="date" value={newTask.dueDate} onChange={e => setNewTask(f => ({ ...f, dueDate: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-3 p-6 border-t border-gray-100">
-          <button onClick={() => setShowAddTask(false)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={handleAddTask} disabled={saving || !newTask.internId || !newTask.title} className="flex-1 py-2.5 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving ? <><Spinner/>Saving...</> : '+ Assign Task'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-
   return (
     <div className="min-h-screen flex flex-col" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      {/* Modals */}
-      {showAddIntern && <AddInternModal />}
-      {showAddAttendance && <AddAttendanceModal />}
-      {showAddTask && <AddTaskModal />}
+
+      {/* ══ ADD INTERN MODAL ═══════════════════════════════════════════════════════ */}
+      {showAddIntern && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddIntern(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="font-display font-bold text-xl text-gray-800">Add New Intern</h2>
+              <button onClick={() => setShowAddIntern(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Photo upload */}
+              <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-2xl">
+                <div className="w-20 h-20 rounded-full border-2 border-dashed border-gray-300 overflow-hidden flex-shrink-0 flex items-center justify-center bg-white shadow-sm">
+                  {internPhotoPreview
+                    ? <img src={internPhotoPreview} className="w-full h-full object-cover" alt="Preview"/>
+                    : <span className="text-3xl">👤</span>}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 mb-1">Intern Photo <span className="text-gray-400 font-normal">(optional)</span></p>
+                  <label className="cursor-pointer px-4 py-2 border-2 border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-all inline-flex items-center gap-2 bg-white">
+                    📷 Upload Photo
+                    <input type="file" accept="image/*" className="hidden" onChange={handleInternPhotoChange}/>
+                  </label>
+                  {internPhotoPreview && (
+                    <button onClick={() => setInternPhotoPreview(null)} className="ml-2 text-xs text-red-400 hover:text-red-600 font-semibold">✕ Remove</button>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">JPG, PNG — will appear on their profile card</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Full Name *</label>
+                  <input value={newIntern.fullName} onChange={e => setNewIntern(f => ({ ...f, fullName: e.target.value }))}
+                    placeholder="e.g. Juan Dela Cruz" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">School / University *</label>
+                  <input value={newIntern.school} onChange={e => setNewIntern(f => ({ ...f, school: e.target.value }))}
+                    placeholder="e.g. Bicol University" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Course / Program *</label>
+                  <input value={newIntern.course} onChange={e => setNewIntern(f => ({ ...f, course: e.target.value }))}
+                    placeholder="e.g. BSIT" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Department</label>
+                  <input value={newIntern.department} onChange={e => setNewIntern(f => ({ ...f, department: e.target.value }))}
+                    placeholder="e.g. ICT Division" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Supervisor</label>
+                  <input value={newIntern.supervisor} onChange={e => setNewIntern(f => ({ ...f, supervisor: e.target.value }))}
+                    placeholder="e.g. John Smith" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Start Date *</label>
+                  <input type="date" value={newIntern.startDate} onChange={e => setNewIntern(f => ({ ...f, startDate: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">End Date *</label>
+                  <input type="date" value={newIntern.endDate} onChange={e => setNewIntern(f => ({ ...f, endDate: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Required Hours</label>
+                  <input type="number" value={newIntern.requiredHours} onChange={e => setNewIntern(f => ({ ...f, requiredHours: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Email</label>
+                  <input type="email" value={newIntern.email} onChange={e => setNewIntern(f => ({ ...f, email: e.target.value }))}
+                    placeholder="intern@email.com" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Phone</label>
+                  <input value={newIntern.phone} onChange={e => setNewIntern(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="09XX-XXX-XXXX" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100"/>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Notes</label>
+                  <textarea value={newIntern.notes} onChange={e => setNewIntern(f => ({ ...f, notes: e.target.value }))}
+                    rows={2} placeholder="Any additional notes..." className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100 resize-none"/>
+                </div>
+              </div>
+
+              {/* Document uploads */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-600 block">Documents <span className="text-gray-400 font-normal">(optional — MOA, IDs, endorsement letters, etc.)</span></label>
+                <label className="cursor-pointer flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-all bg-gray-50/50">
+                  <span className="text-lg">📎</span>
+                  <span>Attach files — PDF, images, Word docs</span>
+                  <input type="file" multiple accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif" className="hidden" onChange={handleDocFileAdd}/>
+                </label>
+                {internDocFiles.length > 0 && (
+                  <div className="space-y-1.5 mt-2">
+                    {internDocFiles.map((doc, i) => (
+                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                        <span className="text-base flex-shrink-0">{doc.type === 'PDF' ? '📄' : doc.type === 'Image' ? '🖼️' : '📎'}</span>
+                        <span className="text-xs font-semibold text-gray-700 flex-1 truncate">{doc.name}</span>
+                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">{doc.type}</span>
+                        <button onClick={() => handleDocFileRemove(i)} className="text-red-400 hover:text-red-600 text-xs font-bold flex-shrink-0">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 p-6 border-t border-gray-100">
+              <button onClick={() => setShowAddIntern(false)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleAddIntern} disabled={saving} className="flex-1 py-2.5 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving ? <><Spinner/>Saving...</> : '+ Add Intern'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ LOG ATTENDANCE MODAL ═══════════════════════════════════════════════════ */}
+      {showAddAttendance && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddAttendance(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="font-display font-bold text-xl text-gray-800">Log Attendance</h2>
+              <button onClick={() => setShowAddAttendance(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Intern preview */}
+              {newAttendance.internId && (() => {
+                const found = interns.find(i => i.id === newAttendance.internId)
+                return found ? (
+                  <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
+                    <Avatar name={found.fullName} photo={found.photoUrl} size="md"/>
+                    <div>
+                      <p className="font-bold text-sm text-gray-800">{found.fullName}</p>
+                      <p className="text-xs text-gray-500">{found.course} · {found.school}</p>
+                    </div>
+                  </div>
+                ) : null
+              })()}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Intern *</label>
+                <select value={newAttendance.internId} onChange={e => setNewAttendance(f => ({ ...f, internId: e.target.value }))}
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+                  <option value="">Select intern...</option>
+                  {interns.map(i => <option key={i.id} value={i.id}>{i.fullName}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Date</label>
+                  <input type="date" value={newAttendance.date} onChange={e => setNewAttendance(f => ({ ...f, date: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Time In</label>
+                  <input type="time" value={newAttendance.timeIn} onChange={e => setNewAttendance(f => ({ ...f, timeIn: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Time Out</label>
+                  <input type="time" value={newAttendance.timeOut} onChange={e => setNewAttendance(f => ({ ...f, timeOut: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Status</label>
+                <select value={newAttendance.status} onChange={e => setNewAttendance(f => ({ ...f, status: e.target.value }))}
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+                  {Object.entries(ATTENDANCE_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Notes</label>
+                <input value={newAttendance.notes} onChange={e => setNewAttendance(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Optional notes" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+              </div>
+            </div>
+            <div className="flex gap-3 p-6 border-t border-gray-100">
+              <button onClick={() => setShowAddAttendance(false)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleAddAttendance} disabled={saving || !newAttendance.internId} className="flex-1 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving ? <><Spinner/>Saving...</> : '✓ Log Attendance'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ ASSIGN TASK MODAL ══════════════════════════════════════════════════════ */}
+      {showAddTask && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddTask(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="font-display font-bold text-xl text-gray-800">Assign Task</h2>
+              <button onClick={() => setShowAddTask(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Intern preview */}
+              {newTask.internId && (() => {
+                const found = interns.find(i => i.id === newTask.internId)
+                return found ? (
+                  <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl border border-purple-100">
+                    <Avatar name={found.fullName} photo={found.photoUrl} size="md"/>
+                    <div>
+                      <p className="font-bold text-sm text-gray-800">{found.fullName}</p>
+                      <p className="text-xs text-gray-500">{found.course} · {found.school}</p>
+                      <p className="text-xs text-purple-600 font-medium mt-0.5">{found.tasks.filter(t=>t.status==='PENDING').length} pending tasks</p>
+                    </div>
+                  </div>
+                ) : null
+              })()}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Assign To *</label>
+                <select value={newTask.internId} onChange={e => setNewTask(f => ({ ...f, internId: e.target.value }))}
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+                  <option value="">Select intern...</option>
+                  {interns.map(i => <option key={i.id} value={i.id}>{i.fullName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Task Title *</label>
+                <input value={newTask.title} onChange={e => setNewTask(f => ({ ...f, title: e.target.value }))}
+                  placeholder="e.g. Update website content" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1.5">Description</label>
+                <textarea value={newTask.description} onChange={e => setNewTask(f => ({ ...f, description: e.target.value }))}
+                  rows={3} placeholder="Detailed description of the task" className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] resize-none"/>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Priority</label>
+                  <select value={newTask.priority} onChange={e => setNewTask(f => ({ ...f, priority: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+                    {Object.entries(PRIORITY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Due Date</label>
+                  <input type="date" value={newTask.dueDate} onChange={e => setNewTask(f => ({ ...f, dueDate: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 p-6 border-t border-gray-100">
+              <button onClick={() => setShowAddTask(false)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleAddTask} disabled={saving || !newTask.internId || !newTask.title} className="flex-1 py-2.5 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving ? <><Spinner/>Saving...</> : '+ Assign Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Government Header ─────────────────────────────────────────────────── */}
       <header className="bg-[var(--dict-blue)] shadow-lg flex-shrink-0 z-30">
@@ -1408,6 +1521,9 @@ export default function InternsPage() {
                                       title="Start task"
                                       className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center justify-center text-xs transition-all">▶</button>
                                   )}
+                                  <button onClick={() => handleResendTask(task.internId, task)}
+                                    title="Resend / reassign as new pending task"
+                                    className="w-6 h-6 rounded-lg bg-yellow-50 text-yellow-600 hover:bg-yellow-100 flex items-center justify-center text-xs transition-all">↺</button>
                                   <button onClick={() => handleDeleteTask(task.internId, task.id)}
                                     title="Delete"
                                     className="w-6 h-6 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 flex items-center justify-center text-xs transition-all">✕</button>
@@ -1596,57 +1712,106 @@ export default function InternsPage() {
           {/* ══ DOCUMENTS ════════════════════════════════════════════════════════ */}
           {activeSection === 'documents' && (
             <div className="space-y-5">
-              <div>
-                <h1 className="font-display font-bold text-2xl text-gray-800">Documents</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Organize and manage intern files and records</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="font-display font-bold text-2xl text-gray-800">Documents</h1>
+                  <p className="text-sm text-gray-500 mt-0.5">Soft copies of all intern-submitted files — upload when adding an intern</p>
+                </div>
+                <button onClick={() => setShowAddIntern(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all">
+                  + Add Intern with Docs
+                </button>
               </div>
 
-              {/* Document categories info */}
+              {/* Summary tiles */}
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { icon: '📄', label: 'MOA / Endorsement', desc: 'Memorandum of Agreement, school endorsement letters', color: 'from-blue-500 to-indigo-500' },
-                  { icon: '🪪', label: 'ID & Identification', desc: 'Government IDs, school IDs', color: 'from-green-500 to-teal-500' },
-                  { icon: '📝', label: 'Reports & Output', desc: 'Weekly reports, project deliverables', color: 'from-purple-500 to-violet-500' },
-                  { icon: '📋', label: 'Assessment Forms', desc: 'Performance evaluation, completion forms', color: 'from-orange-500 to-red-500' },
-                ].map(cat => (
-                  <div key={cat.label} className="glass rounded-2xl p-4">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${cat.color} flex items-center justify-center text-xl mb-3 shadow-md`}>{cat.icon}</div>
-                    <p className="font-bold text-sm text-gray-800">{cat.label}</p>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{cat.desc}</p>
-                  </div>
-                ))}
+                  { icon: '📄', label: 'MOA / Endorsement', color: 'from-blue-500 to-indigo-500' },
+                  { icon: '🪪', label: 'ID & Identification', color: 'from-green-500 to-teal-500' },
+                  { icon: '📝', label: 'Reports & Output', color: 'from-purple-500 to-violet-500' },
+                  { icon: '📋', label: 'Assessment Forms', color: 'from-orange-500 to-red-500' },
+                ].map(cat => {
+                  const count = interns.reduce((s, i) => s + i.documents.filter(d => d.name.toLowerCase().includes(cat.label.split(' ')[0].toLowerCase()) || d.type === cat.label.split(' ')[0]).length, 0)
+                  return (
+                    <div key={cat.label} className="glass rounded-2xl p-4 flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${cat.color} flex items-center justify-center text-xl flex-shrink-0 shadow-md`}>{cat.icon}</div>
+                      <div>
+                        <p className="font-bold text-sm text-gray-800">{cat.label}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{count} file{count !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
 
-              {/* Per-intern document list */}
-              {interns.map(intern => (
-                intern.documents.length > 0 && (
-                  <div key={intern.id} className="glass rounded-2xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
-                      <h3 className="font-bold text-gray-800">{intern.fullName}</h3>
-                      <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{intern.documents.length} file{intern.documents.length !== 1 ? 's' : ''}</span>
+              {/* Per-intern document cards */}
+              {interns.filter(i => i.documents.length > 0).map(intern => (
+                <div key={intern.id} className="glass rounded-2xl overflow-hidden">
+                  <div className="flex items-center gap-3 p-4 border-b border-gray-100">
+                    <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
+                    <div className="flex-1">
+                      <p className="font-bold text-gray-800 text-sm">{intern.fullName}</p>
+                      <p className="text-xs text-gray-400">{intern.course} · {intern.school}</p>
                     </div>
-                    <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {intern.documents.map(doc => (
-                        <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-3 p-3 rounded-xl border-2 border-gray-100 hover:border-[var(--dict-blue)] hover:bg-blue-50/50 transition-all">
-                          <span className="text-2xl">📄</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-gray-800 truncate">{doc.name}</p>
-                            <p className="text-xs text-gray-400">{doc.type} · {format(new Date(doc.createdAt), 'MMM d, yyyy')}</p>
-                          </div>
-                        </a>
-                      ))}
-                    </div>
+                    <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-3 py-1 font-semibold">{intern.documents.length} file{intern.documents.length !== 1 ? 's' : ''}</span>
                   </div>
-                )
+                  <div className="p-4 grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {intern.documents.map(doc => {
+                      const isImage = doc.type === 'Image' || doc.url.startsWith('data:image')
+                      const isPDF   = doc.type === 'PDF'  || doc.url.startsWith('data:application/pdf')
+                      return (
+                        <div key={doc.id} className="group rounded-xl border-2 border-gray-100 hover:border-blue-300 overflow-hidden transition-all bg-white shadow-sm hover:shadow-md">
+                          {/* Preview area */}
+                          {isImage ? (
+                            <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                              <div className="h-32 bg-gray-50 overflow-hidden">
+                                <img src={doc.url} alt={doc.name} className="w-full h-full object-cover hover:scale-105 transition-transform"/>
+                              </div>
+                            </a>
+                          ) : (
+                            <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                              className="h-32 bg-gray-50 flex flex-col items-center justify-center gap-2 hover:bg-blue-50 transition-colors">
+                              <span className="text-4xl">{isPDF ? '📄' : '📎'}</span>
+                              <span className="text-xs font-semibold text-gray-500">{doc.type}</span>
+                            </a>
+                          )}
+                          {/* File info + actions */}
+                          <div className="p-2.5">
+                            <p className="text-xs font-semibold text-gray-800 truncate" title={doc.name}>{doc.name}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{format(new Date(doc.createdAt), 'MMM d, yyyy')}</p>
+                            <div className="flex gap-1.5 mt-2">
+                              <a href={doc.url} download={doc.name}
+                                className="flex-1 text-center text-xs py-1 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100 transition-all">
+                                ↓ Save
+                              </a>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`Delete "${doc.name}"?`)) return
+                                  await fetch(`/api/interns/${intern.id}/documents?docId=${doc.id}`, { method: 'DELETE' })
+                                  fetchInterns()
+                                }}
+                                className="px-2 text-xs py-1 bg-red-50 text-red-400 rounded-lg hover:bg-red-100 transition-all">
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               ))}
 
-              <div className="glass rounded-2xl p-8 text-center border-2 border-dashed border-gray-200">
-                <p className="text-4xl mb-3">📁</p>
-                <p className="text-gray-600 font-semibold">Document Upload Coming Soon</p>
-                <p className="text-sm text-gray-400 mt-1">You'll be able to upload and organize intern files here</p>
-              </div>
+              {interns.filter(i => i.documents.length > 0).length === 0 && (
+                <div className="glass rounded-2xl p-12 text-center border-2 border-dashed border-gray-200">
+                  <p className="text-5xl mb-3">📁</p>
+                  <p className="text-gray-600 font-semibold">No documents uploaded yet</p>
+                  <p className="text-sm text-gray-400 mt-1">Attach files when adding a new intern — MOA, IDs, endorsement letters, etc.</p>
+                  <button onClick={() => setShowAddIntern(true)} className="mt-4 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">
+                    + Add Intern with Documents
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
