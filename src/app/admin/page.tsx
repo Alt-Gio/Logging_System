@@ -423,7 +423,7 @@ export default function AdminPage() {
   const [pingingId, setPingingId] = useState<string | null>(null)
   const [pingAllLoading, setPingAllLoading] = useState(false)
   const [ipSearch, setIpSearch] = useState('')
-  const [ipResult, setIpResult] = useState<{ ip: string; alive: boolean; responseTime: number | null; pcName?: string | null } | null>(null)
+  const [ipResult, setIpResult] = useState<{ ip: string; alive: boolean; responseTime: number | null; pcName?: string | null; error?: string } | null>(null)
   const [ipLoading, setIpLoading] = useState(false)
   const [scanConfig, setScanConfig] = useState({ baseIp: '192.168.1', start: '1', end: '30' })
   const [scanning, setScanning] = useState(false)
