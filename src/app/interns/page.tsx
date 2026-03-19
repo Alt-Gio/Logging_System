@@ -930,45 +930,128 @@ export default function InternsPage() {
                   </div>
                 </div>
               ) : (
-                /* Intern list cards */
-                <div>
+                /* Intern list — table view */
+                <div className="glass rounded-2xl overflow-hidden">
                   {loading ? (
                     <div className="flex items-center justify-center py-16"><Spinner/></div>
                   ) : filteredInterns.length === 0 ? (
-                    <div className="glass rounded-2xl py-16 text-center">
+                    <div className="py-16 text-center">
                       <p className="text-5xl mb-4">👥</p>
                       <p className="text-gray-500 font-medium text-lg">No interns found</p>
                       <button onClick={() => setShowAddIntern(true)} className="mt-4 px-6 py-2.5 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">+ Add First Intern</button>
                     </div>
                   ) : (
-                    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {filteredInterns.map(intern => {
-                        const sm = INTERN_STATUS_META[intern.status]
-                        const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
-                        return (
-                          <div key={intern.id}
-                            onClick={() => setSelectedIntern(intern)}
-                            className="glass rounded-2xl p-5 cursor-pointer hover:shadow-lg hover:border-[var(--dict-blue)] border-2 border-transparent transition-all">
-                            <div className="flex items-start gap-3 mb-4">
-                              <Avatar name={intern.fullName} photo={intern.photoUrl} size="lg"/>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-bold text-gray-800 truncate">{intern.fullName}</p>
-                                <p className="text-xs text-gray-500 truncate">{intern.course}</p>
-                                <p className="text-xs text-gray-400 truncate">{intern.school}</p>
-                              </div>
-                              <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold flex-shrink-0 ${sm.badge}`}>{sm.label}</span>
-                            </div>
-                            <HoursProgress current={intern.totalHours} required={intern.requiredHours}/>
-                            <div className="flex items-center justify-between mt-3 text-xs text-gray-400">
-                              <span>{daysLeft > 0 ? `${daysLeft} days left` : daysLeft === 0 ? 'Last day!' : 'Ended'}</span>
-                              <div className="flex items-center gap-3">
-                                <span title="Tasks">{intern.tasks.filter(t => t.status === 'COMPLETED').length}/{intern.tasks.length} tasks</span>
-                                <span title="Attendance">{intern.attendance.filter(a => a.status === 'PRESENT').length} days</span>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-gray-50 border-b-2 border-gray-100">
+                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Intern</th>
+                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">School / Course</th>
+                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Start Date</th>
+                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">End Date</th>
+                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3 min-w-[160px]">Hours Progress</th>
+                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Status</th>
+                            <th className="text-left text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Days Left</th>
+                            <th className="text-xs font-bold text-gray-500 uppercase tracking-wide px-4 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {filteredInterns.map(intern => {
+                            const sm = INTERN_STATUS_META[intern.status]
+                            const daysLeft = differenceInDays(new Date(intern.endDate), new Date())
+                            const pct = Math.min(100, Math.round((intern.totalHours / intern.requiredHours) * 100))
+                            const barColor = pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-blue-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-red-400'
+                            return (
+                              <tr key={intern.id}
+                                className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
+                                onClick={() => setSelectedIntern(intern)}>
+                                {/* Name + avatar */}
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-3">
+                                    <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-sm text-gray-800 truncate max-w-[140px]">{intern.fullName}</p>
+                                      {intern.supervisor && <p className="text-xs text-gray-400 truncate">👤 {intern.supervisor}</p>}
+                                    </div>
+                                  </div>
+                                </td>
+                                {/* School / course */}
+                                <td className="px-4 py-3">
+                                  <p className="text-sm font-semibold text-gray-700 truncate max-w-[160px]">{intern.school}</p>
+                                  <p className="text-xs text-gray-400 truncate">{intern.course}</p>
+                                </td>
+                                {/* Start date */}
+                                <td className="px-4 py-3">
+                                  <p className="text-sm font-semibold text-gray-700">{format(new Date(intern.startDate), 'MMM d, yyyy')}</p>
+                                  <p className="text-xs text-gray-400">{format(new Date(intern.startDate), 'EEEE')}</p>
+                                </td>
+                                {/* End date */}
+                                <td className="px-4 py-3">
+                                  <p className="text-sm font-semibold text-gray-700">{format(new Date(intern.endDate), 'MMM d, yyyy')}</p>
+                                  <p className="text-xs text-gray-400">{format(new Date(intern.endDate), 'EEEE')}</p>
+                                </td>
+                                {/* Hours progress */}
+                                <td className="px-4 py-3 min-w-[160px]">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-gray-500">{Math.round(intern.totalHours)}h / {intern.requiredHours}h</span>
+                                    <span className={`text-xs font-bold ${pct >= 100 ? 'text-green-600' : pct >= 70 ? 'text-blue-600' : 'text-orange-600'}`}>{pct}%</span>
+                                  </div>
+                                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }}/>
+                                  </div>
+                                </td>
+                                {/* Status */}
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sm.dot}`}/>
+                                    <span className={`text-xs px-2 py-1 rounded-full border font-semibold whitespace-nowrap ${sm.badge}`}>{sm.label}</span>
+                                  </div>
+                                </td>
+                                {/* Days left */}
+                                <td className="px-4 py-3">
+                                  {daysLeft > 30 ? (
+                                    <span className="text-sm font-bold text-gray-700">{daysLeft}d</span>
+                                  ) : daysLeft > 7 ? (
+                                    <span className="text-sm font-bold text-orange-600">{daysLeft}d</span>
+                                  ) : daysLeft > 0 ? (
+                                    <span className="text-sm font-bold text-red-600 animate-pulse">{daysLeft}d left!</span>
+                                  ) : daysLeft === 0 ? (
+                                    <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">Last day!</span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">{Math.abs(daysLeft)}d ago</span>
+                                  )}
+                                </td>
+                                {/* Actions */}
+                                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => { setNewAttendance(f => ({ ...f, internId: intern.id })); setShowAddAttendance(true) }}
+                                      title="Log attendance"
+                                      className="w-7 h-7 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 flex items-center justify-center text-xs font-bold transition-all">
+                                      ✓
+                                    </button>
+                                    <button
+                                      onClick={() => { setNewTask(f => ({ ...f, internId: intern.id })); setShowAddTask(true) }}
+                                      title="Assign task"
+                                      className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 flex items-center justify-center text-xs transition-all">
+                                      +
+                                    </button>
+                                    <button
+                                      onClick={() => setSelectedIntern(intern)}
+                                      title="View profile"
+                                      className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center justify-center text-xs transition-all">
+                                      →
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+                        Showing {filteredInterns.length} of {interns.length} interns · Click any row to view full profile
+                      </div>
                     </div>
                   )}
                 </div>
