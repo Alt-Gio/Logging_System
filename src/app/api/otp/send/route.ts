@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazy initialization to avoid build-time errors
+function getResendClient() {
+  return new Resend(process.env.RESEND_API_KEY || '')
+}
+
+function getTwilioClient() {
+  const twilio = require('twilio')
+  return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+}
 
 // Generate 6-digit OTP
 function generateOTP(): string {
@@ -12,6 +20,7 @@ function generateOTP(): string {
 // Send OTP via Email using Resend
 async function sendEmailOTP(email: string, otp: string, name: string) {
   try {
+    const resend = getResendClient()
     await resend.emails.send({
       from: 'DTC Region V <noreply@dict-logbook.up.railway.app>',
       to: email,
