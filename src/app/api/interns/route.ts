@@ -6,6 +6,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
 
+    console.log('[API] Fetching interns with status:', status || 'ALL')
+
     const interns = await (prisma as any).intern.findMany({
       where: status ? { status } : undefined,
       include: {
@@ -16,6 +18,8 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
+    console.log(`[API] Found ${interns.length} interns`)
+
     // Compute total logged hours for each intern
     const enriched = interns.map((intern: any) => {
       const totalHours = intern.attendance.reduce((sum: number, a: any) => sum + (a.hours ?? 0), 0)
@@ -24,8 +28,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(enriched)
   } catch (e) {
-    console.error(e)
-    return NextResponse.json({ error: 'Failed to fetch interns' }, { status: 500 })
+    console.error('[API] Error fetching interns:', e)
+    return NextResponse.json({ error: 'Failed to fetch interns', details: String(e) }, { status: 500 })
   }
 }
 

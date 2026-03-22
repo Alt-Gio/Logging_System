@@ -1,42 +1,17 @@
-import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
-const prisma = new PrismaClient()
+export async function POST(req: NextRequest) {
+  try {
+    // Check if interns already exist
+    const existingCount = await (prisma as any).intern.count()
+    if (existingCount > 0) {
+      return NextResponse.json({ 
+        message: 'Interns already exist in database', 
+        count: existingCount 
+      }, { status: 200 })
+    }
 
-async function main() {
-  const count = await prisma.admin.count()
-  if (count === 0) {
-    const hashed = await bcrypt.hash('dict2026!', 12)
-    await prisma.admin.create({
-      data: {
-        username: 'admin',
-        password: hashed,
-        name:     'System Administrator',
-        role:     'SUPER_ADMIN',
-      },
-    })
-    console.log('✅ Admin created: admin / dict2026!')
-    console.log('⚠️  CHANGE THIS PASSWORD after first login!')
-  } else {
-    console.log('ℹ️  Admin already exists, skipping.')
-  }
-
-  const defaults = [
-    { key: 'wifiSsid',     value: 'DICT-DTC-Free' },
-    { key: 'wifiPassword', value: '' },
-    { key: 'wifiNote',     value: 'Free public WiFi for all DTC clients. No password required.' },
-    { key: 'accessCode',   value: '2026' },
-    { key: 'officeOpen',   value: '08:00' },
-    { key: 'officeClose',  value: '17:00' },
-  ]
-  for (const s of defaults) {
-    await prisma.setting.upsert({ where: { key: s.key }, update: {}, create: s })
-  }
-  console.log('✅ Default settings seeded')
-
-  // Seed sample interns
-  const internCount = await prisma.intern.count()
-  if (internCount === 0) {
     const today = new Date()
     const startDate = new Date(today)
     startDate.setMonth(today.getMonth() - 2)
@@ -53,7 +28,7 @@ async function main() {
         email: 'maria.santos@bicol.edu.ph',
         phone: '09171234567',
         requiredHours: 486,
-        status: 'ACTIVE' as const,
+        status: 'ACTIVE',
       },
       {
         fullName: 'John Paul Reyes',
@@ -64,7 +39,7 @@ async function main() {
         email: 'jp.reyes@aquinas.edu.ph',
         phone: '09187654321',
         requiredHours: 486,
-        status: 'ACTIVE' as const,
+        status: 'ACTIVE',
       },
       {
         fullName: 'Angela Cruz',
@@ -75,7 +50,7 @@ async function main() {
         email: 'angela.cruz@dwc.edu.ph',
         phone: '09191234567',
         requiredHours: 486,
-        status: 'ACTIVE' as const,
+        status: 'ACTIVE',
       },
       {
         fullName: 'Carlos Mendoza',
@@ -86,7 +61,7 @@ async function main() {
         email: 'carlos.mendoza@bicol.edu.ph',
         phone: '09201234567',
         requiredHours: 486,
-        status: 'ACTIVE' as const,
+        status: 'ACTIVE',
       },
       {
         fullName: 'Patricia Lim',
@@ -97,12 +72,14 @@ async function main() {
         email: 'patricia.lim@aquinas.edu.ph',
         phone: '09211234567',
         requiredHours: 486,
-        status: 'ACTIVE' as const,
+        status: 'ACTIVE',
       },
     ]
 
+    const createdInterns = []
+
     for (const internData of sampleInterns) {
-      const intern = await prisma.intern.create({
+      const intern = await (prisma as any).intern.create({
         data: {
           ...internData,
           startDate,
@@ -135,24 +112,34 @@ async function main() {
             timeIn,
             timeOut,
             hours,
-            status: 'PRESENT' as const,
+            status: 'PRESENT',
           })
         }
       }
 
       if (attendanceRecords.length > 0) {
-        await prisma.internAttendance.createMany({
+        await (prisma as any).internAttendance.createMany({
           data: attendanceRecords,
         })
       }
 
-      console.log(`✅ Created intern: ${intern.fullName} with ${attendanceRecords.length} attendance records`)
+      createdInterns.push({
+        name: intern.fullName,
+        attendanceCount: attendanceRecords.length,
+      })
     }
 
-    console.log('✅ Sample interns and attendance seeded')
-  } else {
-    console.log('ℹ️  Interns already exist, skipping.')
+    return NextResponse.json({
+      success: true,
+      message: 'Sample interns created successfully',
+      interns: createdInterns,
+    }, { status: 201 })
+
+  } catch (e) {
+    console.error('[API] Error seeding interns:', e)
+    return NextResponse.json({ 
+      error: 'Failed to seed interns', 
+      details: String(e) 
+    }, { status: 500 })
   }
 }
-
-main().catch(e => { console.error(e); process.exit(1) }).finally(() => prisma.$disconnect())
