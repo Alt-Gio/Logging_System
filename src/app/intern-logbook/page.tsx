@@ -143,10 +143,20 @@ export default function InternLogbookPage() {
 
   const fetchInterns = useCallback(async () => {
     try {
+      console.log('[Intern Logbook] Fetching interns...')
       const r = await fetch('/api/interns?status=ACTIVE')
+      console.log('[Intern Logbook] Response status:', r.status)
       const d = await r.json()
-      if (Array.isArray(d)) setInterns(d)
-    } catch { /* silent */ }
+      console.log('[Intern Logbook] Response data:', d)
+      if (Array.isArray(d)) {
+        console.log('[Intern Logbook] Setting', d.length, 'interns')
+        setInterns(d)
+      } else {
+        console.error('[Intern Logbook] Response is not an array:', d)
+      }
+    } catch (e) {
+      console.error('[Intern Logbook] Fetch error:', e)
+    }
     finally { setLoading(false) }
   }, [])
 
