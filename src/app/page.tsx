@@ -112,16 +112,20 @@ export default function HomePage() {
         @keyframes ticker { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }
         @keyframes modalIn { from { opacity: 0; transform: scale(.96) translateY(8px) } to { opacity: 1; transform: scale(1) translateY(0) } }
         @keyframes scanLine { 0% { transform: translateY(-100%) } 100% { transform: translateY(100vh) } }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:translateY(0) } }
         .ticker { animation: ticker 35s linear infinite }
         .modal-anim { animation: modalIn .2s ease both }
         .scan { animation: scanLine 12s linear infinite }
+        .fade-up { animation: fadeUp .35s ease both }
         html { scroll-behavior: smooth }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px) }
+        .pt-safe { padding-top: env(safe-area-inset-top, 0px) }
       `}</style>
 
       {/* ── Announcement Expand Modal ── */}
       {expanded && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setExpanded(null)}>
-          <div className="modal-anim bg-gray-800 border border-gray-700 rounded-3xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-8 relative shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="modal-anim bg-gray-800 border border-gray-700 rounded-3xl w-full max-w-lg max-h-[85dvh] overflow-y-auto p-6 sm:p-8 relative shadow-2xl" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }} onClick={e => e.stopPropagation()}>
             <button onClick={() => setExpanded(null)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-gray-400 hover:text-white transition-all text-sm">&times;</button>
             <div className="mb-5">
               <span className={`text-[10px] font-bold tracking-widest uppercase px-3 py-1.5 rounded-full ${expanded.urgent ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'}`}>
@@ -179,7 +183,7 @@ export default function HomePage() {
         </nav>
 
         {/* ════════════════════════ HERO ════════════════════════ */}
-        <section className={`h-screen w-full relative pt-14 bg-gradient-to-br ${feat.from} via-gray-900 to-gray-900 transition-all duration-700`}>
+        <section className={`h-[100dvh] w-full relative pt-14 bg-gradient-to-br ${feat.from} via-gray-900 to-gray-900 transition-all duration-700`}>
           {/* Grid overlay */}
           <div className="absolute inset-0 opacity-[0.035]"
             style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.2) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.2) 1px,transparent 1px)', backgroundSize: '64px 64px' }} />
@@ -194,7 +198,7 @@ export default function HomePage() {
               <div className="max-w-2xl">
 
                 {/* Top badge row */}
-                <div className="flex items-center gap-4 mb-7">
+                <div className="flex items-center gap-3 mb-5 sm:mb-7 flex-wrap">
                   <span className={`${feat.accentClass} text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full`}>
                     {feat.badge}
                   </span>
@@ -209,17 +213,17 @@ export default function HomePage() {
                 </div>
 
                 {/* Title */}
-                <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-white mb-6 leading-tight" style={{ whiteSpace: 'pre-line' }}>
+                <h1 className="text-[2.4rem] sm:text-5xl md:text-6xl lg:text-7xl font-black text-white mb-5 sm:mb-6 leading-[1.1] fade-up" style={{ whiteSpace: 'pre-line' }}>
                   {feat.title}
                 </h1>
 
                 {/* Description */}
-                <p className="text-lg sm:text-xl text-gray-300 mb-9 leading-relaxed max-w-xl">
+                <p className="text-base sm:text-lg text-gray-300 mb-7 sm:mb-9 leading-relaxed max-w-xl">
                   {feat.desc}
                 </p>
 
                 {/* Stats row */}
-                <div className="grid grid-cols-3 gap-8 mb-10">
+                <div className="grid grid-cols-3 gap-4 sm:gap-8 mb-7 sm:mb-10">
                   {feat.stats.map(s => (
                     <div key={s.label}>
                       <div className="text-2xl font-black text-white">{s.val}</div>
@@ -229,17 +233,17 @@ export default function HomePage() {
                 </div>
 
                 {/* CTAs */}
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3">
                   <Link href="/dtc-logbook"
-                    className="flex items-center gap-2.5 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold text-white transition-colors">
+                    className="flex items-center justify-center gap-2.5 px-6 py-3.5 sm:py-3 bg-blue-600 active:bg-blue-700 hover:bg-blue-700 rounded-xl font-bold text-white transition-colors">
                     🖥️ Access Logbook <span className="text-blue-300 ml-0.5">&rarr;</span>
                   </Link>
                   <Link href="/intern-logbook"
-                    className="flex items-center gap-2.5 px-6 py-3 bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl font-semibold text-gray-200 transition-colors">
+                    className="flex items-center justify-center gap-2.5 px-6 py-3.5 sm:py-3 bg-white/10 active:bg-white/20 hover:bg-white/15 border border-white/15 rounded-xl font-semibold text-gray-200 transition-colors">
                     🎓 Intern Logbook
                   </Link>
                   <a href="#events"
-                    className="flex items-center gap-2.5 px-6 py-3 bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl font-semibold text-gray-200 transition-colors">
+                    className="flex items-center justify-center gap-2.5 px-6 py-3.5 sm:py-3 bg-white/10 active:bg-white/20 hover:bg-white/15 border border-white/15 rounded-xl font-semibold text-gray-200 transition-colors">
                     📅 Events
                   </a>
                 </div>
@@ -248,10 +252,11 @@ export default function HomePage() {
           </div>
 
           {/* Carousel dots */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+          <div className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-20">
             {DTC_FEATURES.map((_, i) => (
               <button key={i} onClick={() => setHeroIndex(i)}
-                className={`h-2 rounded-full transition-all duration-300 ${i === heroIndex ? 'bg-blue-500 w-8' : 'bg-gray-600 hover:bg-gray-500 w-2'}`} />
+                className={`h-2 rounded-full transition-all duration-300 touch-manipulation ${i === heroIndex ? 'bg-blue-500 w-8' : 'bg-gray-600 hover:bg-gray-500 w-2'}`}
+                style={{ minWidth: '1.25rem', minHeight: '2rem', display: 'flex', alignItems: 'center' }} />
             ))}
           </div>
         </section>
@@ -277,17 +282,17 @@ export default function HomePage() {
         )}
 
         {/* ════════════════════════ QUICK ACCESS ════════════════════════ */}
-        <section className="py-12 px-6 bg-gray-950">
+        <section className="py-8 sm:py-12 px-4 sm:px-6 bg-gray-950">
           <div className="max-w-5xl mx-auto">
-            <p className="text-center text-gray-600 text-[10px] uppercase tracking-[0.3em] font-bold mb-6">Quick Access</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <p className="text-center text-gray-600 text-[10px] uppercase tracking-[0.3em] font-bold mb-4 sm:mb-6">Quick Access</p>
+            <div className="flex gap-3 overflow-x-auto pb-2 sm:pb-0 sm:grid sm:grid-cols-3 snap-x snap-mandatory scrollbar-none" style={{ scrollbarWidth: 'none' }}>
               {([
                 { href: '/dtc-logbook',        icon: '🖥️', title: 'DTC Logbook',    desc: 'Walk-in sign-in for workstations and internet access', tag: 'Walk-in',  border: 'border-blue-600/20 hover:border-blue-500/50',   bg: 'bg-blue-600/10'   },
                 { href: '/intern-logbook',     icon: '🎓', title: 'Intern Logbook', desc: 'Time-in and out for internship DTR hour tracking',     tag: 'Interns',  border: 'border-violet-600/20 hover:border-violet-500/50', bg: 'bg-violet-600/10' },
                 { href: 'https://dict.gov.ph', icon: '🏛️', title: 'DICT Website',   desc: 'Official DICT portal, news, and e-government links',  tag: 'External', border: 'border-cyan-600/20 hover:border-cyan-500/50',   bg: 'bg-cyan-600/10',  ext: true },
               ] as { href: string; icon: string; title: string; desc: string; tag: string; border: string; bg: string; ext?: boolean }[]).map(c => (
                 <Link key={c.href} href={c.href} {...(c.ext ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                  className={`group rounded-xl p-5 border transition-all duration-200 ${c.bg} ${c.border}`}>
+                  className={`group rounded-xl p-5 border transition-all duration-200 flex-shrink-0 w-[72vw] sm:w-auto snap-start ${c.bg} ${c.border}`}>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-3 block">{c.tag}</span>
                   <div className="text-2xl mb-2">{c.icon}</div>
                   <h3 className="font-bold text-white text-sm mb-1">{c.title}</h3>
@@ -302,17 +307,17 @@ export default function HomePage() {
         </section>
 
         {/* ════════════════════════ ABOUT ════════════════════════ */}
-        <section id="about" className="py-20 px-6 bg-gradient-to-b from-gray-950 to-gray-900">
+        <section id="about" className="py-14 sm:py-20 px-4 sm:px-6 bg-gradient-to-b from-gray-950 to-gray-900">
           <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-14">
+            <div className="text-center mb-10 sm:mb-14">
               <p className="text-blue-400 text-xs font-black uppercase tracking-[0.3em] mb-4">Who We Are</p>
-              <h2 className="text-4xl md:text-5xl font-black text-white">DICT Digital Technology Center</h2>
-              <p className="text-xl text-gray-400 max-w-3xl mx-auto mt-4">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">DICT Digital Technology Center</h2>
+              <p className="text-base sm:text-lg md:text-xl text-gray-400 max-w-3xl mx-auto mt-4">
                 Bridging the digital divide for Bicolanos through free technology access, e-government services, and digital literacy programs in Legazpi City.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-10 items-start mb-14">
+            <div className="grid md:grid-cols-2 gap-6 md:gap-10 items-start mb-10 sm:mb-14">
               {/* Mission card */}
               <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/10 rounded-2xl p-8 border border-blue-600/20 h-full">
                 <div className="text-3xl mb-5">🏛️</div>
@@ -353,15 +358,15 @@ export default function HomePage() {
             </div>
 
             {/* Stats strip */}
-            <div ref={statsRef as React.RefObject<HTMLDivElement>} className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div ref={statsRef as React.RefObject<HTMLDivElement>} className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               {[
                 { val: visitors,     suffix: '+',  label: 'Citizens Served', color: 'text-blue-400'    },
                 { val: daily,        suffix: '+',  label: 'Daily Visitors',  color: 'text-violet-400'  },
                 { val: workstations, suffix: '',   label: 'Workstations',    color: 'text-cyan-400'    },
                 { val: 100,          suffix: '%',  label: 'Free of Charge',  color: 'text-emerald-400' },
               ].map(s => (
-                <div key={s.label} className="bg-gray-800/50 rounded-xl p-5 text-center border border-gray-700 hover:border-gray-600 transition-colors">
-                  <div className={`text-3xl font-black ${s.color} mb-1`}>{s.val.toLocaleString()}{s.suffix}</div>
+                <div key={s.label} className="bg-gray-800/50 rounded-xl p-4 sm:p-5 text-center border border-gray-700 hover:border-gray-600 transition-colors">
+                  <div className={`text-2xl sm:text-3xl font-black ${s.color} mb-1`}>{s.val.toLocaleString()}{s.suffix}</div>
                   <div className="text-xs text-gray-400">{s.label}</div>
                 </div>
               ))}
@@ -370,11 +375,11 @@ export default function HomePage() {
         </section>
 
         {/* ════════════════════════ EVENTS ════════════════════════ */}
-        <section id="events" className="py-20 px-6 bg-gray-900">
+        <section id="events" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-900">
           <div className="max-w-7xl mx-auto">
-            <div className="mb-12">
+            <div className="mb-8 sm:mb-12">
               <p className="text-blue-400 text-xs font-black uppercase tracking-[0.3em] mb-4">What&apos;s Happening</p>
-              <h2 className="text-4xl md:text-5xl font-black text-white">Events &amp; Announcements</h2>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">Events &amp; Announcements</h2>
               <p className="text-gray-400 mt-3 text-sm">
                 Stay informed on the latest happenings, trainings, and official notices.
                 <span className="text-gray-600 ml-2">Click any card to read in full.</span>
@@ -421,11 +426,11 @@ export default function HomePage() {
         </section>
 
         {/* ════════════════════════ SERVICES ════════════════════════ */}
-        <section id="services" className="py-20 px-6 bg-gray-950">
+        <section id="services" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-950">
           <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-12">
+            <div className="text-center mb-8 sm:mb-12">
               <p className="text-violet-400 text-xs font-black uppercase tracking-[0.3em] mb-4">What We Offer</p>
-              <h2 className="text-4xl md:text-5xl font-black text-white">Free Digital Services</h2>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">Free Digital Services</h2>
               <p className="text-gray-400 mt-4 max-w-xl mx-auto text-sm leading-relaxed">
                 Open to all Bicolanos. No registration fees, no barriers — just access to the digital world.
               </p>
@@ -448,8 +453,8 @@ export default function HomePage() {
             </div>
 
             {/* CTA band */}
-            <div className="bg-gradient-to-r from-blue-600/20 to-indigo-600/10 rounded-2xl p-8 border border-blue-600/20 text-center">
-              <h3 className="text-2xl font-bold text-white mb-3">Ready to visit the DTC?</h3>
+            <div className="bg-gradient-to-r from-blue-600/20 to-indigo-600/10 rounded-2xl p-6 sm:p-8 border border-blue-600/20 text-center">
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-3">Ready to visit the DTC?</h3>
               <p className="text-gray-400 text-sm mb-6 max-w-xl mx-auto">
                 Sign in at the logbook when you arrive. Our staff will guide you through every service.
               </p>
@@ -461,9 +466,28 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ════════════════════════ MOBILE BOTTOM NAV ════════════════════════ */}
+        <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="grid grid-cols-4 h-14">
+            {[
+              { href: '#about',          icon: '🏛️', label: 'About'   },
+              { href: '#events',         icon: '📅', label: 'Events'  },
+              { href: '/dtc-logbook',    icon: '🖥️', label: 'Logbook' },
+              { href: '/intern-logbook', icon: '🎓', label: 'Interns' },
+            ].map(({ href, icon, label }) => (
+              <a key={href} href={href}
+                className="flex flex-col items-center justify-center gap-0.5 text-gray-500 active:text-blue-400 hover:text-gray-300 transition-colors">
+                <span className="text-lg leading-none">{icon}</span>
+                <span className="text-[10px] font-semibold">{label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+
         {/* ════════════════════════ FOOTER ════════════════════════ */}
-        <footer className="bg-gray-950 py-8 border-t border-gray-800">
-          <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+        <footer className="bg-gray-950 py-8 pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-8 border-t border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-[11px] font-black text-white">DTC</div>
               <span className="font-bold text-white">DICT Region V</span>
