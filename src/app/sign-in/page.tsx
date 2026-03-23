@@ -1,9 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function SignInPage() {
+function SignInForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl  = searchParams.get('callbackUrl') || '/admin'
@@ -142,5 +142,13 @@ export default function SignInPage() {
         @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
       `}</style>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInForm />
+    </Suspense>
   )
 }
