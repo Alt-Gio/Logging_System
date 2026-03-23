@@ -1,9 +1,23 @@
-// NextAuth v5 middleware
-// Required env vars: AUTH_SECRET, DATABASE_URL
-
-import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { jwtVerify } from 'jose'
+
+function getSecret() {
+  return new TextEncoder().encode(
+    process.env.AUTH_SECRET ?? 'dev-fallback-secret-change-me-00000',
+  )
+}
+
+async function getSessionUserId(req: NextRequest): Promise<string | null> {
+  const token = req.cookies.get('dict-session')?.value
+  if (!token) return null
+  try {
+    const { payload } = await jwtVerify(token, getSecret())
+    return (payload.id as string) ?? null
+  } catch {
+    return null
+  }
+}
 
 const PUBLIC_PATHS = [
   '/',
@@ -69,9 +83,8 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   return res
 }
 
-export default auth((req: NextRequest & { auth: { user?: { id?: string } } | null }) => {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-  const session = req.auth
 
   if (
     pathname.startsWith('/_next') ||
@@ -85,17 +98,20 @@ export default auth((req: NextRequest & { auth: { user?: { id?: string } } | nul
     return applySecurityHeaders(NextResponse.next())
   }
 
-  if (isAdmin(pathname) && !session?.user?.id) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (isAdmin(pathname)) {
+    const userId = await getSessionUserId(req)
+    if (!userId) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const signInUrl = new URL('/sign-in', req.url)
+      signInUrl.searchParams.set('callbackUrl', req.url)
+      return NextResponse.redirect(signInUrl)
     }
-    const signInUrl = new URL('/sign-in', req.url)
-    signInUrl.searchParams.set('callbackUrl', req.url)
-    return NextResponse.redirect(signInUrl)
   }
 
   return applySecurityHeaders(NextResponse.next())
-})
+}
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],

@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
-import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 function SignInForm() {
@@ -22,14 +21,23 @@ function SignInForm() {
     e.preventDefault()
     if (!username || !password) return
     setLoading(true); setError('')
-    const result = await signIn('credentials', {
-      username, password, redirect: false,
-    })
-    if (result?.error) {
-      setError('Invalid username or password.')
+    try {
+      const res  = await fetch('/api/auth/login', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username: username.trim().toLowerCase(), password }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        router.push(callbackUrl)
+        router.refresh()
+      } else {
+        setError(data.error || 'Invalid username or password.')
+        setLoading(false)
+      }
+    } catch {
+      setError('Network error. Please try again.')
       setLoading(false)
-    } else {
-      router.push(callbackUrl)
     }
   }
 

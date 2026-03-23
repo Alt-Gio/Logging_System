@@ -60,41 +60,49 @@ export async function getSession() {
   }
 }
 
-// ── requireAuth — NextAuth JWT session + legacy JWT fallback ─────────────────
-// Primary: reads NextAuth session cookie (next-auth.session-token).
-// Fallback: legacy auth_token cookie or Bearer header for programmatic access.
+// ── requireAuth — dict-session cookie → NextAuth JWT → legacy token ──────────
 export async function requireAuth(req: NextRequest): Promise<{ id: string; username: string; name: string; role: string } | null> {
-  // 1. NextAuth JWT session cookie
+  // 1. Custom dict-session cookie (primary)
+  try {
+    const raw = req.cookies.get('dict-session')?.value
+    if (raw) {
+      const secret = new TextEncoder().encode(process.env.AUTH_SECRET ?? 'dev-fallback-secret-change-me-00000')
+      const { payload } = await jwtVerify(raw, secret)
+      if (payload.id) {
+        const admin = await prisma.admin.findUnique({
+          where:  { id: payload.id as string },
+          select: { id: true, username: true, name: true, role: true },
+        })
+        if (admin) return admin
+      }
+    }
+  } catch { /* fall through */ }
+
+  // 2. NextAuth JWT session cookie (fallback)
   try {
     const { getToken } = await import('next-auth/jwt')
     const token = await getToken({ req, secret: process.env.AUTH_SECRET })
     if (token?.id) {
       const admin = await prisma.admin.findUnique({
-        where: { id: token.id as string },
+        where:  { id: token.id as string },
         select: { id: true, username: true, name: true, role: true },
       })
       if (admin) return admin
     }
-  } catch {
-    // fall through to legacy
-  }
+  } catch { /* fall through */ }
 
-  // 2. Legacy JWT cookie (browser session)
+  // 3. Legacy auth_token cookie / Bearer header
   const cookieHeader = req.headers.get('cookie') || ''
-  const tokenMatch   = cookieHeader.match(/auth_token=([^;]+)/)
-  const cookieToken  = tokenMatch?.[1]
-
-  // 3. Bearer header (programmatic API access)
-  const bearerToken = req.headers.get('authorization')?.replace('Bearer ', '')
-
-  const legacyToken = cookieToken || bearerToken
+  const cookieToken  = cookieHeader.match(/auth_token=([^;]+)/)?.[1]
+  const bearerToken  = req.headers.get('authorization')?.replace('Bearer ', '')
+  const legacyToken  = cookieToken || bearerToken
   if (!legacyToken) return null
 
   const decoded = await verifyToken(legacyToken)
   if (!decoded) return null
 
   return prisma.admin.findUnique({
-    where: { id: decoded.adminId },
+    where:  { id: decoded.adminId },
     select: { id: true, username: true, name: true, role: true },
   })
 }
