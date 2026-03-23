@@ -2,4 +2,5 @@
 builder = "DOCKERFILE"
 
 [deploy]
-preDeployCommand = ""
+startCommand = "node server.js"
+preDeployCommand = "prisma migrate deploy"

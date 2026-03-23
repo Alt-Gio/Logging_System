@@ -50,4 +50,4 @@ RUN printf '#!/bin/sh\nexec node /app/node_modules/prisma/build/index.js "$@"\n'
 USER nextjs
 EXPOSE 3000
 
-CMD ["sh", "-c", "prisma migrate deploy && node server.js"]
+CMD ["node", "server.js"]
