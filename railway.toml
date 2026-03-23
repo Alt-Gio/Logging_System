@@ -2,5 +2,5 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "npm start"
-preDeployCommand = ""
+startCommand = "node_modules/.bin/next start"
+preDeployCommand = "node_modules/.bin/prisma migrate deploy"
