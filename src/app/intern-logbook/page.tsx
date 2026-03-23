@@ -2,644 +2,765 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
+// ── Types ─────────────────────────────────────────────────────────────────
 type Intern = {
-  id: string
-  fullName: string
-  school: string
-  course: string
-  status: string
-  totalHours: number
-  requiredHours: number
-  photoUrl: string | null
-  attendance: AttendanceRecord[]
+  id: string; fullName: string; school: string; course: string
+  department: string | null; supervisor: string | null
+  status: string; totalHours: number; requiredHours: number
+  photoUrl: string | null; email: string | null; phone: string | null
+  startDate: string; endDate: string
+  attendance: AttendanceRecord[]; tasks: InternTask[]
 }
-
 type AttendanceRecord = {
-  id: string
-  date: string
-  timeIn: string | null
-  timeOut: string | null
-  hours: number | null
-  status: string
+  id: string; date: string; timeIn: string | null
+  timeOut: string | null; hours: number | null; status: string
+}
+type InternTask = {
+  id: string; title: string; description: string | null
+  status: string; priority: string; dueDate: string | null
+}
+type ClockEntry = { internId: string; startTime: string }
+type AddInternForm = {
+  fullName: string; school: string; course: string; department: string
+  supervisor: string; email: string; phone: string
+  startDate: string; endDate: string; requiredHours: string
 }
 
-type ClockEntry = {
-  internId: string
-  startTime: string
-}
-
-function fmt(ms: number) {
+// ── Helpers ───────────────────────────────────────────────────────────────
+const fmt = (ms: number) => {
   const s = Math.floor(ms / 1000)
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  return `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
+}
+const fmtTime  = (iso: string) => new Date(iso).toLocaleTimeString('en-PH',{ hour:'numeric', minute:'2-digit', hour12:true })
+const fmtDate  = (iso: string) => new Date(iso).toLocaleDateString('en-PH',{ weekday:'short', month:'short', day:'numeric' })
+const initials = (n: string)   => n.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)
+const COLORS   = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500','bg-indigo-500']
+const colorFor = (n: string)   => COLORS[n.charCodeAt(0) % COLORS.length]
+const EMPTY_FORM: AddInternForm = {
+  fullName:'', school:'', course:'', department:'', supervisor:'',
+  email:'', phone:'', startDate: new Date().toISOString().slice(0,10), endDate:'', requiredHours:'486',
 }
 
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
+// ── Small Components ──────────────────────────────────────────────────────
+function Avatar({ name, photo, size='md' }: { name:string; photo?:string|null; size?:'sm'|'md'|'lg' }) {
+  const sz = { sm:'w-8 h-8 text-xs', md:'w-10 h-10 text-sm', lg:'w-14 h-14 text-lg' }[size]
+  if (photo) return <img src={photo} className={`${sz} rounded-xl object-cover flex-shrink-0`} alt={name} />
+  return <div className={`${sz} ${colorFor(name)} rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0`}>{initials(name)}</div>
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
-}
-
-function initials(name: string) {
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-}
-
-function Avatar({ name, photo, size = 'md' }: { name: string; photo?: string | null; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
-  const sz = { sm: 'w-9 h-9 text-sm', md: 'w-12 h-12 text-base', lg: 'w-16 h-16 text-xl', xl: 'w-24 h-24 text-3xl' }[size]
-  const colors = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500','bg-indigo-500']
-  const color = colors[name.charCodeAt(0) % colors.length]
-  if (photo) return <img src={photo} className={`${sz} rounded-2xl object-cover flex-shrink-0`} alt={name} />
-  return <div className={`${sz} ${color} rounded-2xl flex items-center justify-center text-white font-bold flex-shrink-0`}>{initials(name)}</div>
-}
-
-function SkeletonCard() {
+function Skeleton() {
   return (
-    <div className="p-4 rounded-xl border border-gray-100 bg-white animate-pulse">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-12 h-12 rounded-2xl bg-gray-100" />
-        <div className="flex-1 space-y-2">
-          <div className="h-3.5 bg-gray-100 rounded-full w-3/4" />
-          <div className="h-2.5 bg-gray-100 rounded-full w-1/2" />
-        </div>
-      </div>
-      <div className="h-1.5 bg-gray-100 rounded-full" />
-    </div>
-  )
-}
-
-function WeekBar({ attendance }: { attendance: AttendanceRecord[] }) {
-  const today = new Date()
-  const dow = today.getDay()
-  const monday = new Date(today)
-  monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
-  monday.setHours(0, 0, 0, 0)
-  const bars = ['Mon','Tue','Wed','Thu','Fri'].map((label, i) => {
-    const d = new Date(monday); d.setDate(monday.getDate() + i)
-    const key = d.toISOString().slice(0, 10)
-    const hours = attendance.filter(a => a.date.slice(0, 10) === key).reduce((s, a) => s + (a.hours ?? 0), 0)
-    return { label, hours, isToday: d.toDateString() === today.toDateString(), isFuture: d > today }
-  })
-  const weekTotal = bars.reduce((s, b) => s + b.hours, 0)
-  return (
-    <div className="border-b border-gray-100 px-5 py-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">This Week</p>
-        <p className="text-xs font-bold text-blue-600">{Math.round(weekTotal * 10) / 10}h logged</p>
-      </div>
-      <div className="flex gap-1.5">
-        {bars.map(b => (
-          <div key={b.label} className="flex-1 text-center">
-            <div className="relative h-8 rounded-lg overflow-hidden mb-1 bg-gray-100">
-              {!b.isFuture && b.hours > 0 && (
-                <div className="absolute bottom-0 inset-x-0 rounded-lg transition-all duration-700 bg-blue-500"
-                  style={{ height: `${Math.min(100, (b.hours / 9) * 100)}%` }} />
-              )}
-              {b.isToday && <div className="absolute inset-0 rounded-lg border-2 border-blue-400" />}
-            </div>
-            <p className={`text-[10px] font-bold ${b.isToday ? 'text-blue-500' : 'text-gray-400'}`}>{b.label}</p>
-            {b.hours > 0 && <p className="text-[9px] text-gray-400">{Math.round(b.hours * 10) / 10}h</p>}
-          </div>
-        ))}
+    <div className="flex items-center gap-3 p-3 rounded-xl animate-pulse">
+      <div className="w-10 h-10 rounded-xl bg-gray-200 flex-shrink-0" />
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3 bg-gray-200 rounded-full w-3/4" />
+        <div className="h-2.5 bg-gray-200 rounded-full w-1/2" />
       </div>
     </div>
   )
 }
 
-function ProgressRing({ pct }: { pct: number }) {
-  const r = 28, circ = 2 * Math.PI * r
-  const offset = circ - (Math.min(pct, 100) / 100) * circ
-  const color = pct >= 100 ? '#10b981' : pct >= 70 ? '#3b82f6' : pct >= 40 ? '#f59e0b' : '#ef4444'
+function Ring({ pct }: { pct:number }) {
+  const r = 22, c = 2 * Math.PI * r
+  const col = pct>=100 ? '#10b981' : pct>=70 ? '#3b82f6' : pct>=40 ? '#f59e0b' : '#ef4444'
   return (
-    <svg width="72" height="72" viewBox="0 0 72 72" className="flex-shrink-0">
-      <circle cx="36" cy="36" r={r} fill="none" stroke="#e5e7eb" strokeWidth="6" />
-      <circle cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="6"
-        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-        transform="rotate(-90 36 36)" style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
-      <text x="36" y="36" textAnchor="middle" dominantBaseline="middle" fontSize="13" fontWeight="800" fill={color}>{pct}%</text>
+    <svg width="56" height="56" viewBox="0 0 56 56" className="flex-shrink-0">
+      <circle cx="28" cy="28" r={r} fill="none" stroke="#e5e7eb" strokeWidth="5"/>
+      <circle cx="28" cy="28" r={r} fill="none" stroke={col} strokeWidth="5"
+        strokeDasharray={c} strokeDashoffset={c-(Math.min(pct,100)/100)*c}
+        strokeLinecap="round" transform="rotate(-90 28 28)" style={{transition:'stroke-dashoffset .5s'}}/>
+      <text x="28" y="28" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="800" fill={col}>{pct}%</text>
     </svg>
   )
 }
 
-export default function InternLogbookPage() {
-  const [interns, setInterns]           = useState<Intern[]>([])
-  const [loading, setLoading]           = useState(true)
-  const [search, setSearch]             = useState('')
-  const [selected, setSelected]         = useState<Intern | null>(null)
-  const [clocks, setClocks]             = useState<Record<string, ClockEntry>>({})
-  const [elapsed, setElapsed]           = useState<Record<string, number>>({})
-  const [saving, setSaving]             = useState(false)
-  const [confirmTimeOut, setConfirmTimeOut] = useState<Intern | null>(null)
-  const [toast, setToast]               = useState<{ msg: string; ok: boolean } | null>(null)
-  const [tick, setTick]                 = useState(0)
+// ── Add Intern Modal ──────────────────────────────────────────────────────
+function AddInternModal({ onClose, onSave }: { onClose:()=>void; onSave:(f:AddInternForm)=>Promise<void> }) {
+  const [form, setForm] = useState<AddInternForm>(EMPTY_FORM)
+  const [saving, setSaving] = useState(false)
+  const set = (k: keyof AddInternForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(p => ({ ...p, [k]: e.target.value }))
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!form.fullName||!form.school||!form.course||!form.startDate||!form.endDate) return
+    setSaving(true); await onSave(form); setSaving(false)
+  }
+  const field = (label:string, k:keyof AddInternForm, placeholder:string, type='text', required=false) => (
+    <div>
+      <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1">{label}{required && ' *'}</label>
+      <input value={form[k]} onChange={set(k)} type={type} required={required} placeholder={placeholder}
+        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+    </div>
+  )
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90dvh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <h2 className="text-lg font-black text-gray-900">Register New Intern</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Intern information will be saved and synced to Google Sheets</p>
+        </div>
+        <form onSubmit={submit} className="p-6 space-y-4">
+          {field('Full Name','fullName','e.g. Maria Santos','text',true)}
+          <div className="grid grid-cols-2 gap-3">
+            {field('School','school','Bicol University','text',true)}
+            {field('Course','course','BS Information Technology','text',true)}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field('Department','department','IT Department')}
+            {field('Project Coordinator','supervisor','Supervisor / Coordinator name')}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field('Email','email','email@school.edu.ph','email')}
+            {field('Phone','phone','09XXXXXXXXX')}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {field('Start Date','startDate','','date',true)}
+            {field('End Date','endDate','','date',true)}
+          </div>
+          {field('Required Hours','requiredHours','486 (standard OJT)')}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-bold text-white disabled:opacity-60">
+              {saving ? 'Saving...' : 'Register Intern'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
 
-  const showToast = (msg: string, ok = true) => {
-    setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3500)
+// ── Main Page ─────────────────────────────────────────────────────────────
+export default function InternLogbookPage() {
+  // Access gate
+  const [access, setAccess]         = useState(false)
+  const [codeInput, setCodeInput]   = useState('')
+  const [codeError, setCodeError]   = useState('')
+  const [checking, setChecking]     = useState(false)
+
+  // Core data
+  const [interns, setInterns]       = useState<Intern[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [view, setView]             = useState<'dashboard'|'interns'|'track'|'attendance'|'tasks'>('dashboard')
+  const [selected, setSelected]     = useState<Intern|null>(null)
+  const [tasks, setTasks]           = useState<InternTask[]>([])
+
+  // Clock state
+  const [clocks, setClocks]         = useState<Record<string,ClockEntry>>({})
+  const [elapsed, setElapsed]       = useState<Record<string,number>>({})
+  const [tick, setTick]             = useState(0)
+
+  // UI
+  const [saving, setSaving]         = useState(false)
+  const [confirmOut, setConfirmOut] = useState<Intern|null>(null)
+  const [toast, setToast]           = useState<{msg:string;ok:boolean}|null>(null)
+  const [showAdd, setShowAdd]       = useState(false)
+  const [search, setSearch]         = useState('')
+  const [sideOpen, setSideOpen]     = useState(false)
+  const [newTask, setNewTask]       = useState('')
+
+  const showToast = (msg:string, ok=true) => { setToast({msg,ok}); setTimeout(()=>setToast(null),3500) }
+
+  // ── Boot ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (localStorage.getItem('dtc_intern_access_v2') === 'granted') setAccess(true)
+    try { const c = localStorage.getItem('dtc_intern_clocks'); if (c) setClocks(JSON.parse(c)) } catch {}
+  }, [])
+
+  const verifyCode = async () => {
+    if (!codeInput) return
+    setChecking(true); setCodeError('')
+    try {
+      const r = await fetch('/api/settings'); const s = await r.json()
+      if (codeInput === (s.accessCode || '2026')) {
+        localStorage.setItem('dtc_intern_access_v2','granted'); setAccess(true)
+      } else { setCodeError('Incorrect access code. Try again.') }
+    } catch { setCodeError('Unable to verify. Check your connection.') }
+    setChecking(false)
   }
 
+  // ── Data ─────────────────────────────────────────────────────────────
   const fetchInterns = useCallback(async () => {
+    setLoading(true)
     try {
-      console.log('[Intern Logbook] Fetching interns...')
-      const r = await fetch('/api/interns?status=ACTIVE')
-      console.log('[Intern Logbook] Response status:', r.status)
-      const d = await r.json()
-      console.log('[Intern Logbook] Response data:', d)
-      if (Array.isArray(d)) {
-        console.log('[Intern Logbook] Setting', d.length, 'interns')
-        setInterns(d)
-      } else {
-        console.error('[Intern Logbook] Response is not an array:', d)
-      }
-    } catch (e) {
-      console.error('[Intern Logbook] Fetch error:', e)
-    }
+      const r = await fetch('/api/interns'); const d = await r.json()
+      if (Array.isArray(d)) setInterns(d)
+      else console.error('[InternLogbook] Unexpected response:', d)
+    } catch(e) { console.error('[InternLogbook] Fetch error:', e) }
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => {
-    fetchInterns()
-    try {
-      const stored = localStorage.getItem('dtc_intern_clocks')
-      if (stored) setClocks(JSON.parse(stored))
-    } catch { /* silent */ }
-  }, [fetchInterns])
+  const fetchTasks = async (id:string) => {
+    try { const r = await fetch(`/api/interns/${id}/tasks`); const d = await r.json(); if(Array.isArray(d)) setTasks(d) } catch {}
+  }
 
-  useEffect(() => {
-    try { localStorage.setItem('dtc_intern_clocks', JSON.stringify(clocks)) } catch { /* silent */ }
-  }, [clocks])
+  useEffect(() => { if (access) fetchInterns() }, [access, fetchInterns])
 
+  // ── Timers ─────────────────────────────────────────────────────────
+  useEffect(() => { const t = setInterval(()=>setTick(n=>n+1),1000); return ()=>clearInterval(t) }, [])
   useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 1000)
-    return () => clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    const now = Date.now()
-    const e: Record<string, number> = {}
-    for (const [id, entry] of Object.entries(clocks)) {
-      e[id] = now - new Date(entry.startTime).getTime()
-    }
+    const now = Date.now(); const e: Record<string,number> = {}
+    for (const [id,entry] of Object.entries(clocks)) e[id] = now - new Date(entry.startTime).getTime()
     setElapsed(e)
   }, [tick, clocks])
+  useEffect(() => { try { localStorage.setItem('dtc_intern_clocks',JSON.stringify(clocks)) } catch {} }, [clocks])
 
-  const handleTimeIn = (intern: Intern) => {
+  // ── Time In/Out ───────────────────────────────────────────────────
+  const handleTimeIn = (intern:Intern) => {
     const startTime = new Date().toISOString()
-    setClocks(prev => ({ ...prev, [intern.id]: { internId: intern.id, startTime } }))
-    showToast(`⏱ ${intern.fullName.split(' ')[0]} timed in at ${fmtTime(startTime)}`)
+    setClocks(p=>({...p,[intern.id]:{internId:intern.id,startTime}}))
+    showToast(`${intern.fullName.split(' ')[0]} timed in at ${fmtTime(startTime)}`)
   }
 
-  const handleTimeOut = async (intern: Intern) => {
-    const entry = clocks[intern.id]
-    if (!entry) return
+  const handleTimeOutConfirmed = async (intern:Intern) => {
+    const entry = clocks[intern.id]; if(!entry) return
     setSaving(true)
     try {
-      const timeOut = new Date().toISOString()
-      const hours = Math.round(((new Date(timeOut).getTime() - new Date(entry.startTime).getTime()) / 3600000) * 100) / 100
-      const r = await fetch(`/api/interns/${intern.id}/attendance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: entry.startTime.slice(0, 10),
-          timeIn: entry.startTime,
-          timeOut,
-          hours,
-          status: 'PRESENT',
-          notes: 'Self-logged via intern kiosk',
-        }),
+      const timeOut = new Date().toISOString(), timeIn = entry.startTime
+      const hours = Math.round(((new Date(timeOut).getTime()-new Date(timeIn).getTime())/3600000)*100)/100
+      const today = new Date().toISOString().slice(0,10)
+      await fetch(`/api/interns/${intern.id}/attendance`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date:today,timeIn,timeOut,hours,status:'PRESENT'}),
       })
-      if (!r.ok) { showToast('Failed to save. Try again.', false); return }
-      setClocks(prev => { const n = { ...prev }; delete n[intern.id]; return n })
-      showToast(`\u2713 ${intern.fullName.split(' ')[0]} timed out \u2014 ${hours}h logged!`)
-      const updated = await fetch('/api/interns?status=ACTIVE').then(r2 => r2.json())
-      if (Array.isArray(updated)) {
-        setInterns(updated)
-        if (selected?.id === intern.id) setSelected(updated.find((i: Intern) => i.id === intern.id) ?? null)
-      }
-    } catch { showToast('Network error \u2014 could not save.', false) }
-    finally { setSaving(false) }
+      fetch('/api/sheets/interns',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'attendance',data:{internName:intern.fullName,school:intern.school,date:today,timeIn,timeOut,hours}}),
+      }).catch(()=>{})
+      const updated = {...clocks}; delete updated[intern.id]; setClocks(updated)
+      showToast(`${intern.fullName.split(' ')[0]} timed out — ${hours}h logged`)
+      await fetchInterns()
+    } catch { showToast('Failed to save. Try again.', false) }
+    setSaving(false); setConfirmOut(null)
   }
 
-  const handleTimeOutConfirmed = (intern: Intern) => {
-    setConfirmTimeOut(null)
-    handleTimeOut(intern)
+  // ── Add Intern ────────────────────────────────────────────────────
+  const handleAddIntern = async (form:AddInternForm) => {
+    try {
+      const r = await fetch('/api/interns',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({...form, requiredHours: parseInt(form.requiredHours)||486}),
+      })
+      if (!r.ok) throw new Error('Failed')
+      fetch('/api/sheets/interns',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'intern',data:form}),
+      }).catch(()=>{})
+      showToast(`${form.fullName} has been registered`); setShowAdd(false); await fetchInterns()
+    } catch { showToast('Failed to register intern',false) }
   }
 
-  const isClockedIn = (id: string) => !!clocks[id]
-
-  const todayRecords = (intern: Intern) => {
-    const today = new Date().toISOString().slice(0, 10)
-    return intern.attendance.filter(a => a.date.slice(0, 10) === today)
+  // ── Tasks ─────────────────────────────────────────────────────────
+  const addTask = async () => {
+    if (!selected || !newTask.trim()) return
+    try {
+      await fetch(`/api/interns/${selected.id}/tasks`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({title:newTask.trim(),priority:'MEDIUM'}),
+      })
+      setNewTask(''); await fetchTasks(selected.id); showToast('Task added')
+    } catch { showToast('Failed to add task',false) }
+  }
+  const toggleTask = async (task:InternTask) => {
+    if (!selected) return
+    const status = task.status==='COMPLETED' ? 'PENDING' : 'COMPLETED'
+    try {
+      await fetch(`/api/interns/${selected.id}/tasks`,{
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({taskId:task.id,status}),
+      })
+      await fetchTasks(selected.id)
+    } catch {}
   }
 
-  const activeInterns    = interns.filter(i => i.status === 'ACTIVE')
-  const clockedInInterns = activeInterns.filter(i => isClockedIn(i.id))
-  const filtered = activeInterns
-    .filter(i =>
-      i.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      i.school.toLowerCase().includes(search.toLowerCase())
-    )
-    .sort((a, b) => {
-      const aIn = isClockedIn(a.id), bIn = isClockedIn(b.id)
-      if (aIn && !bIn) return -1
-      if (!aIn && bIn) return 1
-      return a.fullName.localeCompare(b.fullName)
-    })
+  // ── Computed ──────────────────────────────────────────────────────
+  const filtered      = interns.filter(i => i.fullName.toLowerCase().includes(search.toLowerCase())||i.school.toLowerCase().includes(search.toLowerCase()))
+  const activeInterns = interns.filter(i => clocks[i.id])
+  const todayStr      = new Date().toISOString().slice(0,10)
+  const todayLogs     = interns.flatMap(i => i.attendance.filter(a=>a.date.slice(0,10)===todayStr).map(a=>({...a,intern:i})))
+  const weekHours     = (() => {
+    const now = new Date(); const dow = now.getDay()
+    const mon = new Date(now); mon.setDate(now.getDate()-(dow===0?6:dow-1)); mon.setHours(0,0,0,0)
+    return interns.reduce((s,i)=>s+i.attendance.filter(a=>new Date(a.date)>=mon).reduce((x,a)=>x+(a.hours??0),0),0)
+  })()
 
-  const selIntern     = selected ? (interns.find(i => i.id === selected.id) ?? selected) : null
-  const selClockedIn  = selIntern ? isClockedIn(selIntern.id) : false
-  const selEntry      = selIntern ? clocks[selIntern.id] : null
-  const selPct        = selIntern ? Math.round((selIntern.totalHours / selIntern.requiredHours) * 100) : 0
-  const selToday      = selIntern ? todayRecords(selIntern) : []
-  const elapsedHours  = (selIntern && selClockedIn) ? ((elapsed[selIntern.id] ?? 0) / 3600000) : 0
-  const timerColor    = elapsedHours >= 8 ? 'text-red-500' : elapsedHours >= 4 ? 'text-amber-500' : 'text-green-600'
+  // ── NAV ───────────────────────────────────────────────────────────
+  const NAV = [
+    { id:'dashboard',  icon:'🏠', label:'Dashboard'  },
+    { id:'interns',    icon:'👥', label:'Interns'     },
+    { id:'track',      icon:'⏱',  label:'Time Track'  },
+    { id:'attendance', icon:'📅', label:'Attendance'  },
+    { id:'tasks',      icon:'✅', label:'Tasks'       },
+  ] as const
 
-  /* ────────── Intern detail markup (reused in both desktop panel and mobile sheet) ────────── */
-  const renderDetail = (compact = false) => {
-    if (!selIntern) return null
+  // ═══════════════════════════════════════════════════════════════════
+  // ACCESS GATE
+  // ═══════════════════════════════════════════════════════════════════
+  if (!access) {
     return (
-      <div className="bg-white h-full overflow-y-auto">
-        {/* Intern header */}
-        <div className={`px-5 py-4 flex items-center gap-4 border-b ${selClockedIn ? 'bg-green-50 border-green-100' : 'bg-blue-50 border-blue-100'}`}>
-          <Avatar name={selIntern.fullName} photo={selIntern.photoUrl} size={compact ? 'md' : 'lg'} />
-          <div className="flex-1 min-w-0">
-            <p className={`font-black text-gray-900 leading-tight ${compact ? 'text-lg' : 'text-xl'}`}>{selIntern.fullName}</p>
-            <p className="text-sm text-gray-500 mt-0.5 truncate">{selIntern.course}</p>
-            <p className="text-xs text-gray-400 truncate">{selIntern.school}</p>
+      <div className="min-h-[100dvh] bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-lg shadow-blue-600/40">🎓</div>
+              <h1 className="text-2xl font-black text-white">Intern Attendance</h1>
+              <p className="text-blue-300/70 text-sm mt-1.5">DICT Region V &mdash; DTC Legazpi</p>
+            </div>
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Access Code</label>
+              <input type="password" value={codeInput} onChange={e=>setCodeInput(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&verifyCode()} placeholder="Enter access code" autoFocus
+                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/15 text-white placeholder-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {codeError && <p className="text-red-400 text-xs pl-1">{codeError}</p>}
+              <button onClick={verifyCode} disabled={checking||!codeInput}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 rounded-xl font-bold text-white text-sm transition-colors">
+                {checking ? 'Verifying...' : 'Enter Portal'}
+              </button>
+            </div>
+            <p className="text-center text-gray-600 text-xs mt-6">Contact admin if you need an access code</p>
           </div>
-          <ProgressRing pct={selPct} />
-          <button onClick={() => setSelected(null)}
-            className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 text-lg transition-colors flex-shrink-0">
-            &times;
-          </button>
-        </div>
-
-        {/* Week bar */}
-        <WeekBar attendance={selIntern.attendance} />
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
-          {[
-            { label: 'Logged',    val: `${Math.round(selIntern.totalHours * 10) / 10}h`, sub: `of ${selIntern.requiredHours}h` },
-            { label: 'Remaining', val: `${Math.max(0, Math.round((selIntern.requiredHours - selIntern.totalHours) * 10) / 10)}h`, sub: `${selPct >= 100 ? '\ud83c\udf89 Done!' : 'to go'}` },
-            { label: 'Sessions',  val: selIntern.attendance.filter(a => a.status === 'PRESENT').length, sub: 'present days' },
-          ].map(s => (
-            <div key={s.label} className="px-3 py-3 text-center">
-              <p className="text-lg font-black text-gray-800">{s.val}</p>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-tight">{s.label}</p>
-              <p className="text-[10px] text-gray-400">{s.sub}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Time In / Out */}
-        <div className="p-5">
-          {selClockedIn && selEntry ? (
-            <div className="space-y-4">
-              <div className="text-center">
-                <p className="text-xs font-semibold text-green-600 uppercase tracking-widest mb-1">\u23f1 Time Elapsed</p>
-                <p className={`font-mono font-black text-5xl tracking-widest tabular-nums leading-none transition-colors duration-1000 ${timerColor}`}>
-                  {fmt(elapsed[selIntern.id] ?? 0)}
-                </p>
-                <p className="text-sm text-gray-400 mt-2">
-                  In at <strong className="text-gray-600">{fmtTime(selEntry.startTime)}</strong> &middot; {fmtDate(selEntry.startTime)}
-                </p>
-              </div>
-              <button onClick={() => setConfirmTimeOut(selIntern)} disabled={saving}
-                className="w-full py-4 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-2xl font-black text-xl shadow-lg hover:shadow-xl active:scale-[.98] transition-all disabled:opacity-60 flex items-center justify-center gap-3">
-                {saving
-                  ? <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> Saving&hellip;</>
-                  : <><span className="w-3 h-3 rounded-sm bg-white" />&nbsp; TIME OUT</>}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="text-center text-gray-400 text-sm">
-                <p>Not clocked in</p>
-                {selToday.length > 0 && <p className="text-xs mt-1 text-blue-500">{selToday.length} session{selToday.length !== 1 ? 's' : ''} today</p>}
-              </div>
-              <button onClick={() => handleTimeIn(selIntern)}
-                className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl font-black text-xl shadow-lg hover:shadow-xl active:scale-[.98] transition-all flex items-center justify-center gap-3">
-                <span className="w-3 h-3 rounded-full bg-white" /> TIME IN
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Today's sessions + history */}
-        <div className="border-t border-gray-100 px-5 pb-6">
-          {selToday.length > 0 && (
-            <>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-4 mb-3">Today&apos;s Sessions</p>
-              <div className="space-y-2 mb-4">
-                {selToday.map(a => (
-                  <div key={a.id} className="flex items-center gap-3 text-sm bg-gray-50 rounded-xl px-4 py-2.5">
-                    <span className="text-green-500 font-bold">\u2713</span>
-                    <span className="font-mono text-gray-600 text-xs">
-                      {a.timeIn ? fmtTime(a.timeIn) : '\u2014'} &rarr; {a.timeOut ? fmtTime(a.timeOut) : <span className="text-green-500 font-semibold animate-pulse">ongoing</span>}
-                    </span>
-                    {a.hours != null && <span className="ml-auto font-bold text-blue-600 text-xs">{a.hours}h</span>}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          {selIntern.attendance.length > 0 && (() => {
-            const recent = selIntern.attendance.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 7)
-            return (
-              <details className="group mt-3">
-                <summary className="text-xs font-semibold text-blue-500 cursor-pointer hover:text-blue-700 list-none flex items-center gap-1 select-none py-1">
-                  <span className="group-open:rotate-90 transition-transform inline-block">\u25b6</span>
-                  Recent Attendance ({selIntern.attendance.length} records)
-                </summary>
-                <div className="mt-3 overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        {['Date','In','Out','Hours','Status'].map(h => (
-                          <th key={h} className="text-left text-[10px] font-bold text-gray-400 uppercase px-3 py-2">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {recent.map(a => (
-                        <tr key={a.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">{new Date(a.date).toLocaleDateString('en-PH',{month:'short',day:'numeric'})}</td>
-                          <td className="px-3 py-2 font-mono text-gray-500 whitespace-nowrap">{a.timeIn ? fmtTime(a.timeIn) : '\u2014'}</td>
-                          <td className="px-3 py-2 font-mono text-gray-500 whitespace-nowrap">{a.timeOut ? fmtTime(a.timeOut) : '\u2014'}</td>
-                          <td className="px-3 py-2 font-bold text-gray-800">{a.hours ? `${a.hours}h` : '\u2014'}</td>
-                          <td className="px-3 py-2">
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              a.status==='PRESENT' ? 'bg-green-100 text-green-700' :
-                              a.status==='ABSENT'  ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
-                            }`}>{a.status}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            )
-          })()}
         </div>
       </div>
     )
   }
 
-  /* ────────── Left panel list content ────────── */
-  const renderList = () => (
-    <>
-      {/* Active Now */}
-      {clockedInInterns.length > 0 && (
-        <div className="border-b border-gray-100 bg-green-50">
-          <div className="px-4 pt-4 pb-3">
-            <p className="text-[10px] font-black uppercase tracking-widest text-green-700 flex items-center gap-2 mb-3">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
-              Active Now &mdash; {clockedInInterns.length} intern{clockedInInterns.length !== 1 ? 's' : ''}
-            </p>
-            <div className="space-y-2">
-              {clockedInInterns.map(intern => (
-                <button key={intern.id} onClick={() => setSelected(intern)}
-                  className="w-full flex items-center gap-3 bg-white border border-green-200 rounded-xl px-3 py-2.5 hover:border-green-400 hover:shadow-sm active:scale-[.99] transition-all text-left">
-                  <div className="relative flex-shrink-0">
-                    <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm" />
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-800 truncate">{intern.fullName}</p>
-                    <p className="text-xs text-gray-400 truncate">{intern.school}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="font-mono text-sm font-black text-green-600">{fmt(elapsed[intern.id] ?? 0)}</p>
-                    <p className="text-[10px] text-gray-400">{clocks[intern.id] ? fmtTime(clocks[intern.id].startTime) : ''}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Search */}
-      <div className="px-4 py-4 border-b border-gray-100">
-        <h1 className="font-black text-xl text-gray-900 mb-0.5">Find Your Name</h1>
-        <p className="text-gray-400 text-xs mb-3">Tap your name to time in or out</p>
-        <div className="relative">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-300">🔍</span>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && filtered.length > 0) setSelected(filtered[0]) }}
-            placeholder="Search name or school…"
-            className="w-full border-2 border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-blue-400 transition-colors"
-          />
-        </div>
-      </div>
-
-      {/* Intern list */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="p-4 grid grid-cols-1 gap-2.5">
-            {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="py-16 text-center px-4">
-            <p className="text-4xl mb-3">🔍</p>
-            <p className="text-gray-400 text-sm">{search ? `No results for "${search}"` : 'No active interns'}</p>
-          </div>
-        ) : (
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-1 gap-2.5">
-            {filtered.map(intern => {
-              const pct    = Math.round((intern.totalHours / intern.requiredHours) * 100)
-              const clocked = isClockedIn(intern.id)
-              const isActive = selected?.id === intern.id
-              return (
-                <button key={intern.id} onClick={() => setSelected(intern)}
-                  className={`text-left p-3.5 rounded-xl border-2 transition-all active:scale-[.99] group ${
-                    isActive  ? 'border-blue-400 bg-blue-50 shadow-md' :
-                    clocked   ? 'border-green-300 bg-green-50' :
-                    'border-gray-100 hover:border-blue-300 bg-white hover:bg-blue-50/30'
-                  }`}>
-                  <div className="flex items-center gap-3 mb-2.5">
-                    <div className="relative flex-shrink-0">
-                      <Avatar name={intern.fullName} photo={intern.photoUrl} size="md" />
-                      {clocked && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white animate-pulse" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-900 text-sm leading-tight truncate">{intern.fullName}</p>
-                      <p className="text-xs text-gray-400 truncate">{intern.school}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 flex-1 bg-gray-200 rounded-full overflow-hidden">
-                      <div className={`h-1.5 rounded-full transition-all ${
-                        pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-blue-500' : pct >= 40 ? 'bg-amber-500' : 'bg-red-400'
-                      }`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                    </div>
-                    <span className={`text-xs font-bold whitespace-nowrap ${clocked ? 'text-green-600' : 'text-gray-400'}`}>
-                      {clocked ? `\u23f1 ${fmt(elapsed[intern.id] ?? 0)}` : `${Math.round(intern.totalHours)}h/${intern.requiredHours}h`}
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </>
-  )
-
+  // ═══════════════════════════════════════════════════════════════════
+  // MAIN LAYOUT
+  // ═══════════════════════════════════════════════════════════════════
   return (
     <>
       <style>{`
-        @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
-        .sheet-anim { animation: slideUp .25s cubic-bezier(.32,.72,0,1) both }
+        @keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        .fu{animation:fu .25s ease both}
+        @keyframes sIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+        .s-in{animation:sIn .2s ease both}
       `}</style>
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold flex items-center gap-2 ${
-          toast.ok ? 'bg-gray-900 text-white' : 'bg-red-600 text-white'
-        }`}>
-          {toast.msg}
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-5 py-3 rounded-2xl shadow-2xl text-white text-sm font-semibold flex items-center gap-2.5 ${toast.ok?'bg-emerald-600':'bg-red-600'}`}>
+          {toast.ok?'✓':'✕'} {toast.msg}
         </div>
       )}
 
-      {/* Time Out Confirmation Modal */}
-      {confirmTimeOut && clocks[confirmTimeOut.id] && (() => {
-        const entry = clocks[confirmTimeOut.id]
-        const durationMs = Date.now() - new Date(entry.startTime).getTime()
-        const hours = Math.round((durationMs / 3600000) * 100) / 100
-        const h = Math.floor(durationMs / 3600000)
-        const m = Math.floor((durationMs % 3600000) / 60000)
-        return (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4"
-            onClick={() => setConfirmTimeOut(null)}>
-            <div className="sheet-anim sm:animate-none bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
-              onClick={e => e.stopPropagation()}>
-              <div className="bg-gradient-to-br from-red-50 to-rose-50 px-6 pt-7 pb-5 text-center">
-                <div className="w-14 h-14 rounded-full bg-white border-2 border-red-200 flex items-center justify-center mx-auto mb-3 text-2xl shadow-sm">⏱️</div>
-                <h2 className="font-black text-gray-900 text-xl">Confirm Time Out</h2>
-                <p className="text-gray-500 text-sm mt-1">{confirmTimeOut.fullName}</p>
-              </div>
-              <div className="p-5 space-y-3">
-                <div className="bg-gray-50 rounded-2xl p-4 space-y-2.5 text-sm">
-                  <div className="flex justify-between"><span className="text-gray-500">Time In</span><span className="font-bold text-gray-800">{fmtTime(entry.startTime)}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Time Out</span><span className="font-bold text-red-600">{fmtTime(new Date().toISOString())}</span></div>
-                  <div className="border-t border-gray-200 pt-2.5 flex justify-between"><span className="text-gray-500">Duration</span><span className="font-black text-lg text-gray-800">{h}h {m}m</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Hours to log</span><span className="font-black text-green-600 text-lg">{hours}h</span></div>
-                </div>
-                <div className="flex gap-3">
-                  <button onClick={() => setConfirmTimeOut(null)}
-                    className="flex-1 py-3.5 border-2 border-gray-200 rounded-2xl font-bold text-gray-600 hover:bg-gray-50 active:scale-[.98] transition-all">Cancel</button>
-                  <button onClick={() => handleTimeOutConfirmed(confirmTimeOut)} disabled={saving}
-                    className="flex-1 py-3.5 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-2xl font-bold hover:shadow-lg active:scale-[.98] transition-all disabled:opacity-60">
-                    {saving ? 'Saving…' : 'Time Out'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+      <div className="min-h-[100dvh] bg-gray-50 flex" style={{paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
 
-      {/* ─── Page shell ─── */}
-      <div className="min-h-[100dvh] bg-gray-50 font-sans flex flex-col"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-
-        {/* Header */}
-        <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm flex-shrink-0"
-          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-          <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0">DTC</div>
-              <div>
-                <p className="font-bold text-gray-800 text-sm leading-none">Intern Attendance</p>
-                <p className="text-[11px] text-blue-500 font-medium">DICT Region V</p>
-              </div>
-            </div>
+        {/* ══ SIDEBAR ══════════════════════════════════════════════════════ */}
+        {sideOpen && <div className="md:hidden fixed inset-0 bg-black/50 z-30" onClick={()=>setSideOpen(false)} />}
+        <aside className={`fixed md:static inset-y-0 left-0 z-40 w-60 bg-slate-900 flex flex-col transform transition-transform duration-200 md:translate-x-0 ${sideOpen?'translate-x-0':'-translate-x-full md:translate-x-0'}`}>
+          {/* Logo */}
+          <div className="p-5 border-b border-white/8">
             <div className="flex items-center gap-3">
-              <p className="text-xs text-gray-400 hidden sm:block">
-                {new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-              </p>
-              <p className="text-xs text-gray-400 sm:hidden">
-                {new Date().toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </p>
-              <Link href="/" className="text-xs text-gray-400 hover:text-blue-600 transition-colors whitespace-nowrap">&larr; Home</Link>
+              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-[11px] font-black text-white shadow-lg">DTC</div>
+              <div>
+                <p className="text-white font-black text-sm leading-none">Intern Portal</p>
+                <p className="text-gray-500 text-[10px] mt-0.5">DICT Region V</p>
+              </div>
             </div>
           </div>
-        </header>
+          {/* Nav */}
+          <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+            {NAV.map(n=>(
+              <button key={n.id} onClick={()=>{setView(n.id);setSideOpen(false)}}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all text-left
+                  ${view===n.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-gray-400 hover:text-white hover:bg-white/8'}`}>
+                <span className="text-base leading-none">{n.icon}</span>
+                {n.label}
+                {n.id==='track' && activeInterns.length>0 && (
+                  <span className="ml-auto bg-emerald-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center">{activeInterns.length}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+          {/* Footer */}
+          <div className="p-3 border-t border-white/8 space-y-0.5">
+            <Link href="/" className="flex items-center gap-2 px-3 py-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/8 text-xs font-semibold transition-colors">
+              <span>←</span> Back to Home
+            </Link>
+            <button onClick={()=>{localStorage.removeItem('dtc_intern_access_v2');setAccess(false)}}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-gray-500 hover:text-red-400 hover:bg-red-500/10 text-xs font-semibold transition-colors">
+              <span>🔒</span> Lock Portal
+            </button>
+          </div>
+        </aside>
 
-        {/* ── Desktop split layout ── */}
-        <div className="hidden md:flex flex-1 overflow-hidden" style={{ height: 'calc(100dvh - 3.5rem)' }}>
-          {/* Left panel */}
-          <aside className="w-[360px] flex-shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
-            {renderList()}
-            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
-              <p className="text-center text-xs text-gray-400">
-                DICT Region V Kiosk &middot; <Link href="/interns" className="hover:text-blue-500 transition-colors">Admin</Link>
-              </p>
-            </div>
-          </aside>
+        {/* ══ MAIN AREA ════════════════════════════════════════════════════ */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-          {/* Right panel */}
-          <main className="flex-1 overflow-y-auto bg-gray-50/60">
-            {selIntern ? (
-              <div className="max-w-xl mx-auto py-6 px-4">
-                <div className="rounded-2xl border border-gray-200 overflow-hidden shadow-sm bg-white">
-                  {renderDetail()}
-                </div>
+          {/* Top bar */}
+          <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-200 px-4 sm:px-6 h-14 flex items-center justify-between gap-3"
+            style={{paddingTop:'env(safe-area-inset-top,0px)'}}>
+            <div className="flex items-center gap-3 min-w-0">
+              <button onClick={()=>setSideOpen(true)} className="md:hidden p-2 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 text-lg">☰</button>
+              <div className="min-w-0">
+                <h1 className="font-black text-gray-900 text-sm leading-tight">
+                  {{dashboard:'Dashboard',interns:'Interns',track:'Time Track',attendance:'Attendance',tasks:'Tasks'}[view]}
+                </h1>
+                <p className="text-gray-400 text-[10px] truncate">{new Date().toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</p>
               </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-center p-8">
-                <div>
-                  <p className="text-6xl mb-5">👋</p>
-                  <h2 className="text-xl font-bold text-gray-700 mb-2">Select an intern</h2>
-                  <p className="text-gray-400 text-sm max-w-xs mx-auto">
-                    Choose a name from the left panel to view their attendance and time in or out.
-                  </p>
-                  {clockedInInterns.length > 0 && (
-                    <p className="text-green-600 text-sm font-semibold mt-4">
-                      {clockedInInterns.length} intern{clockedInInterns.length !== 1 ? 's' : ''} currently active \u2191
-                    </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {view==='interns' && (
+                <button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-white text-xs font-bold transition-colors">
+                  <span>+</span> Add Intern
+                </button>
+              )}
+              <button onClick={fetchInterns} title="Refresh" className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors font-bold">↻</button>
+            </div>
+          </header>
+
+          {/* ── Content ──────────────────────────────────────────────────── */}
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-6xl w-full mx-auto">
+
+            {/* ════ DASHBOARD ════════════════════════════════════════════ */}
+            {view==='dashboard' && (
+              <div className="space-y-5 fu">
+                {/* Stats grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                  {([
+                    {label:'Total Interns',   val:interns.length,               icon:'👥', bg:'bg-blue-50',    text:'text-blue-700',   sub:'text-blue-500'  },
+                    {label:'Active Now',       val:activeInterns.length,         icon:'🟢', bg:'bg-emerald-50', text:'text-emerald-700', sub:'text-emerald-500'},
+                    {label:'Hours This Week',  val:`${Math.round(weekHours)}h`,  icon:'⏱',  bg:'bg-violet-50',  text:'text-violet-700',  sub:'text-violet-500' },
+                    {label:'Present Today',    val:todayLogs.length,             icon:'📅', bg:'bg-amber-50',   text:'text-amber-700',   sub:'text-amber-500'  },
+                  ] as {label:string;val:string|number;icon:string;bg:string;text:string;sub:string}[]).map(s=>(
+                    <div key={s.label} className={`${s.bg} rounded-2xl p-4 border border-transparent`}>
+                      <span className="text-xl">{s.icon}</span>
+                      <div className={`text-2xl sm:text-3xl font-black mt-2 ${s.text}`}>{s.val}</div>
+                      <div className={`text-xs mt-0.5 font-semibold ${s.sub}`}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Active interns strip */}
+                {activeInterns.length>0 && (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+                      <h2 className="font-black text-gray-900 text-sm">Currently Clocked In</h2>
+                      <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold">
+                        <span className="relative flex h-2 w-2"><span className="animate-ping absolute inset-0 rounded-full bg-emerald-400 opacity-75"/><span className="relative rounded-full h-2 w-2 bg-emerald-500 block"/></span>
+                        {activeInterns.length} Active
+                      </span>
+                    </div>
+                    {activeInterns.map(i=>(
+                      <div key={i.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-50 last:border-0">
+                        <Avatar name={i.fullName} photo={i.photoUrl} size="sm"/>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-gray-900 text-sm truncate">{i.fullName}</p>
+                          <p className="text-xs text-gray-400 truncate">{i.school}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-emerald-600 font-mono font-bold text-sm">{fmt(elapsed[i.id]||0)}</p>
+                          <p className="text-gray-400 text-[10px]">since {fmtTime(clocks[i.id]?.startTime||'')}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Today's log */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-gray-50">
+                    <h2 className="font-black text-gray-900 text-sm">Today&apos;s Attendance Log</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">{new Date().toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'})}</p>
+                  </div>
+                  {todayLogs.length===0 ? (
+                    <p className="px-5 py-8 text-center text-gray-400 text-sm">No attendance logged today</p>
+                  ) : todayLogs.map(a=>(
+                    <div key={a.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-50 last:border-0">
+                      <Avatar name={a.intern.fullName} photo={a.intern.photoUrl} size="sm"/>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-900 text-sm truncate">{a.intern.fullName}</p>
+                        <p className="text-xs text-gray-400 truncate">{a.intern.school}</p>
+                      </div>
+                      <div className="text-right text-xs">
+                        <p className="font-semibold text-gray-700">{a.timeIn?fmtTime(a.timeIn):'—'} → {a.timeOut?fmtTime(a.timeOut):<span className="text-emerald-600 font-bold">Active</span>}</p>
+                        {a.hours!=null && <p className="text-blue-600 font-bold">{a.hours}h</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Interns progress overview */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+                    <h2 className="font-black text-gray-900 text-sm">Intern Progress Overview</h2>
+                    <button onClick={()=>setView('interns')} className="text-blue-600 text-xs font-bold hover:underline">View All →</button>
+                  </div>
+                  {loading ? (
+                    <div className="p-4 space-y-2">{[...Array(3)].map((_,i)=><Skeleton key={i}/>)}</div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {interns.slice(0,5).map(i=>{
+                        const pct = Math.round((i.totalHours/(i.requiredHours||486))*100)
+                        return (
+                          <div key={i.id} className="flex items-center gap-4 px-5 py-3">
+                            <Avatar name={i.fullName} photo={i.photoUrl} size="sm"/>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-900 text-sm truncate">{i.fullName}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full bg-blue-500 transition-all duration-700" style={{width:`${Math.min(pct,100)}%`}}/>
+                                </div>
+                                <span className="text-[10px] font-bold text-gray-500 flex-shrink-0">{Math.round(i.totalHours)}h</span>
+                              </div>
+                            </div>
+                            <span className={`text-xs font-black ${pct>=100?'text-emerald-600':pct>=70?'text-blue-600':pct>=40?'text-amber-600':'text-red-500'}`}>{pct}%</span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
             )}
+
+            {/* ════ INTERNS ══════════════════════════════════════════════ */}
+            {view==='interns' && (
+              <div className="space-y-4 fu">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or school..."
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"/>
+                </div>
+                {loading ? (
+                  <div className="space-y-2">{[...Array(5)].map((_,i)=><div key={i} className="bg-white rounded-2xl p-4"><Skeleton/></div>)}</div>
+                ) : filtered.length===0 ? (
+                  <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+                    <p className="text-4xl mb-3">👥</p>
+                    <p className="text-gray-500 text-sm mb-4">{search?'No interns match your search':'No interns registered yet'}</p>
+                    {!search && <button onClick={()=>setShowAdd(true)} className="px-5 py-2.5 bg-blue-600 rounded-xl text-white text-sm font-bold">+ Register First Intern</button>}
+                  </div>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {filtered.map(intern=>{
+                      const pct = Math.round((intern.totalHours/(intern.requiredHours||486))*100)
+                      const clocked = !!clocks[intern.id]
+                      return (
+                        <div key={intern.id} onClick={()=>{setSelected(intern);setView('tasks');fetchTasks(intern.id)}}
+                          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer group">
+                          <div className="flex items-start gap-3 mb-3">
+                            <div className="relative">
+                              <Avatar name={intern.fullName} photo={intern.photoUrl} size="md"/>
+                              {clocked && <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white"/>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-900 text-sm truncate group-hover:text-blue-700 transition-colors">{intern.fullName}</p>
+                              <p className="text-xs text-gray-500 truncate">{intern.school}</p>
+                              <p className="text-[11px] text-gray-400 truncate">{intern.course}</p>
+                              {intern.supervisor && <p className="text-[10px] text-blue-500 truncate mt-0.5">📋 {intern.supervisor}</p>}
+                            </div>
+                            <Ring pct={pct}/>
+                          </div>
+                          <div className="flex items-center justify-between text-xs pt-3 border-t border-gray-50">
+                            <span className={`px-2 py-0.5 rounded-full font-bold ${clocked?'bg-emerald-50 text-emerald-700':'bg-gray-100 text-gray-500'}`}>
+                              {clocked ? '● Clocked In' : intern.status}
+                            </span>
+                            <span className="text-gray-400 font-semibold">{Math.round(intern.totalHours)}h / {intern.requiredHours}h</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════ TIME TRACK ══════════════════════════════════════════ */}
+            {view==='track' && (
+              <div className="space-y-4 fu">
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search your name to time in or out..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"/>
+                </div>
+                {loading ? (
+                  <div className="space-y-2">{[...Array(5)].map((_,i)=><div key={i} className="bg-white rounded-2xl p-4"><Skeleton/></div>)}</div>
+                ) : (
+                  <div className="space-y-2">
+                    {filtered.map(intern=>{
+                      const clocked = !!clocks[intern.id]
+                      return (
+                        <div key={intern.id} className={`bg-white rounded-2xl border p-4 flex items-center gap-4 transition-all ${clocked?'border-emerald-200 shadow-md shadow-emerald-50':'border-gray-100'}`}>
+                          <Avatar name={intern.fullName} photo={intern.photoUrl} size="md"/>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-gray-900">{intern.fullName}</p>
+                            <p className="text-xs text-gray-500 truncate">{intern.school}</p>
+                            {clocked && <p className="text-emerald-600 font-mono font-bold text-sm mt-0.5">{fmt(elapsed[intern.id]||0)}</p>}
+                          </div>
+                          {clocked ? (
+                            <button onClick={()=>setConfirmOut(intern)} disabled={saving}
+                              className="px-4 py-2.5 bg-red-500 hover:bg-red-600 active:bg-red-700 rounded-xl text-white text-sm font-bold transition-colors">
+                              Time Out
+                            </button>
+                          ) : (
+                            <button onClick={()=>handleTimeIn(intern)}
+                              className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 rounded-xl text-white text-sm font-bold transition-colors">
+                              Time In
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {filtered.length===0 && <p className="text-center py-12 text-gray-400 text-sm">No results. Try a different name.</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════ ATTENDANCE ══════════════════════════════════════════ */}
+            {view==='attendance' && (
+              <div className="space-y-4 fu">
+                {/* Intern picker */}
+                <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                  {interns.map(i=>(
+                    <button key={i.id} onClick={()=>setSelected(i)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold whitespace-nowrap flex-shrink-0 transition-all
+                        ${selected?.id===i.id?'bg-blue-600 border-blue-600 text-white':'bg-white border-gray-200 text-gray-600 hover:border-blue-300'}`}>
+                      <Avatar name={i.fullName} photo={i.photoUrl} size="sm"/>
+                      {i.fullName.split(' ')[0]}
+                    </button>
+                  ))}
+                </div>
+                {!selected ? (
+                  <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 text-gray-400 text-sm">Select an intern above to view their attendance</div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
+                      <Avatar name={selected.fullName} photo={selected.photoUrl} size="md"/>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-gray-900">{selected.fullName}</p>
+                        <p className="text-xs text-gray-500">{selected.school} · {selected.course}</p>
+                        {selected.supervisor && <p className="text-[11px] text-blue-500 mt-0.5">Coordinator: {selected.supervisor}</p>}
+                      </div>
+                      <Ring pct={Math.round((selected.totalHours/(selected.requiredHours||486))*100)}/>
+                    </div>
+                    <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 grid grid-cols-3 gap-4 text-center">
+                      <div><p className="text-xl font-black text-blue-600">{Math.round(selected.totalHours)}</p><p className="text-[10px] text-gray-500 font-semibold">Hours Logged</p></div>
+                      <div><p className="text-xl font-black text-gray-900">{selected.requiredHours}</p><p className="text-[10px] text-gray-500 font-semibold">Required</p></div>
+                      <div><p className="text-xl font-black text-emerald-600">{selected.attendance.filter(a=>a.status==='PRESENT').length}</p><p className="text-[10px] text-gray-500 font-semibold">Days Present</p></div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead><tr className="bg-gray-50 text-[11px] font-black text-gray-500 uppercase tracking-wider">
+                          <th className="px-5 py-3 text-left">Date</th>
+                          <th className="px-5 py-3 text-left">Time In</th>
+                          <th className="px-5 py-3 text-left">Time Out</th>
+                          <th className="px-5 py-3 text-left">Hours</th>
+                          <th className="px-5 py-3 text-left">Status</th>
+                        </tr></thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {selected.attendance.length===0 ? (
+                            <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400">No records yet</td></tr>
+                          ) : selected.attendance.map(a=>(
+                            <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-5 py-3 font-medium text-gray-700 whitespace-nowrap">{fmtDate(a.date)}</td>
+                              <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{a.timeIn?fmtTime(a.timeIn):'—'}</td>
+                              <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{a.timeOut?fmtTime(a.timeOut):<span className="text-emerald-600 font-semibold">Active</span>}</td>
+                              <td className="px-5 py-3 font-bold text-blue-600 whitespace-nowrap">{a.hours!=null?`${a.hours}h`:'—'}</td>
+                              <td className="px-5 py-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold
+                                  ${a.status==='PRESENT'?'bg-emerald-50 text-emerald-700':a.status==='ABSENT'?'bg-red-50 text-red-600':'bg-amber-50 text-amber-700'}`}>
+                                  {a.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════ TASKS ════════════════════════════════════════════════ */}
+            {view==='tasks' && (
+              <div className="space-y-4 fu">
+                {/* Intern picker */}
+                <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                  {interns.map(i=>(
+                    <button key={i.id} onClick={()=>{setSelected(i);fetchTasks(i.id)}}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold whitespace-nowrap flex-shrink-0 transition-all
+                        ${selected?.id===i.id?'bg-blue-600 border-blue-600 text-white':'bg-white border-gray-200 text-gray-600 hover:border-blue-300'}`}>
+                      <Avatar name={i.fullName} photo={i.photoUrl} size="sm"/>
+                      {i.fullName.split(' ')[0]}
+                    </button>
+                  ))}
+                </div>
+                {!selected ? (
+                  <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 text-gray-400 text-sm">Select an intern above to view their task list</div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
+                      <Avatar name={selected.fullName} photo={selected.photoUrl} size="md"/>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-gray-900">{selected.fullName}</p>
+                        <p className="text-xs text-gray-500">{selected.course}</p>
+                      </div>
+                      <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
+                        {tasks.filter(t=>t.status==='COMPLETED').length}/{tasks.length} done
+                      </span>
+                    </div>
+                    {/* Add task */}
+                    <div className="px-5 py-3 border-b border-gray-100 flex gap-2">
+                      <input value={newTask} onChange={e=>setNewTask(e.target.value)}
+                        onKeyDown={e=>e.key==='Enter'&&addTask()}
+                        placeholder="Type a task and press Enter..."
+                        className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                      <button onClick={addTask} disabled={!newTask.trim()}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-xl text-white text-sm font-bold transition-colors">Add</button>
+                    </div>
+                    {/* Task list */}
+                    {tasks.length===0 ? (
+                      <p className="px-5 py-10 text-center text-gray-400 text-sm">No tasks yet. Add one above!</p>
+                    ) : (
+                      <div className="divide-y divide-gray-50">
+                        {/* Pending first */}
+                        {[...tasks].sort((a,b)=>a.status==='COMPLETED'?1:b.status==='COMPLETED'?-1:0).map(task=>(
+                          <div key={task.id} className="flex items-start gap-3 px-5 py-3.5 hover:bg-gray-50 cursor-pointer transition-colors" onClick={()=>toggleTask(task)}>
+                            <div className={`mt-0.5 w-5 h-5 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all
+                              ${task.status==='COMPLETED'?'bg-emerald-500 border-emerald-500':'border-gray-300 hover:border-blue-400'}`}>
+                              {task.status==='COMPLETED' && <span className="text-white text-[10px] font-black">✓</span>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-semibold transition-colors ${task.status==='COMPLETED'?'line-through text-gray-400':'text-gray-900'}`}>{task.title}</p>
+                              {task.description && <p className="text-xs text-gray-400 mt-0.5">{task.description}</p>}
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0
+                              ${task.priority==='HIGH'?'bg-red-50 text-red-600':task.priority==='MEDIUM'?'bg-amber-50 text-amber-600':'bg-gray-100 text-gray-500'}`}>
+                              {task.priority}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
           </main>
         </div>
+      </div>
 
-        {/* ── Mobile layout ── */}
-        <div className="flex md:hidden flex-1 flex-col overflow-y-auto">
-          {renderList()}
-          <p className="text-center text-xs text-gray-300 py-4 pb-6">
-            DICT Region V Kiosk &middot; <Link href="/interns" className="hover:text-blue-400 transition-colors">Admin</Link>
-          </p>
-        </div>
+      {/* ══ MODALS ══════════════════════════════════════════════════════════ */}
+      {showAdd && <AddInternModal onClose={()=>setShowAdd(false)} onSave={handleAddIntern}/>}
 
-        {/* ── Mobile bottom sheet ── */}
-        {selIntern && (
-          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelected(null)} />
-            {/* Sheet */}
-            <div className="sheet-anim relative bg-white rounded-t-3xl shadow-2xl overflow-hidden"
-              style={{ maxHeight: '92dvh', paddingBottom: 'env(safe-area-inset-bottom, 12px)' }}>
-              {/* Drag handle */}
-              <div className="sticky top-0 bg-white pt-3 pb-1.5 z-10 flex flex-col items-center border-b border-gray-100">
-                <div className="w-10 h-1 rounded-full bg-gray-200 mb-2" />
-              </div>
-              <div className="overflow-y-auto" style={{ maxHeight: 'calc(92dvh - 40px)' }}>
-                {renderDetail(true)}
-              </div>
+      {confirmOut && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <p className="text-lg font-black text-gray-900 mb-2">Confirm Time Out</p>
+            <p className="text-gray-500 text-sm mb-1">Clock out <span className="font-bold text-gray-800">{confirmOut.fullName}</span>?</p>
+            <p className="text-gray-400 text-sm mb-6">This will log <span className="font-bold text-blue-600">{fmt(elapsed[confirmOut.id]||0)}</span> to their attendance record.</p>
+            <div className="flex gap-3">
+              <button onClick={()=>setConfirmOut(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={()=>handleTimeOutConfirmed(confirmOut)} disabled={saving}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-sm font-bold text-white disabled:opacity-60">
+                {saving ? 'Saving...' : 'Confirm Time Out'}
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </>
   )
 }
