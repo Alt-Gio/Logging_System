@@ -66,9 +66,7 @@ export default function HomePage() {
 
   const active = announcements.filter(a => !a.expiresAt || new Date(a.expiresAt) > new Date())
 
-  const visitors     = useCounter(50000, 2400, statsActive)
-  const daily        = useCounter(250,   2000, statsActive)
-  const workstations = useCounter(12,    1500, statsActive)
+  const workstations = useCounter(12, 1500, statsActive)
 
   useEffect(() => {
     fetch('/api/announcements').then(r => r.json()).then(d => { if (Array.isArray(d)) setAnnouncements(d) }).catch(() => {})
@@ -281,30 +279,6 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ════════════════════════ QUICK ACCESS ════════════════════════ */}
-        <section className="py-8 sm:py-12 px-4 sm:px-6 bg-gray-950">
-          <div className="max-w-5xl mx-auto">
-            <p className="text-center text-gray-600 text-[10px] uppercase tracking-[0.3em] font-bold mb-4 sm:mb-6">Quick Access</p>
-            <div className="flex gap-3 overflow-x-auto pb-2 sm:pb-0 sm:grid sm:grid-cols-3 snap-x snap-mandatory scrollbar-none" style={{ scrollbarWidth: 'none' }}>
-              {([
-                { href: '/dtc-logbook',        icon: '🖥️', title: 'DTC Logbook',    desc: 'Walk-in sign-in for workstations and internet access', tag: 'Walk-in',  border: 'border-blue-600/20 hover:border-blue-500/50',   bg: 'bg-blue-600/10'   },
-                { href: '/intern-logbook',     icon: '🎓', title: 'Intern Logbook', desc: 'Time-in and out for internship DTR hour tracking',     tag: 'Interns',  border: 'border-violet-600/20 hover:border-violet-500/50', bg: 'bg-violet-600/10' },
-                { href: 'https://dict.gov.ph', icon: '🏛️', title: 'DICT Website',   desc: 'Official DICT portal, news, and e-government links',  tag: 'External', border: 'border-cyan-600/20 hover:border-cyan-500/50',   bg: 'bg-cyan-600/10',  ext: true },
-              ] as { href: string; icon: string; title: string; desc: string; tag: string; border: string; bg: string; ext?: boolean }[]).map(c => (
-                <Link key={c.href} href={c.href} {...(c.ext ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                  className={`group rounded-xl p-5 border transition-all duration-200 flex-shrink-0 w-[72vw] sm:w-auto snap-start ${c.bg} ${c.border}`}>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-3 block">{c.tag}</span>
-                  <div className="text-2xl mb-2">{c.icon}</div>
-                  <h3 className="font-bold text-white text-sm mb-1">{c.title}</h3>
-                  <p className="text-gray-500 text-xs leading-relaxed">{c.desc}</p>
-                  <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-gray-600 group-hover:text-blue-400 transition-colors">
-                    Open <span className="group-hover:translate-x-0.5 transition-transform inline-block">&rarr;</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
 
         {/* ════════════════════════ ABOUT ════════════════════════ */}
         <section id="about" className="py-14 sm:py-20 px-4 sm:px-6 bg-gradient-to-b from-gray-950 to-gray-900">
@@ -360,10 +334,10 @@ export default function HomePage() {
             {/* Stats strip */}
             <div ref={statsRef as React.RefObject<HTMLDivElement>} className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               {[
-                { val: visitors,     suffix: '+',  label: 'Citizens Served', color: 'text-blue-400'    },
-                { val: daily,        suffix: '+',  label: 'Daily Visitors',  color: 'text-violet-400'  },
                 { val: workstations, suffix: '',   label: 'Workstations',    color: 'text-cyan-400'    },
                 { val: 100,          suffix: '%',  label: 'Free of Charge',  color: 'text-emerald-400' },
+                { val: 6,            suffix: '',   label: 'Bicol Offices',   color: 'text-violet-400'  },
+                { val: 5,            suffix: ' days/wk', label: 'Mon–Fri 8AM–5PM', color: 'text-blue-400' },
               ].map(s => (
                 <div key={s.label} className="bg-gray-800/50 rounded-xl p-4 sm:p-5 text-center border border-gray-700 hover:border-gray-600 transition-colors">
                   <div className={`text-2xl sm:text-3xl font-black ${s.color} mb-1`}>{s.val.toLocaleString()}{s.suffix}</div>
@@ -374,8 +348,44 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ════════════════════════ OFFICES ════════════════════════ */}
+        <section className="py-14 sm:py-16 px-4 sm:px-6 bg-gray-900">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-8 sm:mb-10">
+              <p className="text-cyan-400 text-xs font-black uppercase tracking-[0.3em] mb-4">Find Us</p>
+              <h2 className="text-3xl sm:text-4xl font-black text-white">DTC Offices in Bicol Region</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[
+                { loc: 'Legazpi City, Albay',  addr: '2/F Post Telecom Bldg., Lapu Lapu St.', highlight: true },
+                { loc: 'Camarines Sur',         addr: 'P. Bustamante Rd., Sto. Domingo, Camaligan' },
+                { loc: 'Camarines Norte',       addr: 'DICT Bldg., Carlos II Rd., Brgy. III, Daet' },
+                { loc: 'Catanduanes',           addr: 'Catnet Bldg., San Isidro Village, Virac' },
+                { loc: 'Masbate City',          addr: 'Post Office Compound, Brgy. Bagumbayan' },
+                { loc: 'Sorsogon City',         addr: '2/F SNGC Bldg., Flores St., Capitol Compound' },
+              ].map(o => (
+                <div key={o.loc} className={`rounded-xl p-5 border transition-colors ${
+                  o.highlight
+                    ? 'bg-blue-600/15 border-blue-600/30 hover:border-blue-500/50'
+                    : 'bg-gray-800/40 border-gray-700 hover:border-gray-600'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl flex-shrink-0 mt-0.5">📍</span>
+                    <div>
+                      <p className={`font-bold text-sm mb-1 ${o.highlight ? 'text-blue-300' : 'text-white'}`}>
+                        {o.loc}{o.highlight && <span className="ml-2 text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wide">This Office</span>}
+                      </p>
+                      <p className="text-gray-400 text-xs leading-relaxed">{o.addr}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ════════════════════════ EVENTS ════════════════════════ */}
-        <section id="events" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-900">
+        <section id="events" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-950">
           <div className="max-w-7xl mx-auto">
             <div className="mb-8 sm:mb-12">
               <p className="text-blue-400 text-xs font-black uppercase tracking-[0.3em] mb-4">What&apos;s Happening</p>
@@ -426,7 +436,7 @@ export default function HomePage() {
         </section>
 
         {/* ════════════════════════ SERVICES ════════════════════════ */}
-        <section id="services" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-950">
+        <section id="services" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-900">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-8 sm:mb-12">
               <p className="text-violet-400 text-xs font-black uppercase tracking-[0.3em] mb-4">What We Offer</p>
