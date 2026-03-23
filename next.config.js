@@ -95,6 +95,7 @@ const withPWA = require('next-pwa')({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', 'prisma'],
   },
@@ -107,14 +108,14 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://*.clerk.accounts.dev https://clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com blob:",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://challenges.cloudflare.com blob:",
               "worker-src 'self' blob:",
               "child-src 'self' blob:",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
-              "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com https://*.clerk.accounts.dev https://img.clerk.com https://images.unsplash.com",
-              "connect-src 'self' https://api.groq.com https://*.pusher.com wss://*.pusher.com https://clerk.accounts.dev https://*.clerk.accounts.dev https://*.clerk.com https://clerk-telemetry.com https://res.cloudinary.com",
-              "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev",
+              "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com https://images.unsplash.com",
+              "connect-src 'self' https://api.groq.com https://*.pusher.com wss://*.pusher.com https://res.cloudinary.com",
+              "frame-src 'self' https://challenges.cloudflare.com",
             ].join('; '),
           },
         ],

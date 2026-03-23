@@ -13,7 +13,7 @@
     "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
   },
   "dependencies": {
-    "@clerk/nextjs": "5.7.5",
+    "@auth/prisma-adapter": "^1.6.0",
     "@prisma/client": "^5.10.2",
     "@upstash/qstash": "^2.9.0",
     "bcryptjs": "^3.0.3",
@@ -25,6 +25,7 @@
     "jose": "^6.2.0",
     "jspdf": "^2.5.2",
     "next": "14.1.0",
+    "next-auth": "^5.0.0-beta.30",
     "next-pwa": "^5.6.0",
     "node-fetch": "^3.3.2",
     "ping": "^0.4.4",

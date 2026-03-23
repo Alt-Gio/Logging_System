@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { ClerkProvider } from '@clerk/nextjs'
+import { SessionProvider } from 'next-auth/react'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -17,12 +17,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-      signInFallbackRedirectUrl="/admin"
-      signUpFallbackRedirectUrl="/admin"
-    >
+    <SessionProvider>
       <html lang="en">
         <head>
           <link rel="apple-touch-icon" href="/icon-192.png"/>
@@ -45,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </body>
       </html>
-    </ClerkProvider>
+    </SessionProvider>
   )
 }
 

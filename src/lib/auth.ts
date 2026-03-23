@@ -60,27 +60,23 @@ export async function getSession() {
   }
 }
 
-// ── requireAuth — accepts BOTH Clerk session AND legacy JWT ──────────────────
-// Clerk is primary. Legacy JWT is fallback for programmatic API access.
-// Returns a unified admin-like object. For Clerk users, id = Clerk userId.
+// ── requireAuth — NextAuth JWT session + legacy JWT fallback ─────────────────
+// Primary: reads NextAuth session cookie (next-auth.session-token).
+// Fallback: legacy auth_token cookie or Bearer header for programmatic access.
 export async function requireAuth(req: NextRequest): Promise<{ id: string; username: string; name: string; role: string } | null> {
-  // 1. Check Clerk session cookie (__session or __client_uat)
+  // 1. NextAuth JWT session cookie
   try {
-    const { auth } = await import('@clerk/nextjs/server')
-    // auth() works in middleware + Server Components. For Route Handlers we use getAuth.
-    const { getAuth } = await import('@clerk/nextjs/server')
-    const clerkAuth = getAuth(req)
-    if (clerkAuth.userId) {
-      // Valid Clerk session — return a synthetic admin object
-      return {
-        id: clerkAuth.userId,
-        username: clerkAuth.userId,
-        name: 'Staff',
-        role: 'ADMIN',
-      }
+    const { getToken } = await import('next-auth/jwt')
+    const token = await getToken({ req, secret: process.env.AUTH_SECRET })
+    if (token?.id) {
+      const admin = await prisma.admin.findUnique({
+        where: { id: token.id as string },
+        select: { id: true, username: true, name: true, role: true },
+      })
+      if (admin) return admin
     }
   } catch {
-    // Clerk not available or session invalid — fall through to legacy
+    // fall through to legacy
   }
 
   // 2. Legacy JWT cookie (browser session)
@@ -91,10 +87,10 @@ export async function requireAuth(req: NextRequest): Promise<{ id: string; usern
   // 3. Bearer header (programmatic API access)
   const bearerToken = req.headers.get('authorization')?.replace('Bearer ', '')
 
-  const token = cookieToken || bearerToken
-  if (!token) return null
+  const legacyToken = cookieToken || bearerToken
+  if (!legacyToken) return null
 
-  const decoded = await verifyToken(token)
+  const decoded = await verifyToken(legacyToken)
   if (!decoded) return null
 
   return prisma.admin.findUnique({

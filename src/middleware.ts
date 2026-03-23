@@ -1,59 +1,62 @@
-// Clerk v5 middleware
-// Required env vars:
-// NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY
-// NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-// NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-// NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/admin
-// NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/admin
+// NextAuth v5 middleware
+// Required env vars: AUTH_SECRET, DATABASE_URL
 
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-const isPublicRoute = createRouteMatcher([
+const PUBLIC_PATHS = [
   '/',
-  '/print(.*)',
+  '/sign-in',
+  '/print',
+  '/offline',
   '/api/health',
-  '/api/auth(.*)',
-  '/api/settings(.*)',
-  '/api/pcs(.*)',
-  '/api/cron(.*)',
-  '/api/announcements(.*)',
+  '/api/auth',
+  '/api/settings',
+  '/api/pcs',
+  '/api/cron',
+  '/api/announcements',
   '/api/logs',
-  '/api/network/bridge(.*)',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/invite(.*)',
-])
+  '/api/network/bridge',
+  '/api/interns',
+  '/api/sheets',
+  '/intern-logbook',
+]
 
-const isAdminRoute = createRouteMatcher([
-  '/admin(.*)',
-  '/interns(.*)',
-  '/certificates(.*)',
-  '/api/admin-logs(.*)',
-  '/api/admins(.*)',
-  '/api/cameras(.*)',
-  '/api/network(.*)',
-  '/api/stats(.*)',
-  '/api/logs/export(.*)',
-  '/api/logs/(.+)',
-  '/api/invitations(.*)',
-  '/api/interns(.*)',
-  '/api/certificates(.*)',
-])
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/') || pathname.startsWith(p + '?'))
+}
 
-function applySecurityHeaders(res: NextResponse) {
+const ADMIN_PATHS = [
+  '/admin',
+  '/interns',
+  '/certificates',
+  '/api/admin-logs',
+  '/api/admins',
+  '/api/cameras',
+  '/api/network',
+  '/api/stats',
+  '/api/logs/export',
+  '/api/invitations',
+  '/api/certificates',
+]
+
+function isAdmin(pathname: string): boolean {
+  return ADMIN_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
+}
+
+function applySecurityHeaders(res: NextResponse): NextResponse {
   res.headers.set('X-Content-Type-Options', 'nosniff')
   res.headers.set('X-Frame-Options', 'SAMEORIGIN')
   res.headers.set('X-XSS-Protection', '1; mode=block')
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.headers.set('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://*.clerk.accounts.dev https://clerk.accounts.dev https://challenges.cloudflare.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://challenges.cloudflare.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com https://img.clerk.com",
-    "connect-src 'self' https://*.pusher.com wss://*.pusher.com https://res.cloudinary.com https://*.clerk.com https://*.clerk.accounts.dev",
-    "frame-src https://*.clerk.accounts.dev https://clerk.accounts.dev https://challenges.cloudflare.com",
+    "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com",
+    "connect-src 'self' https://*.pusher.com wss://*.pusher.com https://res.cloudinary.com",
     "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -61,10 +64,10 @@ function applySecurityHeaders(res: NextResponse) {
   return res
 }
 
-export default clerkMiddleware((auth, req) => {
+export default auth((req: NextRequest & { auth: { user?: { id?: string } } | null }) => {
   const { pathname } = req.nextUrl
+  const session = req.auth
 
-  // Skip static assets
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
@@ -73,30 +76,17 @@ export default clerkMiddleware((auth, req) => {
     return NextResponse.next()
   }
 
-  // Enforce invite-only: block direct access to /sign-up without an invitation ticket
-  if (pathname === '/sign-up' || pathname.startsWith('/sign-up/')) {
-    const ticket = req.nextUrl.searchParams.get('__clerk_ticket')
-    if (!ticket) {
-      // Redirect bare /sign-up to the invitation-only page which shows the wall
-      // (we still let it render — the page component handles the gate UI)
-      // Only block the API path, not the page itself (page shows the wall)
-    }
-  }
-
-  if (isPublicRoute(req)) {
+  if (isPublic(pathname)) {
     return applySecurityHeaders(NextResponse.next())
   }
 
-  if (isAdminRoute(req)) {
-    const { userId } = auth()
-    if (!userId) {
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-      const signInUrl = new URL('/sign-in', req.url)
-      signInUrl.searchParams.set('redirect_url', req.url)
-      return NextResponse.redirect(signInUrl)
+  if (isAdmin(pathname) && !session?.user?.id) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const signInUrl = new URL('/sign-in', req.url)
+    signInUrl.searchParams.set('callbackUrl', req.url)
+    return NextResponse.redirect(signInUrl)
   }
 
   return applySecurityHeaders(NextResponse.next())

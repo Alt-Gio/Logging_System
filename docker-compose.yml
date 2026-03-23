@@ -1,0 +1,108 @@
+version: '3.9'
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: dict_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-dict_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-dict_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dict_user} -d ${POSTGRES_DB:-dict_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/${GITHUB_REPOSITORY:-your-org/dict-logbook}:${IMAGE_TAG:-latest}
+    container_name: dict_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL:      postgresql://${POSTGRES_USER:-dict_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dict_db}
+      AUTH_SECRET:       ${AUTH_SECRET}
+      NEXTAUTH_URL:      ${NEXTAUTH_URL}
+      NODE_ENV:          production
+      GROQ_API_KEY:      ${GROQ_API_KEY:-}
+      PUSHER_APP_ID:     ${PUSHER_APP_ID:-}
+      PUSHER_KEY:        ${PUSHER_KEY:-}
+      PUSHER_SECRET:     ${PUSHER_SECRET:-}
+      PUSHER_CLUSTER:    ${PUSHER_CLUSTER:-ap1}
+      NEXT_PUBLIC_PUSHER_KEY:     ${NEXT_PUBLIC_PUSHER_KEY:-}
+      NEXT_PUBLIC_PUSHER_CLUSTER: ${NEXT_PUBLIC_PUSHER_CLUSTER:-ap1}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY:    ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      RESEND_API_KEY:    ${RESEND_API_KEY:-}
+      EMAIL_FROM:        ${EMAIL_FROM:-}
+      TWILIO_ACCOUNT_SID:  ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN:   ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+      NETWORK_BRIDGE_KEY:  ${NETWORK_BRIDGE_KEY:-}
+      CRON_SECRET:         ${CRON_SECRET:-}
+      SETUP_TOKEN:         ${SETUP_TOKEN:-}
+    networks:
+      - internal
+      - web
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: dict_nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: dict_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@dict.gov.ph}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_LISTEN_PORT:      5050
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - internal
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  nginx_cache:
+
+networks:
+  internal:
+    driver: bridge
+  web:
+    driver: bridge

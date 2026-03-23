@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useUser, UserButton, SignOutButton, useClerk } from '@clerk/nextjs'
+import { useSession, signOut } from 'next-auth/react'
 import { usePusher } from '@/lib/usePusher'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { VoiceAssistant } from '@/components/VoiceAssistant'
@@ -363,8 +363,10 @@ function EditPcModal({ pc, onSave, onClose }: {
 
 // ─── Main Admin Component ───────────────────────────────────────────────────────
 export default function AdminPage() {
-  const { user, isLoaded: clerkLoaded, isSignedIn } = useUser()
-  const currentAdmin = isSignedIn ? { id: user?.id ?? '', name: user?.fullName ?? user?.username ?? 'Admin', role: 'SUPER_ADMIN' } : null
+  const { data: session, status } = useSession()
+  const isSignedIn = status === 'authenticated'
+  const clerkLoaded = status !== 'loading'
+  const currentAdmin = session?.user ? { id: session.user.id, name: session.user.name ?? 'Admin', role: session.user.role ?? 'ADMIN' } : null
   const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'settings' | 'announcements' | 'analytics'>('dashboard')
   const [adminVoiceToast, setAdminVoiceToast] = useState<{ message: string; type: 'success'|'info'|'error' } | null>(null)
 
@@ -533,7 +535,7 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => {
-    if (!isSignedIn) return
+    if (status !== 'authenticated') return
     fetchStats(); fetchPcs(); fetchSettings(); fetchLogs(); fetchLiveStats()
     // Core stats + PCs every 15 s for real-time feel
     const fastPoll = setInterval(() => { fetchStats(); fetchPcs(); fetchLiveStats() }, 15_000)
@@ -542,7 +544,7 @@ export default function AdminPage() {
     // Settings every 2 min (office hours, access code)
     const settingsPoll = setInterval(() => fetchSettings(), 120_000)
     return () => { clearInterval(fastPoll); clearInterval(logPoll); clearInterval(settingsPoll) }
-  }, [isSignedIn, fetchStats, fetchPcs, fetchLogs])
+  }, [status, fetchStats, fetchPcs, fetchLogs])
   useEffect(() => { if (isSignedIn && tab === 'logs') fetchLogs() }, [isSignedIn, tab, fetchLogs])
 
   // ── Apply background CSS variable whenever settings.bgImageUrl changes ───────
@@ -956,16 +958,16 @@ export default function AdminPage() {
 
   const s = stats as Record<string, unknown> | null
 
-  // ── CLERK AUTH GATE ───────────────────────────────────────────────────────────
-  if (!clerkLoaded) {
+  // ── AUTH GATE ─────────────────────────────────────────────────────────────────
+  if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-[var(--dict-blue)] border-t-transparent rounded-full animate-spin"/>
       </div>
     )
   }
-  if (!isSignedIn) {
-    if (typeof window !== 'undefined') window.location.href = '/sign-in?redirect_url=/admin'
+  if (status === 'unauthenticated') {
+    if (typeof window !== 'undefined') window.location.href = '/sign-in?callbackUrl=/admin'
     return null
   }
 
@@ -1011,7 +1013,9 @@ export default function AdminPage() {
             </nav>
             <div className="flex items-center gap-3">
 
-              <UserButton afterSignOutUrl="/sign-in" appearance={{ elements: { avatarBox: 'w-8 h-8' } }}/>
+              <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-all" title="Sign out">
+                <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold text-sm">{(currentAdmin?.name?.[0] ?? 'A').toUpperCase()}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2263,9 +2267,10 @@ function AnnouncementsTab() {
   )
 }
 
-// ── AdminsTab — Clerk-based staff management ──────────────────────────────────
+// ── AdminsTab — staff management ────────────────────────────────────────────
 function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
-  const { user } = useUser()
+  const { data: session } = useSession()
+  const user = session?.user
   const [invites, setInvites] = useState<{id:string;emailAddress:string|null;status:string;createdAt:string;url?:string}[]>([])
   const [emails, setEmails] = useState('')
   const [sending, setSending] = useState(false)
@@ -2322,16 +2327,16 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
       <div className="glass rounded-2xl p-5">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--dict-blue)] to-blue-500 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0 shadow-md">
-            {(user?.fullName?.[0] ?? user?.username?.[0] ?? 'A').toUpperCase()}
+            {(user?.name?.[0] ?? 'A').toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <p className="font-bold text-gray-800 text-base">{user?.fullName ?? user?.username}</p>
-              <span className="text-[10px] bg-gradient-to-r from-purple-500 to-blue-600 text-white px-2.5 py-1 rounded-full font-bold shadow-sm">You · SuperAdmin</span>
+              <p className="font-bold text-gray-800 text-base">{user?.name ?? 'Admin'}</p>
+              <span className="text-[10px] bg-gradient-to-r from-purple-500 to-blue-600 text-white px-2.5 py-1 rounded-full font-bold shadow-sm">You · {user?.role ?? 'ADMIN'}</span>
             </div>
-            <p className="text-sm text-gray-400">{user?.primaryEmailAddress?.emailAddress}</p>
+            <p className="text-sm text-gray-400">{user?.id ? `ID: ${user.id.slice(0,8)}…` : ''}</p>
             <p className="text-xs text-gray-300 mt-0.5">
-              Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'}) : '—'}
+              DICT Region V Staff Account
             </p>
           </div>
           <a href="/admin/auth-guide" className="text-xs px-3 py-2 rounded-xl border border-blue-200 text-[var(--dict-blue)] bg-blue-50 hover:bg-blue-100 font-semibold transition-colors flex-shrink-0">
@@ -2479,14 +2484,12 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-xl flex-shrink-0">🔐</div>
           <div className="flex-1">
-            <h3 className="font-display font-semibold text-gray-800 mb-0.5">Clerk Profile Settings</h3>
-            <p className="text-xs text-gray-400">Update your name, email, password, or enable two-factor authentication via Clerk&apos;s secure portal.</p>
+            <h3 className="font-display font-semibold text-gray-800 mb-0.5">Account Settings</h3>
+            <p className="text-xs text-gray-400">Signed in as <strong>{user?.name ?? 'Admin'}</strong>. Click Sign Out to end your session.</p>
           </div>
-          <UserButton
-            afterSignOutUrl="/sign-in"
-            appearance={{ elements: { avatarBox: 'w-10 h-10', userButtonPopoverCard: 'rounded-2xl shadow-2xl' } }}
-            showName
-          />
+          <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="px-4 py-2 rounded-xl border-2 border-red-200 text-red-600 text-sm font-bold hover:bg-red-50 transition-all flex-shrink-0">
+            🔒 Sign Out
+          </button>
         </div>
       </div>
 

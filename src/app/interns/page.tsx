@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { useUser, UserButton } from '@clerk/nextjs'
+import { useSession, signOut } from 'next-auth/react'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth, isToday, parseISO } from 'date-fns'
 import * as XLSX from 'xlsx'
@@ -180,7 +180,9 @@ function HoursProgress({ current, required }: { current: number; required: numbe
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function InternsPage() {
-  const { isLoaded: clerkLoaded, isSignedIn } = useUser()
+  const { status } = useSession()
+  const clerkLoaded = status !== 'loading'
+  const isSignedIn  = status === 'authenticated'
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeSection, setActiveSection] = useState<NavSection>('overview')
   const [interns, setInterns] = useState<Intern[]>([])
@@ -1124,7 +1126,7 @@ export default function InternsPage() {
                 ← Admin Dashboard
               </a>
               <GovHeaderLogos/>
-              <UserButton afterSignOutUrl="/sign-in" appearance={{ elements: { avatarBox: 'w-8 h-8' } }}/>
+              <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-200 hover:text-white hover:bg-white/10 transition-all">🔒 Sign Out</button>
             </div>
           </div>
         </div>

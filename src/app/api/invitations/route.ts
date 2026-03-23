@@ -1,61 +1,65 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
-import { clerkClient } from '@clerk/nextjs/server'
+import { requireAuth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import bcrypt from 'bcryptjs'
+import { randomBytes } from 'crypto'
 
+// POST /api/invitations — create admin account(s) directly (invite-by-account)
 export async function POST(req: NextRequest) {
+  const admin = await requireAuth(req)
+  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { emails } = await req.json()
+  if (!Array.isArray(emails) || emails.length === 0) {
+    return NextResponse.json({ error: 'No usernames provided' }, { status: 400 })
+  }
+
   try {
-    const { userId } = await auth()
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { emails } = await req.json()
-    if (!Array.isArray(emails) || emails.length === 0) {
-      return NextResponse.json({ error: 'No emails provided' }, { status: 400 })
-    }
-
-    const client = await clerkClient()
-    const invitations = await Promise.all(
-      emails.map((emailAddress: string) =>
-        client.invitations.createInvitation({
-          emailAddress,
-          redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/admin`,
-          notify: true,
+    const created = await Promise.all(
+      emails.map(async (username: string) => {
+        const tempPassword = randomBytes(8).toString('hex')
+        const hash = await bcrypt.hash(tempPassword, 12)
+        const record = await prisma.admin.create({
+          data: { username, password: hash, name: username, role: 'STAFF' },
+          select: { id: true, username: true, name: true, role: true, createdAt: true },
         })
-      )
+        return {
+          id:           record.id,
+          emailAddress: record.username,
+          status:       'pending' as const,
+          createdAt:    record.createdAt.toISOString(),
+          tempPassword,
+        }
+      })
     )
-
-    return NextResponse.json({
-      invitations: invitations.map(inv => ({
-        id:           inv.id,
-        emailAddress: inv.emailAddress,
-        status:       inv.status,
-        createdAt:    inv.createdAt,
-      }))
-    })
+    return NextResponse.json({ invitations: created })
   } catch (err) {
     console.error('[invitations/POST]', err)
-    return NextResponse.json({ error: 'Failed to create invitations' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create accounts' }, { status: 500 })
   }
 }
 
-export async function GET() {
+// GET /api/invitations — list all admin accounts as "invitations"
+export async function GET(req: NextRequest) {
+  const admin = await requireAuth(req)
+  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
-    const { userId } = await auth()
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const client = await clerkClient()
-    const result = await client.invitations.getInvitationList({ status: 'pending' })
-
+    const admins = await prisma.admin.findMany({
+      select: { id: true, username: true, name: true, role: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    })
     return NextResponse.json({
-      invitations: result.data.map(inv => ({
-        id:           inv.id,
-        emailAddress: inv.emailAddress,
-        status:       inv.status,
-        createdAt:    inv.createdAt,
+      invitations: admins.map(a => ({
+        id:           a.id,
+        emailAddress: a.username,
+        status:       'accepted' as const,
+        createdAt:    a.createdAt.toISOString(),
       }))
     })
   } catch (err) {
     console.error('[invitations/GET]', err)
-    return NextResponse.json({ error: 'Failed to fetch invitations' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch accounts' }, { status: 500 })
   }
 }

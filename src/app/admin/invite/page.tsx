@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useUser, UserButton } from '@clerk/nextjs'
+import { useSession, signOut } from 'next-auth/react'
 
 type Invite = {
   id: string
@@ -27,7 +27,9 @@ const S = {
 }
 
 export default function InvitePage() {
-  const { user, isLoaded } = useUser()
+  const { data: session, status } = useSession()
+  const isLoaded = status !== 'loading'
+  const user = session?.user
   const [emails, setEmails]     = useState('')
   const [invites, setInvites]   = useState<Invite[]>([])
   const [loading, setLoading]   = useState(false)
@@ -124,9 +126,9 @@ export default function InvitePage() {
           {isLoaded && user && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ color: 'rgba(255,255,255,0.70)', fontSize: '12px', fontWeight: 500 }}>
-                {user.fullName ?? user.username}
+                {user.name}
               </span>
-              <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'w-8 h-8' } }}/>
+              <button onClick={() => signOut({ callbackUrl: '/sign-in' })} style={{ padding: '6px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.20)', background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.80)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
             </div>
           )}
         </div>

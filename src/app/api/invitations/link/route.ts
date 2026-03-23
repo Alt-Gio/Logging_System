@@ -1,29 +1,34 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
-import { clerkClient } from '@clerk/nextjs/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import bcrypt from 'bcryptjs'
+import { randomBytes } from 'crypto'
 
-export async function POST() {
+// POST /api/invitations/link — create a temporary staff account with a one-time password
+export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth()
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const admin = await requireAuth(req)
+    if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Generate a one-time invite link with no specific email
-    const client = await clerkClient()
-    const token  = await client.signInTokens.createSignInToken({
-      userId,
-      expiresInSeconds: 60 * 60 * 24 * 7, // 7 days
+    const username    = `staff_${randomBytes(4).toString('hex')}`
+    const tempPassword = randomBytes(8).toString('hex')
+    const hash = await bcrypt.hash(tempPassword, 12)
+
+    const record = await prisma.admin.create({
+      data: { username, password: hash, name: 'New Staff', role: 'STAFF' },
+      select: { id: true, createdAt: true },
     })
 
-    const url = `${process.env.NEXT_PUBLIC_APP_URL || ''}/sign-in?__clerk_ticket=${token.token}`
+    const url = `${process.env.NEXTAUTH_URL || ''}/sign-in?hint=${username}`
 
     return NextResponse.json({
       invitation: {
-        id:           token.id,
+        id:           record.id,
         emailAddress: null,
         status:       'pending',
-        createdAt:    new Date().toISOString(),
-        url,
+        createdAt:    record.createdAt.toISOString(),
+        url:          `${url}&pass=${tempPassword}`,
       }
     })
   } catch (err) {

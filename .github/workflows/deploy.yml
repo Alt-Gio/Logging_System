@@ -1,0 +1,120 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rollback:
+        description: 'Image tag to roll back to (leave blank to deploy latest)'
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.rollback }}" ]; then
+            echo "tag=${{ github.event.inputs.rollback }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ needs.build.outputs.image_tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key:      ${{ secrets.SERVER_SSH_KEY }}
+          port:     ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH || '/opt/dict-logbook' }}
+
+            echo "→ Pulling image: ${{ steps.tag.outputs.tag }}"
+            IMAGE_TAG=${{ steps.tag.outputs.tag }} \
+            GITHUB_REPOSITORY=${{ github.repository }} \
+            docker compose pull app
+
+            echo "→ Running database migrations"
+            docker compose run --rm app sh -c "npx prisma migrate deploy"
+
+            echo "→ Rotating containers (zero-downtime)"
+            IMAGE_TAG=${{ steps.tag.outputs.tag }} \
+            GITHUB_REPOSITORY=${{ github.repository }} \
+            docker compose up -d --no-deps --remove-orphans app
+
+            echo "→ Health check"
+            for i in $(seq 1 12); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' dict_app 2>/dev/null || echo "starting")
+              echo "   attempt $i: $STATUS"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "✅ App is healthy"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "❌ Health check failed — rolling back"
+                docker compose up -d --no-deps app --scale app=0
+                IMAGE_TAG=latest docker compose up -d --no-deps app
+                exit 1
+              fi
+              sleep 10
+            done
+
+            echo "→ Cleaning up old images"
+            docker image prune -f

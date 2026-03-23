@@ -1,18 +1,17 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
-import { clerkClient } from '@clerk/nextjs/server'
+import { requireAuth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { userId } = await auth()
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const admin = await requireAuth(req)
+    if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const client = await clerkClient()
-    await client.invitations.revokeInvitation(params.id)
+    await prisma.admin.delete({ where: { id: params.id } })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[invitations/DELETE]', err)
-    return NextResponse.json({ error: 'Failed to revoke invitation' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to delete account' }, { status: 500 })
   }
 }

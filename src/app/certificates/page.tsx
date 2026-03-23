@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { useUser, UserButton } from '@clerk/nextjs'
+import { useSession, signOut } from 'next-auth/react'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -50,7 +50,9 @@ const CERT_WIDTH = 1122  // A4 landscape width in pixels at 96 DPI
 const CERT_HEIGHT = 794  // A4 landscape height in pixels at 96 DPI
 
 export default function CertificatesPage() {
-  const { isLoaded: clerkLoaded, isSignedIn } = useUser()
+  const { status } = useSession()
+  const clerkLoaded = status !== 'loading'
+  const isSignedIn  = status === 'authenticated'
   const [view, setView] = useState<'templates' | 'designer' | 'generate'>('templates')
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
@@ -421,7 +423,7 @@ export default function CertificatesPage() {
                 </button>
               )}
             </nav>
-            <UserButton afterSignOutUrl="/sign-in"/>
+            <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-all">🔒 Sign Out</button>
           </div>
         </div>
       </header>
