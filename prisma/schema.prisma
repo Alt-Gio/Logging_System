@@ -167,6 +167,11 @@ enum ServiceType {
   STAFF_ASSISTED
 }
 
+enum SessionStatus {
+  ACTIVE
+  CLOSED
+}
+
 enum AnnouncementType {
   INFO
   WARNING
@@ -246,6 +251,7 @@ model Intern {
   updatedAt     DateTime           @updatedAt
   attendance    InternAttendance[]
   tasks         InternTask[]
+  sessions      InternSession[]
   documents     InternDocument[]
   certificates  Certificate[]
 
@@ -273,7 +279,7 @@ model InternAttendance {
 
 model InternTask {
   id          String     @id @default(cuid())
-  internId    String
+  internId    String?
   title       String
   description String?
   status      TaskStatus @default(PENDING)
@@ -282,7 +288,7 @@ model InternTask {
   completedAt DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-  intern      Intern     @relation(fields: [internId], references: [id], onDelete: Cascade)
+  intern      Intern?    @relation(fields: [internId], references: [id], onDelete: Cascade)
 
   @@index([internId])
   @@index([status])
@@ -301,6 +307,25 @@ model InternDocument {
 
   @@index([internId])
   @@map("intern_documents")
+}
+
+model InternSession {
+  id           String        @id @default(cuid())
+  internId     String
+  timeIn       DateTime      @default(now())
+  timeOut      DateTime?
+  status       SessionStatus @default(ACTIVE)
+  progressNote String?       @db.Text
+  closedBy     String?
+  hoursLogged  Float?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  intern       Intern        @relation(fields: [internId], references: [id], onDelete: Cascade)
+
+  @@index([internId])
+  @@index([status])
+  @@index([timeIn])
+  @@map("intern_sessions")
 }
 
 model OtpVerification {

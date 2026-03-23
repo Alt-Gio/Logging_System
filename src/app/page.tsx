@@ -348,6 +348,34 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* ════════════════════════ SERVICES ════════════════════════ */}
+        <section id="services" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-950">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-8 sm:mb-12">
+              <p className="text-violet-400 text-xs font-black uppercase tracking-[0.3em] mb-4">What We Offer</p>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">Free Digital Services</h2>
+              <p className="text-gray-400 mt-4 max-w-xl mx-auto text-sm leading-relaxed">
+                Open to all Bicolanos. No registration fees, no barriers — just access to the digital world.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
+              {[
+                { icon: '🖥️', title: 'Computer Access',    desc: 'Free workstations for government transactions, job applications, and research.',       detail: 'Sessions up to 2 hours per visit. Staff assistance is always available.',        from: 'from-blue-600/15',   border: 'border-blue-600/20 hover:border-blue-500/40'   },
+                { icon: '📶', title: 'Free Internet',       desc: 'High-speed Wi-Fi and wired internet. Bring your device or use ours — always free.',   detail: '10–50 Mbps fiber connection. BYOD users enjoy unlimited session time.',          from: 'from-violet-600/15', border: 'border-violet-600/20 hover:border-violet-500/40' },
+                { icon: '🏛️', title: 'E-Government',        desc: 'Guided access to SSS, PhilHealth, Pag-IBIG, PhilSys, and other national portals.',    detail: 'Staff help with account setup and online form submission at no charge.',         from: 'from-cyan-600/15',   border: 'border-cyan-600/20 hover:border-cyan-500/40'   },
+                { icon: '📚', title: 'Digital Literacy',   desc: 'Free trainings, workshops, and capacity-building sessions for all ages.',               detail: 'Check the announcements section for the next training schedule.',                from: 'from-amber-600/15',  border: 'border-amber-600/20 hover:border-amber-500/40'  },
+              ].map(s => (
+                <div key={s.title} className={`group rounded-xl p-6 bg-gradient-to-br ${s.from} to-transparent border ${s.border} transition-all cursor-default`}>
+                  <div className="text-3xl mb-4">{s.icon}</div>
+                  <h3 className="font-bold text-white mb-2">{s.title}</h3>
+                  <p className="text-gray-400 text-xs leading-relaxed">{s.desc}</p>
+                  <p className="mt-3 pt-3 border-t border-white/5 text-gray-600 text-[11px] leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity duration-300">{s.detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ════════════════════════ OFFICES ════════════════════════ */}
         <section className="py-14 sm:py-16 px-4 sm:px-6 bg-gray-900">
           <div className="max-w-7xl mx-auto">
@@ -435,42 +463,21 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ════════════════════════ SERVICES ════════════════════════ */}
-        <section id="services" className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-900">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-8 sm:mb-12">
-              <p className="text-violet-400 text-xs font-black uppercase tracking-[0.3em] mb-4">What We Offer</p>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white">Free Digital Services</h2>
-              <p className="text-gray-400 mt-4 max-w-xl mx-auto text-sm leading-relaxed">
-                Open to all Bicolanos. No registration fees, no barriers — just access to the digital world.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
-              {[
-                { icon: '🖥️', title: 'Computer Access',    desc: 'Free workstations for government transactions, job applications, and research.',       detail: 'Sessions up to 2 hours per visit. Staff assistance is always available.',        from: 'from-blue-600/15',   border: 'border-blue-600/20 hover:border-blue-500/40'   },
-                { icon: '📶', title: 'Free Internet',       desc: 'High-speed Wi-Fi and wired internet. Bring your device or use ours — always free.',   detail: '10–50 Mbps fiber connection. BYOD users enjoy unlimited session time.',          from: 'from-violet-600/15', border: 'border-violet-600/20 hover:border-violet-500/40' },
-                { icon: '🏛️', title: 'E-Government',        desc: 'Guided access to SSS, PhilHealth, Pag-IBIG, PhilSys, and other national portals.',    detail: 'Staff help with account setup and online form submission at no charge.',         from: 'from-cyan-600/15',   border: 'border-cyan-600/20 hover:border-cyan-500/40'   },
-                { icon: '📚', title: 'Digital Literacy',   desc: 'Free trainings, workshops, and capacity-building sessions for all ages.',               detail: 'Check the announcements section for the next training schedule.',                from: 'from-amber-600/15',  border: 'border-amber-600/20 hover:border-amber-500/40'  },
-              ].map(s => (
-                <div key={s.title} className={`group rounded-xl p-6 bg-gradient-to-br ${s.from} to-transparent border ${s.border} transition-all cursor-default`}>
-                  <div className="text-3xl mb-4">{s.icon}</div>
-                  <h3 className="font-bold text-white mb-2">{s.title}</h3>
-                  <p className="text-gray-400 text-xs leading-relaxed">{s.desc}</p>
-                  <p className="mt-3 pt-3 border-t border-white/5 text-gray-600 text-[11px] leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity duration-300">{s.detail}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* CTA band */}
-            <div className="bg-gradient-to-r from-blue-600/20 to-indigo-600/10 rounded-2xl p-6 sm:p-8 border border-blue-600/20 text-center">
-              <h3 className="text-xl sm:text-2xl font-bold text-white mb-3">Ready to visit the DTC?</h3>
-              <p className="text-gray-400 text-sm mb-6 max-w-xl mx-auto">
-                Sign in at the logbook when you arrive. Our staff will guide you through every service.
-              </p>
+        {/* ════════════════════════ CTA ════════════════════════ */}
+        <section className="py-14 sm:py-20 px-4 sm:px-6 bg-gray-950">
+          <div className="max-w-3xl mx-auto text-center">
+            <h2 className="text-3xl sm:text-4xl font-black text-white mb-4">Ready to visit the DTC?</h2>
+            <p className="text-gray-400 text-base mb-8">
+              Sign in at the logbook when you arrive. Our staff will guide you through every service — free of charge.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link href="/dtc-logbook"
-                className="inline-flex items-center gap-2.5 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold text-white transition-colors">
+                className="inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold text-white transition-colors text-base">
                 🖥️ Open the DTC Logbook <span className="text-blue-300">&rarr;</span>
+              </Link>
+              <Link href="/intern-logbook"
+                className="inline-flex items-center justify-center gap-2.5 px-8 py-4 bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl font-semibold text-gray-200 transition-colors text-base">
+                🎓 Intern Logbook
               </Link>
             </div>
           </div>

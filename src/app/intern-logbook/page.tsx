@@ -22,6 +22,7 @@ type InternTask = {
   status: string; priority: string; dueDate: string | null
 }
 type ClockEntry = { internId: string; startTime: string }
+type InternSessionRecord = { id: string; internId: string; timeIn: string; status: string }
 type AddInternForm = {
   fullName: string; school: string; course: string; department: string
   supervisor: string; email: string; phone: string
@@ -237,18 +238,20 @@ export default function InternLogbookPage() {
   const [search, setSearch]       = useState('')
   const [filterSchool, setFilterSchool] = useState('all')
 
-  // Clock
-  const [clocks, setClocks]     = useState<Record<string,ClockEntry>>({})
-  const [elapsed, setElapsed]   = useState<Record<string,number>>({})
-  const [tick, setTick]         = useState(0)
+  // Clock (localStorage fallback + DB sessions)
+  const [clocks, setClocks]       = useState<Record<string,ClockEntry>>({})
+  const [dbSessions, setDbSessions] = useState<Record<string,InternSessionRecord>>({})
+  const [elapsed, setElapsed]     = useState<Record<string,number>>({})
+  const [tick, setTick]           = useState(0)
 
   // UI
-  const [saving, setSaving]           = useState(false)
-  const [confirmOut, setConfirmOut]   = useState<Intern|null>(null)
-  const [toast, setToast]             = useState<{msg:string;ok:boolean}|null>(null)
-  const [showAdd, setShowAdd]         = useState(false)
-  const [sideOpen, setSideOpen]       = useState(true)
-  const [newTask, setNewTask]         = useState('')
+  const [saving, setSaving]             = useState(false)
+  const [confirmOut, setConfirmOut]     = useState<Intern|null>(null)
+  const [progressNote, setProgressNote] = useState('')
+  const [toast, setToast]               = useState<{msg:string;ok:boolean}|null>(null)
+  const [showAdd, setShowAdd]           = useState(false)
+  const [sideOpen, setSideOpen]         = useState(true)
+  const [newTask, setNewTask]           = useState('')
 
   const showToast = (msg:string, ok=true) => { setToast({msg,ok}); setTimeout(()=>setToast(null),3500) }
 
@@ -256,6 +259,23 @@ export default function InternLogbookPage() {
   useEffect(() => {
     if (localStorage.getItem('dtc_intern_access_v2') === 'granted') setAccess(true)
     try { const c = localStorage.getItem('dtc_intern_clocks'); if (c) setClocks(JSON.parse(c)) } catch {}
+  }, [])
+
+  const fetchActiveSessions = useCallback(async () => {
+    try {
+      const r = await fetch('/api/intern-sessions')
+      const list: InternSessionRecord[] = await r.json()
+      if (Array.isArray(list)) {
+        const map: Record<string,InternSessionRecord> = {}
+        const clockMap: Record<string,ClockEntry> = {}
+        list.forEach(s => {
+          map[s.internId] = s
+          clockMap[s.internId] = { internId: s.internId, startTime: s.timeIn }
+        })
+        setDbSessions(map)
+        setClocks(prev => ({ ...prev, ...clockMap }))
+      }
+    } catch {}
   }, [])
 
   const verifyCode = async () => {
@@ -284,7 +304,7 @@ export default function InternLogbookPage() {
     try { const r = await fetch(`/api/interns/${id}/tasks`); const d = await r.json(); if(Array.isArray(d)) setTasks(d) } catch {}
   }
 
-  useEffect(() => { if (access) fetchInterns() }, [access, fetchInterns])
+  useEffect(() => { if (access) { fetchInterns(); fetchActiveSessions() } }, [access, fetchInterns, fetchActiveSessions])
 
   // ── Timers ─────────────────────────────────────────────────────────
   useEffect(() => { const t = setInterval(()=>setTick(n=>n+1),1000); return ()=>clearInterval(t) }, [])
@@ -293,31 +313,47 @@ export default function InternLogbookPage() {
     for (const [id,entry] of Object.entries(clocks)) e[id] = now - new Date(entry.startTime).getTime()
     setElapsed(e)
   }, [tick, clocks])
-  useEffect(() => { try { localStorage.setItem('dtc_intern_clocks',JSON.stringify(clocks)) } catch {} }, [clocks])
 
   // ── Time In/Out ───────────────────────────────────────────────────
-  const handleTimeIn = (intern:Intern) => {
-    const startTime = new Date().toISOString()
-    setClocks(p=>({...p,[intern.id]:{internId:intern.id,startTime}}))
-    showToast(`${intern.fullName.split(' ')[0]} timed in at ${fmtTime(startTime)}`)
+  const handleTimeIn = async (intern:Intern) => {
+    try {
+      const r = await fetch('/api/intern-sessions', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ internId: intern.id }),
+      })
+      const session: InternSessionRecord = await r.json()
+      setDbSessions(p => ({ ...p, [intern.id]: session }))
+      setClocks(p => ({ ...p, [intern.id]: { internId: intern.id, startTime: session.timeIn } }))
+      showToast(`${intern.fullName.split(' ')[0]} timed in at ${fmtTime(session.timeIn)}`)
+    } catch { showToast('Failed to time in. Check connection.', false) }
   }
 
   const handleTimeOutConfirmed = async (intern:Intern) => {
-    const entry = clocks[intern.id]; if(!entry) return
+    const note = progressNote.trim()
+    if (!note) { showToast('Please write a progress note first.', false); return }
+    const session = dbSessions[intern.id]
     setSaving(true)
     try {
-      const timeOut = new Date().toISOString(), timeIn = entry.startTime
-      const hours = Math.round(((new Date(timeOut).getTime()-new Date(timeIn).getTime())/3600000)*100)/100
-      const today = new Date().toISOString().slice(0,10)
-      await fetch(`/api/interns/${intern.id}/attendance`,{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({date:today,timeIn,timeOut,hours,status:'PRESENT'}),
-      })
-      fetch('/api/sheets/interns',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({type:'attendance',data:{internName:intern.fullName,school:intern.school,date:today,timeIn,timeOut,hours}})
-      }).catch(()=>{})
+      if (session) {
+        const r = await fetch(`/api/intern-sessions/${session.id}`, {
+          method:'PATCH', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ progressNote: note, closedBy: 'manual' }),
+        })
+        if (!r.ok) throw new Error('Failed')
+      } else {
+        const entry = clocks[intern.id]; if(!entry) return
+        const timeOut = new Date().toISOString(), timeIn = entry.startTime
+        const hours = Math.round(((new Date(timeOut).getTime()-new Date(timeIn).getTime())/3600000)*100)/100
+        const today = new Date().toISOString().slice(0,10)
+        await fetch(`/api/interns/${intern.id}/attendance`,{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({date:today,timeIn,timeOut,hours,status:'PRESENT',notes:note}),
+        })
+      }
       const updated = {...clocks}; delete updated[intern.id]; setClocks(updated)
-      showToast(`${intern.fullName.split(' ')[0]} timed out — ${hours}h logged`)
+      const updatedSessions = {...dbSessions}; delete updatedSessions[intern.id]; setDbSessions(updatedSessions)
+      showToast(`${intern.fullName.split(' ')[0]} timed out — progress saved`)
+      setProgressNote('')
       await fetchInterns()
     } catch { showToast('Failed to save. Try again.', false) }
     setSaving(false); setConfirmOut(null)
@@ -451,15 +487,39 @@ export default function InternLogbookPage() {
       {showAdd && <AddInternModal onClose={()=>setShowAdd(false)} onSave={handleAddIntern} saving={saving}/>}
 
       {confirmOut && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <p className="font-display font-bold text-lg text-gray-800 mb-1">Confirm Time Out</p>
-            <p className="text-gray-500 text-sm mb-1">Clock out <span className="font-bold text-gray-800">{confirmOut.fullName}</span>?</p>
-            <p className="text-gray-400 text-sm mb-6">This will log <span className="font-bold text-[var(--dict-blue)]">{fmt(elapsed[confirmOut.id]||0)}</span> to their attendance record.</p>
-            <div className="flex gap-3">
-              <button onClick={()=>setConfirmOut(null)} className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-              <button onClick={()=>handleTimeOutConfirmed(confirmOut)} disabled={saving}
-                className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-xl flex-shrink-0">⏹️</div>
+              <div>
+                <p className="font-display font-bold text-lg text-gray-800 leading-tight">Time Out</p>
+                <p className="text-gray-500 text-sm">
+                  Clocking out <span className="font-bold text-gray-800">{confirmOut.fullName}</span>
+                  {' · '}<span className="font-mono text-[var(--dict-blue)] font-bold">{fmt(elapsed[confirmOut.id]||0)}</span> elapsed
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">
+                Progress Note <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={progressNote}
+                onChange={e => setProgressNote(e.target.value)}
+                placeholder="What did you accomplish today? (required)"
+                rows={4}
+                autoFocus
+                className="w-full border-2 border-gray-200 focus:border-[var(--dict-blue)] rounded-xl px-4 py-3 text-sm outline-none resize-none transition-colors"
+              />
+              <p className="text-xs text-gray-400 mt-1">This note will be saved to your attendance record and visible to your supervisor.</p>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => { setConfirmOut(null); setProgressNote('') }}
+                className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={() => handleTimeOutConfirmed(confirmOut)} disabled={saving || !progressNote.trim()}
+                className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2 transition-all">
                 {saving ? <><Spinner/>Saving...</> : '✓ Confirm Time Out'}
               </button>
             </div>
