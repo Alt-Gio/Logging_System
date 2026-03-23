@@ -42,8 +42,12 @@ COPY --from=builder /app/node_modules/prisma       ./node_modules/prisma
 COPY --from=builder /app/prisma                    ./prisma
 COPY --from=builder /app/package.json              ./package.json
 
+# Make 'prisma' available in PATH so any caller (CMD, pre-deploy, scripts) can use it
+RUN printf '#!/bin/sh\nexec node /app/node_modules/prisma/build/index.js "$@"\n' \
+      > /usr/local/bin/prisma \
+    && chmod +x /usr/local/bin/prisma
+
 USER nextjs
 EXPOSE 3000
 
-# Run migrations then start server — no npx, no symlinks, direct node invocation
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+CMD ["sh", "-c", "prisma migrate deploy && node server.js"]
