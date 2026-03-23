@@ -20,7 +20,10 @@ const PUBLIC_PATHS = [
   '/api/network/bridge',
   '/api/interns',
   '/api/sheets',
+  '/api/intern-sessions',
+  '/api/intern-tasks',
   '/intern-logbook',
+  '/intern',
 ]
 
 function isPublic(pathname: string): boolean {
