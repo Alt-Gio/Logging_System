@@ -32,6 +32,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   session: { strategy: 'jwt', maxAge: 8 * 60 * 60 },
+  cookies: {
+    sessionToken: {
+      name: '__Secure-next-auth.session-token',
+      options: { httpOnly: true, sameSite: 'strict', secure: true, path: '/' },
+    },
+  },
   callbacks: {
     jwt({ token, user }) {
       if (user) {

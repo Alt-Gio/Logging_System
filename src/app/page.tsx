@@ -518,8 +518,6 @@ export default function HomePage() {
               <Link href="/dtc-logbook"    className="hover:text-blue-400 transition-colors">DTC Logbook</Link>
               <span className="text-gray-800">|</span>
               <Link href="/intern-logbook" className="hover:text-violet-400 transition-colors">Intern Logbook</Link>
-              <span className="text-gray-800">|</span>
-              <Link href="/interns"        className="hover:text-gray-300 transition-colors">Admin</Link>
             </div>
           </div>
         </footer>
