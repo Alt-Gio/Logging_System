@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const records = await (prisma as any).internAttendance.findMany({
-      where: { internId: params.id },
-      orderBy: { date: 'desc' },
+    const convex   = getConvexClient()
+    const records  = await convex.query(api.internAttendance.getForIntern, {
+      internId: params.id as Id<'interns'>,
     })
     return NextResponse.json(records)
   } catch (e) {
@@ -34,18 +36,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       hours = Math.round(diff * 100) / 100
     }
 
-    const record = await (prisma as any).internAttendance.create({
-      data: {
-        internId: params.id,
-        date: new Date(date),
-        timeIn: timeIn ? new Date(timeIn) : null,
-        timeOut: timeOut ? new Date(timeOut) : null,
-        hours,
-        status: status || 'PRESENT',
-        notes: notes || null,
-      },
+    const convex = getConvexClient()
+    const id = await convex.mutation(api.internAttendance.create, {
+      internId: params.id as Id<'interns'>,
+      date:     new Date(date).getTime(),
+      timeIn:   timeIn  ? new Date(timeIn).getTime()  : undefined,
+      timeOut:  timeOut ? new Date(timeOut).getTime() : undefined,
+      hours:    hours   ?? undefined,
+      status:   (status || 'PRESENT') as 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY',
+      notes:    notes   || undefined,
     })
-    return NextResponse.json(record, { status: 201 })
+    return NextResponse.json({ _id: id }, { status: 201 })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'Failed to add attendance record' }, { status: 500 })
@@ -63,17 +64,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       hours = Math.round(diff * 100) / 100
     }
 
-    const record = await (prisma as any).internAttendance.update({
-      where: { id: recordId },
-      data: {
-        ...(timeIn && { timeIn: new Date(timeIn) }),
-        ...(timeOut && { timeOut: new Date(timeOut) }),
-        ...(hours !== null && { hours }),
-        ...(status && { status }),
-        ...(notes !== undefined && { notes }),
-      },
+    const convex = getConvexClient()
+    await convex.mutation(api.internAttendance.update, {
+      id:      recordId as Id<'internAttendance'>,
+      timeIn:  timeIn  ? new Date(timeIn).getTime()  : undefined,
+      timeOut: timeOut ? new Date(timeOut).getTime() : undefined,
+      hours:   hours   ?? undefined,
+      status:  status  as 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY' | undefined,
+      notes:   notes   ?? undefined,
     })
-    return NextResponse.json(record)
+    return NextResponse.json({ success: true })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'Failed to update attendance' }, { status: 500 })
@@ -85,7 +85,8 @@ export async function DELETE(req: NextRequest, _ctx: { params: { id: string } })
     const { searchParams } = new URL(req.url)
     const recordId = searchParams.get('recordId')
     if (!recordId) return NextResponse.json({ error: 'recordId required' }, { status: 400 })
-    await (prisma as any).internAttendance.delete({ where: { id: recordId } })
+    const convex = getConvexClient()
+    await convex.mutation(api.internAttendance.remove, { id: recordId as Id<'internAttendance'> })
     return NextResponse.json({ success: true })
   } catch (e) {
     console.error(e)

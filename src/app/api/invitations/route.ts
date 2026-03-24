@@ -1,9 +1,10 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 // POST /api/invitations — create admin account(s) directly (invite-by-account)
 export async function POST(req: NextRequest) {
@@ -16,19 +17,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const convex  = getConvexClient()
     const created = await Promise.all(
       emails.map(async (username: string) => {
         const tempPassword = randomBytes(8).toString('hex')
         const hash = await bcrypt.hash(tempPassword, 12)
-        const record = await prisma.admin.create({
-          data: { username, password: hash, name: username, role: 'STAFF' },
-          select: { id: true, username: true, name: true, role: true, createdAt: true },
+        const id = await convex.mutation(api.admins.create, {
+          username: username.trim().toLowerCase(),
+          passwordHash: hash,
+          name: username,
+          role: 'STAFF',
         })
         return {
-          id:           record.id,
-          emailAddress: record.username,
+          id,
+          emailAddress: username,
           status:       'pending' as const,
-          createdAt:    record.createdAt.toISOString(),
+          createdAt:    new Date().toISOString(),
           tempPassword,
         }
       })
@@ -46,16 +50,14 @@ export async function GET(req: NextRequest) {
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const admins = await prisma.admin.findMany({
-      select: { id: true, username: true, name: true, role: true, createdAt: true },
-      orderBy: { createdAt: 'desc' },
-    })
+    const convex = getConvexClient()
+    const admins  = await convex.query(api.admins.getAll)
     return NextResponse.json({
       invitations: admins.map(a => ({
         id:           a.id,
         emailAddress: a.username,
         status:       'accepted' as const,
-        createdAt:    a.createdAt.toISOString(),
+        createdAt:    new Date(a.lastLoginAt ?? 0).toISOString(),
       }))
     })
   } catch (err) {
