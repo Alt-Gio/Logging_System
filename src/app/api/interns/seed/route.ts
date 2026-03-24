@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function POST(req: NextRequest) {
   try {
-    // Check if interns already exist
-    const existingCount = await (prisma as any).intern.count()
+    const convex        = getConvexClient()
+    const existingAll   = await convex.query(api.interns.getAll)
+    const existingCount = existingAll.length
     if (existingCount > 0) {
-      return NextResponse.json({ 
-        message: 'Interns already exist in database', 
-        count: existingCount 
-      }, { status: 200 })
+      return NextResponse.json({ message: 'Interns already exist in database', count: existingCount }, { status: 200 })
     }
 
     const today = new Date()
@@ -79,54 +78,36 @@ export async function POST(req: NextRequest) {
     const createdInterns = []
 
     for (const internData of sampleInterns) {
-      const intern = await (prisma as any).intern.create({
-        data: {
-          ...internData,
-          startDate,
-          endDate,
-        },
+      const internId = await convex.mutation(api.interns.create, {
+        ...internData,
+        startDate: startDate.getTime(),
+        endDate:   endDate.getTime(),
       })
 
-      // Create sample attendance records for the past 2 weeks
-      const attendanceRecords = []
+      let attendanceCount = 0
       for (let i = 14; i >= 1; i--) {
         const date = new Date(today)
         date.setDate(today.getDate() - i)
-        
-        // Skip weekends
         if (date.getDay() === 0 || date.getDay() === 6) continue
-
-        // Random attendance pattern (90% present)
         if (Math.random() > 0.1) {
           const timeIn = new Date(date)
           timeIn.setHours(8, Math.floor(Math.random() * 30), 0, 0)
-          
           const timeOut = new Date(date)
           timeOut.setHours(17, Math.floor(Math.random() * 30), 0, 0)
-          
           const hours = Math.round(((timeOut.getTime() - timeIn.getTime()) / 3600000) * 100) / 100
-
-          attendanceRecords.push({
-            internId: intern.id,
-            date,
-            timeIn,
-            timeOut,
+          await convex.mutation(api.internAttendance.create, {
+            internId,
+            date:    date.getTime(),
+            timeIn:  timeIn.getTime(),
+            timeOut: timeOut.getTime(),
             hours,
-            status: 'PRESENT',
+            status:  'PRESENT',
           })
+          attendanceCount++
         }
       }
 
-      if (attendanceRecords.length > 0) {
-        await (prisma as any).internAttendance.createMany({
-          data: attendanceRecords,
-        })
-      }
-
-      createdInterns.push({
-        name: intern.fullName,
-        attendanceCount: attendanceRecords.length,
-      })
+      createdInterns.push({ name: internData.fullName, attendanceCount })
     }
 
     return NextResponse.json({

@@ -1,47 +1,33 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function GET() {
   try {
-    // Get total count
-    const totalCount = await (prisma as any).intern.count()
-    
-    // Get count by status
-    const activeCount = await (prisma as any).intern.count({ where: { status: 'ACTIVE' } })
-    const completedCount = await (prisma as any).intern.count({ where: { status: 'COMPLETED' } })
-    const inactiveCount = await (prisma as any).intern.count({ where: { status: 'INACTIVE' } })
-    
-    // Get all interns (limited to 10 for safety)
-    const allInterns = await (prisma as any).intern.findMany({
-      take: 10,
-      select: {
-        id: true,
-        fullName: true,
-        school: true,
-        status: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' }
-    })
+    const convex   = getConvexClient()
+    const all      = await convex.query(api.interns.getAll)
+    const total    = all.length
+    const active   = all.filter(i => i.status === 'ACTIVE').length
+    const completed = all.filter(i => i.status === 'COMPLETED').length
+    const inactive = all.filter(i => i.status === 'INACTIVE').length
+    const sample   = all.slice(0, 10).map(i => ({
+      id: i._id, fullName: i.fullName, school: i.school,
+      status: i.status, createdAt: i._creationTime,
+    }))
 
     return NextResponse.json({
-      counts: {
-        total: totalCount,
-        active: activeCount,
-        completed: completedCount,
-        inactive: inactiveCount,
-      },
-      sample: allInterns,
-      message: totalCount === 0 
+      counts: { total, active, completed, inactive },
+      sample,
+      message: total === 0
         ? 'No interns found. Run POST /api/interns/seed to create sample data.'
-        : `Found ${totalCount} intern(s) in database`
+        : `Found ${total} intern(s) in database`,
     })
   } catch (e) {
     console.error('[DEBUG] Error:', e)
-    return NextResponse.json({ 
-      error: 'Database error', 
+    return NextResponse.json({
+      error: 'Database error',
       details: String(e),
-      message: 'Check if DATABASE_URL is configured correctly'
+      message: 'Check if CONVEX_URL is configured correctly',
     }, { status: 500 })
   }
 }
