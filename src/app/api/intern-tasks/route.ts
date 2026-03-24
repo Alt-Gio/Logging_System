@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const internId = searchParams.get('internId')
+    const convex   = getConvexClient()
 
-    const tasks = await (prisma as any).internTask.findMany({
-      where: internId
-        ? { OR: [{ internId }, { internId: null }] }
-        : { internId: null },
-      orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
-    })
+    if (internId) {
+      const tasks = await convex.query(api.internTasks.getTasksForIntern, {
+        internId: internId as Id<'interns'>,
+      })
+      return NextResponse.json(tasks)
+    }
+    const tasks = await convex.query(api.internTasks.getAllTasks)
     return NextResponse.json(tasks)
   } catch (e) {
     console.error('[intern-tasks GET]', e)
@@ -21,17 +25,16 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { taskId, isCompleted } = await req.json()
+    const { taskId, status, isCompleted } = await req.json()
     if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
 
-    const task = await (prisma as any).internTask.update({
-      where: { id: taskId },
-      data: {
-        status: isCompleted ? 'COMPLETED' : 'PENDING',
-        completedAt: isCompleted ? new Date() : null,
-      },
+    const convex    = getConvexClient()
+    const newStatus = status ?? (isCompleted ? 'COMPLETED' : 'PENDING')
+    await convex.mutation(api.internTasks.updateTaskStatus, {
+      taskId: taskId as Id<'internTasks'>,
+      status: newStatus as 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
     })
-    return NextResponse.json(task)
+    return NextResponse.json({ success: true })
   } catch (e) {
     console.error('[intern-tasks PATCH]', e)
     return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })

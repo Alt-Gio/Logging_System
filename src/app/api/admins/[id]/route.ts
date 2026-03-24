@@ -1,8 +1,9 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth, hashPassword, verifyPassword } from '@/lib/auth'
-import { audit } from '@/lib/audit'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 import { z } from 'zod'
 
 const UpdateAdminSchema = z.object({
@@ -27,38 +28,37 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     const { name, role, newPassword, oldPassword } = parsed.data
-    const updateData: Record<string, unknown> = {}
-    if (name) updateData.name = name
-    if (role && isSuperAdmin) updateData.role = role
+    const convex = getConvexClient()
 
     if (newPassword) {
       if (isSelf) {
         if (!oldPassword) return NextResponse.json({ error: 'Current password required' }, { status: 400 })
-        const target = await prisma.admin.findUnique({ where: { id: params.id } })
+        const target = await convex.query(api.admins.getById, { id: params.id as Id<'admins'> })
         if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-        const valid = await verifyPassword(oldPassword, target.password)
+        const valid = await verifyPassword(oldPassword, target.passwordHash)
         if (!valid) return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
       } else if (!isSuperAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
-      updateData.password = await hashPassword(newPassword)
+      await convex.mutation(api.admins.updatePassword, {
+        id:           params.id as Id<'admins'>,
+        passwordHash: await hashPassword(newPassword),
+      })
     }
 
-    if (Object.keys(updateData).length === 0) {
+    if (name || (role && isSuperAdmin)) {
+      await convex.mutation(api.admins.update, {
+        id:   params.id as Id<'admins'>,
+        ...(name              && { name }),
+        ...(role && isSuperAdmin && { role }),
+      })
+    }
+
+    if (!name && !role && !newPassword) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }
 
-    const updated = await prisma.admin.update({
-      where: { id: params.id },
-      data: updateData,
-      select: { id: true, username: true, name: true, role: true },
-    })
-
-    await audit('CHANGE_SETTING', {
-      req, adminId: admin.id, target: params.id,
-      detail: { action: 'UPDATE_ADMIN', changed: Object.keys(updateData).filter(k => k !== 'password') },
-    })
-    return NextResponse.json(updated)
+    return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[admins/PATCH]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 })
@@ -72,8 +72,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     if (admin.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (admin.id === params.id) return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 })
 
-    await prisma.admin.delete({ where: { id: params.id } })
-    await audit('CHANGE_SETTING', { req, adminId: admin.id, target: params.id, detail: { action: 'DELETE_ADMIN' } })
+    const convex = getConvexClient()
+    await convex.mutation(api.admins.remove, { id: params.id as Id<'admins'> })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[admins/DELETE]', err instanceof Error ? err.message : err)

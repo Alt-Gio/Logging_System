@@ -1,8 +1,8 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth, hashPassword } from '@/lib/auth'
-import { audit } from '@/lib/audit'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 import { z } from 'zod'
 
 const CreateAdminSchema = z.object({
@@ -14,56 +14,42 @@ const CreateAdminSchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-  const admin = await requireAuth(req)
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (admin.role === 'STAFF') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const admin = await requireAuth(req)
+    if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (admin.role === 'STAFF') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const admins = await prisma.admin.findMany({
-    select: { id: true, username: true, name: true, role: true, lastLoginAt: true, createdAt: true },
-    orderBy: { createdAt: 'asc' },
-  })
-  return NextResponse.json(admins)
+    const convex  = getConvexClient()
+    const admins  = await convex.query(api.admins.getAll)
+    return NextResponse.json(admins)
   } catch (err) {
-    console.error('[API]', err instanceof Error ? err.message : err)
+    console.error('[admins/GET]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 })
   }
-
 }
 
 export async function POST(req: NextRequest) {
   try {
-  const admin = await requireAuth(req)
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (admin.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Only Super Admin can create accounts' }, { status: 403 })
+    const admin = await requireAuth(req)
+    if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (admin.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Only Super Admin can create accounts' }, { status: 403 })
 
-  const parsed = CreateAdminSchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 })
-  }
+    const parsed = CreateAdminSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 })
+    }
 
-  const exists = await prisma.admin.findUnique({ where: { username: parsed.data.username } })
-  if (exists) return NextResponse.json({ error: 'Username already taken' }, { status: 409 })
-
-  const newAdmin = await prisma.admin.create({
-    data: {
-      username: parsed.data.username,
-      password: await hashPassword(parsed.data.password),
-      name:     parsed.data.name,
-      role:     parsed.data.role,
-    },
-    select: { id: true, username: true, name: true, role: true, createdAt: true },
-  })
-
-  await audit('CHANGE_SETTING', {
-    req, adminId: admin.id,
-    target: newAdmin.id,
-    detail: { action: 'CREATE_ADMIN', username: newAdmin.username, role: newAdmin.role },
-  })
-
-  return NextResponse.json(newAdmin, { status: 201 })
+    const convex = getConvexClient()
+    const id = await convex.mutation(api.admins.create, {
+      username:     parsed.data.username.toLowerCase(),
+      passwordHash: await hashPassword(parsed.data.password),
+      name:         parsed.data.name,
+      role:         parsed.data.role,
+    })
+    return NextResponse.json({ _id: id, username: parsed.data.username, name: parsed.data.name, role: parsed.data.role }, { status: 201 })
   } catch (err) {
-    console.error('[API]', err instanceof Error ? err.message : err)
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('already exists')) return NextResponse.json({ error: 'Username already taken' }, { status: 409 })
+    console.error('[admins/POST]', msg)
     return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 })
   }
-
 }

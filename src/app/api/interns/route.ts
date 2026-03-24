@@ -1,34 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
-
-    console.log('[API] Fetching interns with status:', status || 'ALL')
-
-    const interns = await (prisma as any).intern.findMany({
-      where: status ? { status } : undefined,
-      include: {
-        attendance: { orderBy: { date: 'desc' }, take: 30 },
-        tasks: { orderBy: { createdAt: 'desc' } },
-        documents: { orderBy: { createdAt: 'desc' } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    console.log(`[API] Found ${interns.length} interns`)
-
-    // Compute total logged hours for each intern
-    const enriched = interns.map((intern: any) => {
-      const totalHours = intern.attendance.reduce((sum: number, a: any) => sum + (a.hours ?? 0), 0)
-      return { ...intern, totalHours }
-    })
-
-    return NextResponse.json(enriched)
+    const convex  = getConvexClient()
+    const interns = await convex.query(api.interns.getAll, status ? { status } : {})
+    return NextResponse.json(interns)
   } catch (e) {
-    console.error('[API] Error fetching interns:', e)
+    console.error('[interns/GET]', e)
     return NextResponse.json({ error: 'Failed to fetch interns', details: String(e) }, { status: 500 })
   }
 }
@@ -42,26 +24,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const intern = await (prisma as any).intern.create({
-      data: {
-        fullName,
-        school,
-        course,
-        department: department || null,
-        supervisor: supervisor || null,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        requiredHours: requiredHours ? parseInt(requiredHours) : 486,
-        email: email || null,
-        phone: phone || null,
-        photoUrl: photoUrl || null,
-        notes: notes || null,
-      },
+    const convex = getConvexClient()
+    const id = await convex.mutation(api.interns.create, {
+      fullName,
+      school,
+      course,
+      department:    department    || undefined,
+      supervisor:    supervisor    || undefined,
+      startDate:     new Date(startDate).getTime(),
+      endDate:       new Date(endDate).getTime(),
+      requiredHours: requiredHours ? parseInt(requiredHours) : 486,
+      status:        'ACTIVE',
+      email:         email    || undefined,
+      phone:         phone    || undefined,
+      photoUrl:      photoUrl || undefined,
+      notes:         notes    || undefined,
     })
-
-    return NextResponse.json(intern, { status: 201 })
+    return NextResponse.json({ _id: id }, { status: 201 })
   } catch (e) {
-    console.error(e)
+    console.error('[interns/POST]', e)
     return NextResponse.json({ error: 'Failed to create intern' }, { status: 500 })
   }
 }

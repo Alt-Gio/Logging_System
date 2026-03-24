@@ -52,6 +52,18 @@ export const updateLastLogin = mutation({
   },
 })
 
+export const update = mutation({
+  args: {
+    id:   v.id("admins"),
+    name: v.optional(v.string()),
+    role: v.optional(v.union(v.literal("SUPER_ADMIN"), v.literal("ADMIN"), v.literal("STAFF"))),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...patch } = args
+    await ctx.db.patch(id, patch)
+  },
+})
+
 export const updatePassword = mutation({
   args: { id: v.id("admins"), passwordHash: v.string() },
   handler: async (ctx, args) => {
