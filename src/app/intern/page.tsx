@@ -1,19 +1,11 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
+import { useState, useEffect, useRef } from 'react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Screen = 'select' | 'home' | 'active' | 'timeout'
-type InternBasic = {
-  id: string; fullName: string; school: string
-  department: string | null; photoUrl: string | null
-}
-type Task = {
-  id: string; title: string; status: string
-  priority: string; dueDate: string | null
-  description: string | null; completedAt: string | null
-}
-type Session  = { id: string; internId: string; timeIn: string; status: string }
-type Announce = { id: string; title: string; content?: string; createdBy?: string }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function fmtElapsed(ms: number) {
@@ -26,8 +18,8 @@ function fmtElapsed(ms: number) {
 function fmtClock(d = new Date()) {
   return d.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false })
 }
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12: true })
+function fmtTime(ms: number) {
+  return new Date(ms).toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12: true })
 }
 function fmtHours(ms: number) {
   const h  = ms / 3_600_000
@@ -53,153 +45,119 @@ const INTERN_KEY = 'dtc_intern_portal_id'
 // ── Main component ─────────────────────────────────────────────────────────
 export default function InternPortal() {
   const [screen,   setScreen]   = useState<Screen>('select')
-  const [interns,  setInterns]  = useState<InternBasic[]>([])
+  const [internId, setInternId] = useState<Id<'interns'> | null>(null)
   const [search,   setSearch]   = useState('')
-  const [intern,   setIntern]   = useState<InternBasic | null>(null)
-  const [tasks,    setTasks]    = useState<Task[]>([])
-  const [session,  setSession]  = useState<Session | null>(null)
-  const [announce, setAnnounce] = useState<Announce | null>(null)
   const [elapsed,  setElapsed]  = useState(0)
   const [clock,    setClock]    = useState(fmtClock())
   const [note,     setNote]     = useState('')
-  const [loading,  setLoading]  = useState(false)
   const [saving,   setSaving]   = useState(false)
   const [toast,    setToast]    = useState('')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const sessionRef = useRef<Session | null>(null)
-  sessionRef.current = session
+
+  // ── Convex real-time queries ──────────────────────────────────────────────
+  const interns       = useQuery(api.interns.getAll, { status: 'ACTIVE' })
+  const announcements = useQuery(api.announcements.getActive)
+  const activeSession = useQuery(
+    api.internSessions.getActiveSession,
+    internId ? { internId } : 'skip',
+  )
+  const tasks = useQuery(
+    api.internTasks.getTasksForIntern,
+    internId ? { internId } : 'skip',
+  )
+
+  // ── Convex mutations ──────────────────────────────────────────────────────
+  const timeInMutation     = useMutation(api.internSessions.timeIn)
+  const timeOutMutation    = useMutation(api.internSessions.timeOut)
+  const updateTaskMutation = useMutation(api.internTasks.updateTaskStatus)
+
+  // ── Derived values ────────────────────────────────────────────────────────
+  const intern   = interns?.find(i => i._id === internId) ?? null
+  const announce = announcements?.[0] ?? null
+  const done     = (tasks ?? []).filter(t => t.status === 'COMPLETED')
+  const mins     = minsUntil5PM()
+  const fname    = intern?.fullName.split(' ')[0] ?? ''
+  const loading  = internId !== null && activeSession === undefined
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3200) }
 
-  // ── Tick ──
+  // ── Clock tick ───────────────────────────────────────────────────────────
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setClock(fmtClock())
-      if (sessionRef.current) {
-        setElapsed(Date.now() - new Date(sessionRef.current.timeIn).getTime())
-      }
+      if (activeSession) setElapsed(Date.now() - activeSession.timeIn)
     }, 1000)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession?._id])
 
-  // ── Boot ──
+  // ── Restore intern from localStorage once interns list loads ─────────────
   useEffect(() => {
-    fetchInterns()
-    fetchAnnounce()
-  }, [])
-
-  // ── Restore saved intern after list loads ──
-  useEffect(() => {
-    if (interns.length === 0) return
+    if (!interns || interns.length === 0) return
     const saved = localStorage.getItem(INTERN_KEY)
     if (saved) {
-      const found = interns.find(i => i.id === saved)
-      if (found) selectIntern(found)
+      const found = interns.find(i => i._id === saved)
+      if (found) { setInternId(found._id); setScreen('home') }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interns])
 
-  const fetchInterns = useCallback(async () => {
-    try {
-      const r = await fetch('/api/interns')
-      const d = await r.json()
-      if (Array.isArray(d)) setInterns(d.filter((x: InternBasic) => x.id))
-    } catch {}
-  }, [])
+  // ── React to active session loading — switch screen ──────────────────────
+  useEffect(() => {
+    if (!internId || activeSession === undefined) return
+    if (activeSession) {
+      setElapsed(Date.now() - activeSession.timeIn)
+      setScreen(prev => prev === 'timeout' ? 'timeout' : 'active')
+    } else {
+      setScreen(prev => (prev === 'select' || prev === 'timeout') ? 'home' : prev)
+    }
+  }, [internId, activeSession?._id])
 
-  const fetchAnnounce = useCallback(async () => {
-    try {
-      const r = await fetch('/api/announcements')
-      const d = await r.json()
-      if (Array.isArray(d) && d.length > 0) setAnnounce(d[0])
-    } catch {}
-  }, [])
-
-  const selectIntern = useCallback(async (i: InternBasic) => {
-    setIntern(i)
-    localStorage.setItem(INTERN_KEY, i.id)
-    setLoading(true)
-    try {
-      const [sr, tr] = await Promise.all([
-        fetch(`/api/intern-sessions?internId=${i.id}`),
-        fetch(`/api/interns/${i.id}/tasks`),
-      ])
-      const sd = await sr.json()
-      const td = await tr.json()
-      if (sd?.id) {
-        setSession(sd)
-        setElapsed(Date.now() - new Date(sd.timeIn).getTime())
-        setScreen('active')
-      } else {
-        setSession(null)
-        setScreen('home')
-      }
-      if (Array.isArray(td)) setTasks(td)
-    } catch { showToast('Failed to load data') }
-    setLoading(false)
-  }, [])
-
-  const handleTimeIn = async () => {
-    if (!intern) return
-    setLoading(true)
-    try {
-      const r = await fetch('/api/intern-sessions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ internId: intern.id }),
-      })
-      const s = await r.json()
-      setSession(s)
-      setElapsed(0)
-      setScreen('active')
-      showToast('Session started ✓')
-    } catch { showToast('Failed to start session') }
-    setLoading(false)
+  // ── Handlers ─────────────────────────────────────────────────────────────
+  const selectIntern = (i: NonNullable<typeof interns>[number]) => {
+    setInternId(i._id)
+    localStorage.setItem(INTERN_KEY, i._id)
+    setScreen('home')
   }
 
-  const handleToggleTask = async (task: Task) => {
-    const newStatus = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED'
-    setTasks(t => t.map(x => x.id === task.id
-      ? { ...x, status: newStatus, completedAt: newStatus === 'COMPLETED' ? new Date().toISOString() : null }
-      : x
-    ))
+  const handleTimeIn = async () => {
+    if (!internId) return
     try {
-      await fetch(`/api/interns/${intern!.id}/tasks`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, status: newStatus }),
+      await timeInMutation({ internId })
+      setElapsed(0)
+      showToast('Session started ✓')
+    } catch { showToast('Failed to start session') }
+  }
+
+  const handleToggleTask = async (task: NonNullable<typeof tasks>[number]) => {
+    const newStatus = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED'
+    try {
+      await updateTaskMutation({
+        taskId: task._id,
+        status: newStatus as 'PENDING' | 'COMPLETED',
       })
-    } catch {
-      setTasks(t => t.map(x => x.id === task.id ? task : x))
-    }
+    } catch { showToast('Failed to update task') }
   }
 
   const handleSubmitSignOut = async () => {
-    if (!session || !note.trim()) return
+    if (!activeSession || !note.trim()) return
     setSaving(true)
     try {
-      const r = await fetch(`/api/intern-sessions/${session.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ progressNote: note.trim(), closedBy: 'intern' }),
+      await timeOutMutation({
+        sessionId:    activeSession._id,
+        progressNote: note.trim(),
+        closedBy:     'intern',
       })
-      if (r.ok) {
-        setSession(null); setElapsed(0); setNote('')
-        const tr = await fetch(`/api/interns/${intern!.id}/tasks`)
-        const td = await tr.json()
-        if (Array.isArray(td)) setTasks(td)
-        setScreen('home')
-        showToast('Signed out successfully ✓')
-      } else { showToast('Failed to sign out. Try again.') }
+      setNote('')
+      setScreen('home')
+      showToast('Signed out successfully ✓')
     } catch { showToast('Network error') }
     setSaving(false)
   }
 
   const clearIntern = () => {
-    setIntern(null); setSession(null); setTasks([]); setNote('')
+    setInternId(null); setNote('')
     setScreen('select'); localStorage.removeItem(INTERN_KEY)
   }
-
-  const done  = tasks.filter(t => t.status === 'COMPLETED')
-  const mins  = minsUntil5PM()
-  const fname = intern?.fullName.split(' ')[0] ?? ''
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
@@ -241,11 +199,11 @@ export default function InternPortal() {
           />
 
           <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-0.5">
-            {interns.filter(i =>
+            {(interns ?? []).filter(i =>
               i.fullName.toLowerCase().includes(search.toLowerCase()) ||
               (i.school || '').toLowerCase().includes(search.toLowerCase())
             ).map(i => (
-              <button key={i.id} onClick={() => selectIntern(i)} disabled={loading}
+              <button key={i._id} onClick={() => selectIntern(i)} disabled={loading}
                 className="w-full flex items-center gap-3 p-3.5 bg-white rounded-2xl border-2
                            border-gray-100 hover:border-[#0038A8] hover:bg-blue-50
                            transition-all text-left active:scale-95">
@@ -260,8 +218,8 @@ export default function InternPortal() {
                 <span className="ml-auto text-gray-300 text-lg">›</span>
               </button>
             ))}
-            {interns.length === 0 && (
-              <p className="text-center text-gray-400 text-sm py-12">No interns registered yet.</p>
+            {(interns ?? []).length === 0 && (
+              <p className="text-center text-gray-400 text-sm py-12">{interns === undefined ? 'Loading…' : 'No interns registered yet.'}</p>
             )}
           </div>
         </div>
@@ -316,12 +274,12 @@ export default function InternPortal() {
           </div>
 
           {/* Tasks */}
-          {tasks.length > 0 && (
+          {(tasks ?? []).length > 0 && (
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">My tasks today</p>
               <div className="space-y-2">
-                {tasks.map(t => (
-                  <div key={t.id} className="flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm">
+                {(tasks ?? []).map(t => (
+                  <div key={t._id} className="flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm">
                     <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all
                       ${t.status === 'COMPLETED' ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}>
                       {t.status === 'COMPLETED' && <span className="text-white text-[10px] font-extrabold">✓</span>}
@@ -337,7 +295,7 @@ export default function InternPortal() {
               </div>
             </div>
           )}
-          {tasks.length === 0 && (
+          {tasks !== undefined && tasks.length === 0 && (
             <div className="text-center text-gray-400 text-sm py-4">No tasks assigned yet.</div>
           )}
 
@@ -349,7 +307,7 @@ export default function InternPortal() {
       )}
 
       {/* ── ACTIVE SESSION ────────────────────────────────── */}
-      {screen === 'active' && intern && session && (
+      {screen === 'active' && intern && activeSession && (
         <div className="w-full max-w-sm mx-auto px-5 pt-6 space-y-4">
 
           {/* Header */}
@@ -367,7 +325,7 @@ export default function InternPortal() {
             <p className="text-5xl font-mono font-extrabold text-white tracking-tight tabular-nums">
               {fmtElapsed(elapsed)}
             </p>
-            <p className="text-white/60 text-xs mt-2">Started {fmtTime(session.timeIn)}</p>
+            <p className="text-white/60 text-xs mt-2">Started {fmtTime(activeSession.timeIn)}</p>
           </div>
 
           {/* 5PM warning */}
@@ -388,19 +346,19 @@ export default function InternPortal() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tasks</p>
-              {tasks.length > 0 && (
+              {(tasks ?? []).length > 0 && (
                 <span className="text-xs bg-[#0038A8]/10 text-[#0038A8] font-bold px-3 py-1 rounded-full">
-                  {done.length} of {tasks.length} done
+                  {done.length} of {(tasks ?? []).length} done
                 </span>
               )}
             </div>
 
-            {tasks.length === 0 ? (
+            {(tasks ?? []).length === 0 ? (
               <div className="text-center text-gray-400 text-sm py-6">No tasks assigned.</div>
             ) : (
               <div className="space-y-2">
-                {tasks.map(t => (
-                  <button key={t.id} onClick={() => handleToggleTask(t)}
+                {(tasks ?? []).map(t => (
+                  <button key={t._id} onClick={() => handleToggleTask(t)}
                     className="w-full flex items-center gap-3 bg-white rounded-2xl p-3.5 border border-gray-100
                                shadow-sm text-left active:scale-95 transition-all">
                     <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all
@@ -434,7 +392,7 @@ export default function InternPortal() {
       )}
 
       {/* ── TIME OUT / SIGN OUT ───────────────────────────── */}
-      {screen === 'timeout' && intern && session && (
+      {screen === 'timeout' && intern && activeSession && (
         <div className="w-full max-w-sm mx-auto px-5 pt-6 space-y-5">
 
           {/* Header */}
@@ -446,7 +404,7 @@ export default function InternPortal() {
           {/* Summary */}
           <div className="bg-gray-900 rounded-2xl p-4">
             <p className="text-white font-bold text-sm">
-              End of day — {fmtTime(session.timeIn)} to {new Date().toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12: true })}
+              End of day — {fmtTime(activeSession.timeIn)} to {new Date().toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit', hour12: true })}
             </p>
             <p className="text-gray-400 text-xs mt-1">{fmtHours(elapsed)}</p>
           </div>
@@ -467,12 +425,12 @@ export default function InternPortal() {
           </div>
 
           {/* Task summary */}
-          {tasks.length > 0 && (
+          {(tasks ?? []).length > 0 && (
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Tasks completed today</p>
               <div className="flex flex-wrap gap-2">
-                {tasks.map(t => (
-                  <span key={t.id} className={`text-xs font-bold px-3 py-1.5 rounded-full ${
+                {(tasks ?? []).map(t => (
+                  <span key={t._id} className={`text-xs font-bold px-3 py-1.5 rounded-full ${
                     t.status === 'COMPLETED'
                       ? 'bg-green-100 text-green-700'
                       : 'bg-gray-100 text-gray-400 line-through'
