@@ -1,3 +1,4 @@
+import { ConvexClientProvider } from "@/providers/ConvexClientProvider"
 import type { Metadata, Viewport } from 'next'
 import { Providers } from './providers'
 import './globals.css'
@@ -30,8 +31,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           />
         </head>
         <body>
+		<ConvexClientProvider>
           <BgStyle/>
           {children}
+		</ConvexClientProvider>
         </body>
       </html>
     </Providers>
