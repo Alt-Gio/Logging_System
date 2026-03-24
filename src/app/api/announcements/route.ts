@@ -1,56 +1,41 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
-import { audit } from '@/lib/audit'
-import { AnnouncementSchema } from '@/lib/validation'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
-// Public GET — front page reads active announcements within date range
+// Public GET — active announcements (client pages use useQuery directly; this serves SSR / legacy callers)
 export async function GET() {
   try {
-  const now = new Date()
-  const announcements = await prisma.announcement.findMany({
-    where: {
-      active: true,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      AND: [
-        { OR: [{ dateStart: null }, { dateStart: { lte: now } }] },
-        { OR: [{ dateEnd: null }, { dateEnd: { gte: now } }] },
-      ],
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 10,
-  })
-  return NextResponse.json(announcements)
+    const convex = getConvexClient()
+    const announcements = await convex.query(api.announcements.getActive)
+    return NextResponse.json(announcements)
   } catch (err) {
-    console.error('[API]', err instanceof Error ? err.message : err)
+    console.error('[announcements/GET]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 })
   }
-
 }
 
 export async function POST(req: NextRequest) {
   try {
-  const admin = await requireAuth(req)
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const admin = await requireAuth(req)
+    if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const parsed = AnnouncementSchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 })
-  }
-
-  const ann = await prisma.announcement.create({
-    data: {
-      ...parsed.data,
-      expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+    const body = await req.json()
+    const convex = getConvexClient()
+    const id = await convex.mutation(api.announcements.create, {
+      title:     body.title,
+      body:      body.body ?? body.content ?? '',
+      type:      body.type  ?? 'INFO',
+      active:    body.active ?? true,
+      dateStart: body.dateStart ? new Date(body.dateStart).getTime() : undefined,
+      dateEnd:   body.dateEnd   ? new Date(body.dateEnd).getTime()   : undefined,
+      expiresAt: body.expiresAt ? new Date(body.expiresAt).getTime() : undefined,
       createdBy: admin.name,
-    },
-  })
-  await audit('CHANGE_SETTING', { req, adminId: admin.id, target: ann.id, detail: { action: 'CREATE_ANNOUNCEMENT', title: ann.title } })
-  return NextResponse.json(ann, { status: 201 })
+    })
+    return NextResponse.json({ _id: id }, { status: 201 })
   } catch (err) {
-    console.error('[API]', err instanceof Error ? err.message : err)
+    console.error('[announcements/POST]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 })
   }
-
 }
