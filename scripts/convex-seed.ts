@@ -16,7 +16,7 @@ if (!CONVEX_URL) {
 
 // Import api after _generated/ exists
 async function main() {
-  const { api } = await import('./_generated/api')
+  const { api } = await import('../convex/_generated/api')
   const client  = new ConvexHttpClient(CONVEX_URL!)
 
   const existing = await client.query(api.admins.getByUsername, { username: 'admin' })
