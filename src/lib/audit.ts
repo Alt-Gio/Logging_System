@@ -1,5 +1,4 @@
 // src/lib/audit.ts — write to AdminLog table
-import { prisma } from './prisma'
 import { NextRequest } from 'next/server'
 
 type AuditAction =
@@ -24,14 +23,14 @@ export async function audit(
       ?? opts.req?.headers.get('x-real-ip')
       ?? 'unknown'
 
-    await prisma.adminLog.create({
-      data: {
-        action,
-        adminId: opts.adminId ?? null,
-        target:  opts.target  ?? null,
-        detail:  opts.detail ? (typeof opts.detail === 'string' ? opts.detail : JSON.stringify(opts.detail)) : null,
-        ip,
-      },
+    const { getConvexClient } = await import('./convex-client')
+    const { api }             = await import('@/convex/_generated/api')
+    await getConvexClient().mutation(api.adminLogs.log, {
+      action,
+      adminId: opts.adminId as import('@/convex/_generated/dataModel').Id<'admins'> | undefined,
+      target:  opts.target  ?? undefined,
+      detail:  opts.detail ? (typeof opts.detail === 'string' ? opts.detail : JSON.stringify(opts.detail)) : undefined,
+      ip,
     })
   } catch (err) {
     // Audit failures must never break the main request

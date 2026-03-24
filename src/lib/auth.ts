@@ -3,7 +3,6 @@ import bcrypt from 'bcryptjs'
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
-import { prisma } from './prisma'
 
 // ── Password hashing ──────────────────────────────────────────────────────────
 export async function hashPassword(password: string): Promise<string> {
@@ -51,10 +50,12 @@ export async function getSession() {
     if (!token) return null
     const decoded = await verifyToken(token)
     if (!decoded) return null
-    return await prisma.admin.findUnique({
-      where: { id: decoded.adminId },
-      select: { id: true, username: true, name: true, role: true },
+    const { getConvexClient } = await import('./convex-client')
+    const { api }             = await import('@/convex/_generated/api')
+    const admin = await getConvexClient().query(api.admins.getById, {
+      id: decoded.adminId as import('@/convex/_generated/dataModel').Id<'admins'>,
     })
+    return admin ? { id: admin._id, username: admin.username, name: admin.name, role: admin.role } : null
   } catch {
     return null
   }
