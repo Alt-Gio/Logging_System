@@ -1,23 +1,23 @@
 /**
  * Convex seed script — creates the first SUPER_ADMIN account.
- * Run with: npm run convex:seed
+ * Run with:  npm run convex:seed
  *
- * Requires NEXT_PUBLIC_CONVEX_URL to be set in your environment.
- * Run ONCE after `npx convex dev` has generated _generated/ and pushed the schema.
+ * Reads CONVEX_URL and CONVEX_ADMIN_KEY from .env.local / .env.
+ * Run ONCE after `npm run convex:push` has deployed the schema.
  */
+import './_loadEnv'
 import { ConvexHttpClient } from 'convex/browser'
 import bcrypt from 'bcryptjs'
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL
-if (!CONVEX_URL) {
-  console.error('❌  NEXT_PUBLIC_CONVEX_URL is not set')
-  throw new Error("NEXT_PUBLIC_CONVEX_URL is not set")
+const url = process.env.CONVEX_URL ?? process.env.NEXT_PUBLIC_CONVEX_URL
+if (!url) {
+  console.error('❌  CONVEX_URL is not set. Copy .env.local.example → .env.local and fill it in.')
+  process.exit(1)
 }
 
-// Import api after _generated/ exists
 async function main() {
   const { api } = await import('../convex/_generated/api')
-  const client  = new ConvexHttpClient(CONVEX_URL!)
+  const client  = new ConvexHttpClient(url!)
 
   const existing = await client.query(api.admins.getByUsername, { username: 'admin' })
   if (existing) {
@@ -33,11 +33,11 @@ async function main() {
     role:         'SUPER_ADMIN',
   })
 
-  console.log(`✅  Created SUPER_ADMIN:`)
-  console.log(`    username : admin`)
-  console.log(`    password : Dict2026`)
+  console.log('✅  Created SUPER_ADMIN:')
+  console.log('    username : admin')
+  console.log('    password : Dict2026  ← change this immediately')
   console.log(`    id       : ${id}`)
-  console.log(`\n    Sign in at /sign-in`)
+  console.log('\n    Sign in at /sign-in')
 }
 
-main().catch(e => { console.error(e); throw new Error("NEXT_PUBLIC_CONVEX_URL is not set") })
+main().catch(e => { console.error(e); process.exit(1) })

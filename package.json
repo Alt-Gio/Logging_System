@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "convex:dev": "convex dev --url http://127.0.0.1:3210",
-    "convex:push": "convex deploy --url http://127.0.0.1:3210",
+    "convex:dev": "tsx scripts/convex-dev.ts",
+    "convex:dev:once": "tsx scripts/convex-dev.ts --once",
+    "convex:push": "tsx scripts/convex-push.ts",
     "convex:codegen": "convex codegen",
     "build": "next build",
     "start": "next start",
