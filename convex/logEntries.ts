@@ -38,6 +38,34 @@ export const getActive = query({
   },
 })
 
+export const getById = query({
+  args: { id: v.id("logEntries") },
+  handler: async (ctx, args) => ctx.db.get(args.id),
+})
+
+export const update = mutation({
+  args: {
+    id:                   v.id("logEntries"),
+    fullName:             v.optional(v.string()),
+    agency:               v.optional(v.string()),
+    purpose:              v.optional(v.string()),
+    equipmentUsed:        v.optional(v.array(v.string())),
+    plannedDurationHours: v.optional(v.number()),
+    serviceType:          v.optional(v.union(v.literal("SELF_SERVICE"), v.literal("STAFF_ASSISTED"))),
+    staffNotes:           v.optional(v.string()),
+    satisfactionRating:   v.optional(v.number()),
+    photoUrl:             v.optional(v.string()),
+    photoDataUrl:         v.optional(v.string()),
+    timeIn:               v.optional(v.number()),
+    timeOut:              v.optional(v.number()),
+    archived:             v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...patch } = args
+    await ctx.db.patch(id, patch)
+  },
+})
+
 export const create = mutation({
   args: {
     fullName:             v.string(),
