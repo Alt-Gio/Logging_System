@@ -1,15 +1,15 @@
 export const dynamic = 'force-dynamic'
 // POST /api/sheets/interns — append intern registrations and attendance to Google Sheet
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function POST(req: NextRequest) {
   try {
-    const rows = await prisma.setting.findMany({
-      where: { key: { in: ['googleSheetId', 'googleServiceKey'] } },
-    })
+    const convex      = getConvexClient()
+    const allSettings = await convex.query(api.settings.getAll)
     const cfg: Record<string, string> = {}
-    for (const r of rows) cfg[r.key] = r.value
+    for (const r of allSettings) cfg[r.key] = r.value
 
     if (!cfg.googleSheetId || !cfg.googleServiceKey) {
       return NextResponse.json({ skipped: true, reason: 'Google Sheets not configured' })

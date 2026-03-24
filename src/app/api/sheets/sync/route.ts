@@ -1,25 +1,20 @@
 export const dynamic = 'force-dynamic'
 // POST /api/sheets/sync — push log entries to connected Google Sheet
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
 import { format } from 'date-fns'
-
-type LogRow = {
-  id: string; fullName: string; agency: string; purpose: string
-  equipmentUsed: string[]; serviceType: string; timeIn: Date; timeOut: Date | null
-  plannedDurationHours: number; satisfactionRating: number | null
-  staffNotes: string | null; pc: { name: string } | null
-}
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function POST(req: NextRequest) {
   const admin = await requireAuth(req)
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const rows = await prisma.setting.findMany({ where: { key: { in: ['googleSheetId','googleServiceKey'] } } })
+    const convex   = getConvexClient()
+    const allSettings = await convex.query(api.settings.getAll)
     const cfg: Record<string,string> = {}
-    for (const r of rows) cfg[r.key] = r.value
+    for (const r of allSettings) cfg[r.key] = r.value
 
     if (!cfg.googleSheetId)    return NextResponse.json({ error: 'Google Sheet ID not configured in Settings → Integrations.' }, { status: 400 })
     if (!cfg.googleServiceKey) return NextResponse.json({ error: 'Google Service Account key not configured.' }, { status: 400 })
@@ -29,13 +24,14 @@ export async function POST(req: NextRequest) {
     catch { return NextResponse.json({ error: 'Service account key is not valid JSON.' }, { status: 400 }) }
 
     const body = await req.json().catch(() => ({}))
-    const where: Record<string,unknown> = { archived: false }
-    if (body.from && body.to) where.timeIn = { gte: new Date(body.from), lte: new Date(body.to) }
-
-    const logs = await prisma.logEntry.findMany({
-      where, orderBy: { timeIn: 'asc' },
-      include: { pc: { select: { name: true } } },
-    }) as LogRow[]
+    let logs = await (body.from && body.to
+      ? convex.query(api.logEntries.getByDate, {
+          dateFrom: new Date(body.from).getTime(),
+          dateTo:   new Date(body.to).getTime(),
+        })
+      : convex.query(api.logEntries.getRecent, { limit: 5000, archived: false })
+    )
+    logs = logs.filter(l => !l.archived).sort((a, b) => a.timeIn - b.timeIn)
 
     const jwt   = await makeGoogleJWT(sa.client_email, sa.private_key)
     const token = await getGoogleAccessToken(jwt)
@@ -46,14 +42,13 @@ export async function POST(req: NextRequest) {
       'Date','Time In','Time Out','Duration (mins)','Satisfaction Rating','Staff Notes','Entry ID']
 
     const dataRows = logs.map((log, i) => {
-      const tout = log.timeOut ? new Date(log.timeOut) : null
-      const dur  = tout ? Math.round((tout.getTime() - new Date(log.timeIn).getTime()) / 60000) : ''
+      const dur = log.timeOut ? Math.round((log.timeOut - log.timeIn) / 60000) : ''
       return [i+1, log.fullName, log.agency, log.purpose,
-        log.equipmentUsed.join(', '), log.pc?.name || '',
+        log.equipmentUsed.join(', '), log.pcId || '',
         log.serviceType === 'STAFF_ASSISTED' ? 'Staff Assisted' : 'Self Service',
         format(new Date(log.timeIn),'yyyy-MM-dd'), format(new Date(log.timeIn),'hh:mm a'),
-        tout ? format(tout,'hh:mm a') : 'Active', dur,
-        log.satisfactionRating || '', log.staffNotes || '', log.id]
+        log.timeOut ? format(new Date(log.timeOut),'hh:mm a') : 'Active', dur,
+        log.satisfactionRating || '', log.staffNotes || '', log._id]
     })
 
     // Clear then write
