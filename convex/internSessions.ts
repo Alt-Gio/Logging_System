@@ -144,6 +144,34 @@ export const timeOut = mutation({
   },
 })
 
+export const closeSessions = mutation({
+  args: { secret: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const active = await ctx.db
+      .query("internSessions")
+      .withIndex("by_status", q => q.eq("status", "ACTIVE"))
+      .collect()
+    for (const s of active) {
+      const now         = Date.now()
+      const hoursLogged = (now - s.timeIn) / 3_600_000
+      await ctx.db.patch(s._id, {
+        timeOut:      now,
+        status:       "CLOSED",
+        progressNote: "Auto-closed at 5:00 PM by system",
+        closedBy:     "system",
+        hoursLogged:  Math.round(hoursLogged * 100) / 100,
+      })
+      const intern = await ctx.db.get(s.internId)
+      if (intern) {
+        await ctx.db.patch(s.internId, {
+          totalHoursLogged: (intern.totalHoursLogged ?? 0) + hoursLogged,
+        })
+      }
+    }
+    return { closed: active.length }
+  },
+})
+
 export const autoCloseAllSessions = internalMutation({
   args: {},
   handler: async (ctx) => {

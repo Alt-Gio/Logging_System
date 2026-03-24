@@ -1,9 +1,8 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
-import { audit } from '@/lib/audit'
-import { SettingsSchema } from '@/lib/validation'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 const DEFAULTS = {
   wifiSsid: 'DICT-DTC-Free', wifiPassword: '',
@@ -15,7 +14,8 @@ const DEFAULTS = {
 
 export async function GET() {
   try {
-    const rows = await prisma.setting.findMany()
+    const convex = getConvexClient()
+    const rows   = await convex.query(api.settings.getAll)
     const s = { ...DEFAULTS } as Record<string, string>
     for (const row of rows) s[row.key] = row.value
     return NextResponse.json(s)
@@ -28,24 +28,12 @@ export async function POST(req: NextRequest) {
   const admin = await requireAuth(req)
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const raw = await req.json()
-  const parsed = SettingsSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 })
+  const raw    = await req.json()
+  const convex = getConvexClient()
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === undefined || value === null) continue
+    await convex.mutation(api.settings.set, { key, value: String(value) })
   }
-
-  const changed: string[] = []
-  for (const [key, value] of Object.entries(parsed.data)) {
-    if (value === undefined) continue
-    await prisma.setting.upsert({
-      where: { key },
-      update: { value: String(value) },
-      create: { key, value: String(value) },
-    })
-    changed.push(key)
-  }
-
-  await audit('CHANGE_SETTING', { req, adminId: admin.id, detail: { changed } })
   return NextResponse.json({ success: true })
 }
 
@@ -53,20 +41,11 @@ export async function PUT(req: NextRequest) {
   const admin = await requireAuth(req)
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const raw = await req.json()
-  const changed: string[] = []
-  
-  // Handle any setting updates including grid settings
+  const raw    = await req.json()
+  const convex = getConvexClient()
   for (const [key, value] of Object.entries(raw)) {
     if (value === undefined || value === null) continue
-    await prisma.setting.upsert({
-      where: { key },
-      update: { value: String(value) },
-      create: { key, value: String(value) },
-    })
-    changed.push(key)
+    await convex.mutation(api.settings.set, { key, value: String(value) })
   }
-
-  await audit('CHANGE_SETTING', { req, adminId: admin.id, detail: { changed } })
   return NextResponse.json({ success: true })
 }

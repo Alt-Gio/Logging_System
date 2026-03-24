@@ -1,12 +1,14 @@
 export const dynamic = 'force-dynamic'
 // src/app/api/auth/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import {
   hashPassword, verifyPassword, generateToken, verifyToken,
   checkLoginRateLimit, recordFailedLogin, clearLoginAttempts
 } from '@/lib/auth'
 import { audit } from '@/lib/audit'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 import { z } from 'zod'
 
 const LoginSchema = z.object({
@@ -25,19 +27,13 @@ export async function GET(req: NextRequest) {
   const decoded = await verifyToken(token)
   if (!decoded) return NextResponse.json({ authenticated: false }, { status: 401 })
 
-  const admin = await prisma.admin.findUnique({
-    where: { id: decoded.adminId },
-    select: { id: true, username: true, name: true, role: true },
-  })
+  const convex = getConvexClient()
+  const admin  = await convex.query(api.admins.getById, { id: decoded.adminId as Id<'admins'> })
   if (!admin) return NextResponse.json({ authenticated: false }, { status: 401 })
 
-  // Update lastLoginAt on verify (lazy update)
-  await prisma.admin.update({
-    where: { id: admin.id },
-    data: { lastLoginAt: new Date() },
-  }).catch(() => {})
+  convex.mutation(api.admins.updateLastLogin, { id: admin._id }).catch(() => {})
 
-  return NextResponse.json({ authenticated: true, admin })
+  return NextResponse.json({ authenticated: true, admin: { id: admin._id, username: admin.username, name: admin.name, role: admin.role } })
 }
 
 export async function POST(req: NextRequest) {
@@ -60,30 +56,28 @@ export async function POST(req: NextRequest) {
 
   const { username, password } = body.data
 
-  // Generic timing-safe: always look up even if not found
-  const admin = await prisma.admin.findUnique({ where: { username } })
+  const convex = getConvexClient()
+  const admin   = await convex.query(api.admins.getByUsername, { username: username.trim().toLowerCase() })
 
-  // Use a dummy hash if admin not found (prevents timing attacks)
   const dummyHash = '$2a$12$invalidhashfortimingreasonsdontuse'
   const passwordValid = admin
-    ? await verifyPassword(password, admin.password)
+    ? await verifyPassword(password, admin.passwordHash)
     : await verifyPassword(password, dummyHash).catch(() => false)
 
   if (!admin || !passwordValid) {
     recordFailedLogin(ip)
     await audit('LOGIN', { req, detail: { username, success: false, reason: 'bad credentials' } })
-    // Same error message regardless — don't reveal whether username exists
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
   }
 
   clearLoginAttempts(ip)
-  const token = await generateToken(admin.id, admin.role)
+  const token = await generateToken(admin._id, admin.role)
 
-  await audit('LOGIN', { req, adminId: admin.id, detail: { username, success: true } })
+  await audit('LOGIN', { req, adminId: admin._id, detail: { username, success: true } })
 
   const response = NextResponse.json({
     success: true,
-    admin: { id: admin.id, name: admin.name, role: admin.role },
+    admin: { id: admin._id, name: admin.name, role: admin.role },
   })
 
   response.cookies.set('auth_token', token, {
@@ -113,20 +107,19 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const count = await prisma.admin.count()
-  if (count > 0) {
+  const convex   = getConvexClient()
+  const existing = await convex.query(api.admins.getAll)
+  if (existing.length > 0) {
     return NextResponse.json({ error: 'Admin already exists' }, { status: 409 })
   }
 
   const body = await req.json()
-  const admin = await prisma.admin.create({
-    data: {
-      username: body.username || 'admin',
-      password: await hashPassword(body.password || 'dict2026!'),
-      name:     body.name    || 'DTC Administrator',
-      role:     'SUPER_ADMIN',
-    },
+  const id   = await convex.mutation(api.admins.create, {
+    username:     (body.username || 'admin').toLowerCase(),
+    passwordHash: await hashPassword(body.password || 'dict2026!'),
+    name:         body.name    || 'DTC Administrator',
+    role:         'SUPER_ADMIN',
   })
 
-  return NextResponse.json({ success: true, id: admin.id }, { status: 201 })
+  return NextResponse.json({ success: true, id }, { status: 201 })
 }
