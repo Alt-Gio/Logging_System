@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY || '')
@@ -10,7 +12,8 @@ const FROM_ADDRESS = process.env.EMAIL_FROM || 'DTC Region V <onboarding@resend.
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const intern = await (prisma as any).intern.findUnique({ where: { id: params.id } })
+    const convex = getConvexClient()
+    const intern  = await convex.query(api.interns.getById, { id: params.id as Id<'interns'> })
     if (!intern) return NextResponse.json({ error: 'Intern not found' }, { status: 404 })
     if (!intern.email) return NextResponse.json({ error: 'Intern has no email address on file' }, { status: 400 })
 
