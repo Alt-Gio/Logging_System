@@ -1,8 +1,9 @@
 export const dynamic = 'force-dynamic'
 // API endpoint for admin panel to request network scan via bridge
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 import { z } from 'zod'
 
 const ScanRequestSchema = z.object({
@@ -34,26 +35,14 @@ export async function POST(req: NextRequest) {
     // Create scan request ID
     const requestId = `scan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-    // Store scan request for bridge agent to pick up
-    await prisma.setting.upsert({
-      where: { key: 'bridge_scan_request' },
-      update: { 
-        value: JSON.stringify({ 
-          id: requestId,
-          ips, 
-          timestamp: new Date().toISOString(),
-          requestedBy: admin.id
-        }) 
-      },
-      create: { 
-        key: 'bridge_scan_request',
-        value: JSON.stringify({ 
-          id: requestId,
-          ips, 
-          timestamp: new Date().toISOString(),
-          requestedBy: admin.id
-        })
-      }
+    const convex = getConvexClient()
+    await convex.mutation(api.settings.set, {
+      key:   'bridge_scan_request',
+      value: JSON.stringify({
+        id: requestId, ips,
+        timestamp:   new Date().toISOString(),
+        requestedBy: admin.id,
+      }),
     })
 
     console.log(`[BRIDGE] Scan request created: ${requestId} for ${ips.length} IPs`)
@@ -81,24 +70,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const results = await prisma.setting.findUnique({
-      where: { key: `bridge_results_${requestId}` }
-    })
-
-    if (!results) {
-      return NextResponse.json({ 
-        completed: false, 
-        message: 'Waiting for bridge agent to process scan...' 
-      })
+    const convex  = getConvexClient()
+    const record   = await convex.query(api.settings.getByKey, { key: `bridge_results_${requestId}` })
+    if (!record) {
+      return NextResponse.json({ completed: false, message: 'Waiting for bridge agent to process scan...' })
     }
-
-    const data = JSON.parse(results.value)
-    
-    return NextResponse.json({ 
-      completed: true, 
-      results: data.results,
-      timestamp: data.timestamp
-    })
+    const data = JSON.parse(record.value)
+    return NextResponse.json({ completed: true, results: data.results, timestamp: data.timestamp })
   } catch (error) {
     console.error('[BRIDGE] Get results error:', error)
     return NextResponse.json({ error: 'Failed to retrieve results' }, { status: 500 })

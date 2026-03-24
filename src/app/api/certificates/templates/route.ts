@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function GET() {
   try {
-    const templates = await (prisma as any).certificateTemplate.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: {
-          select: { certificates: true }
-        }
-      }
-    })
+    const convex     = getConvexClient()
+    const templates  = await convex.query(api.certificates.getAllTemplates)
     return NextResponse.json(templates)
   } catch (error) {
     console.error('Error fetching templates:', error)
@@ -27,18 +22,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Name and fields are required' }, { status: 400 })
     }
 
-    const template = await (prisma as any).certificateTemplate.create({
-      data: {
-        name,
-        description,
-        backgroundUrl,
-        width: width || 1056,
-        height: height || 816,
-        fields
-      }
+    const convex = getConvexClient()
+    const id = await convex.mutation(api.certificates.createTemplate, {
+      name,
+      description,
+      backgroundUrl,
+      width:  width  || 1056,
+      height: height || 816,
+      fields,
     })
-
-    return NextResponse.json(template, { status: 201 })
+    return NextResponse.json({ _id: id }, { status: 201 })
   } catch (error) {
     console.error('Error creating template:', error)
     return NextResponse.json({ error: 'Failed to create template' }, { status: 500 })

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 
 export async function DELETE(
   request: NextRequest,
@@ -14,11 +16,8 @@ export async function DELETE(
 
     const { id } = params
 
-    // Delete the template (CASCADE will delete associated certificates)
-    await (prisma as any).certificateTemplate.delete({
-      where: { id }
-    })
-
+    const convex = getConvexClient()
+    await convex.mutation(api.certificates.deleteTemplate, { id: id as Id<'certificateTemplates'> })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting template:', error)
@@ -38,19 +37,9 @@ export async function GET(
 
     const { id } = params
 
-    const template = await (prisma as any).certificateTemplate.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { certificates: true }
-        }
-      }
-    })
-
-    if (!template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
-    }
-
+    const convex   = getConvexClient()
+    const template = await convex.query(api.certificates.getTemplateById, { id: id as Id<'certificateTemplates'> })
+    if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     return NextResponse.json(template)
   } catch (error) {
     console.error('Error fetching template:', error)
@@ -72,19 +61,17 @@ export async function PATCH(
     const body = await request.json()
     const { name, description, backgroundUrl, width, height, fields } = body
 
-    const updated = await (prisma as any).certificateTemplate.update({
-      where: { id },
-      data: {
-        name,
-        description,
-        backgroundUrl,
-        width,
-        height,
-        fields
-      }
+    const convex = getConvexClient()
+    await convex.mutation(api.certificates.updateTemplate, {
+      id:            id as Id<'certificateTemplates'>,
+      name,
+      description,
+      backgroundUrl,
+      width,
+      height,
+      fields,
     })
-
-    return NextResponse.json(updated)
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error updating template:', error)
     return NextResponse.json({ error: 'Failed to update template' }, { status: 500 })

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,20 +13,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Template ID and data are required' }, { status: 400 })
     }
 
-    const certificate = await (prisma as any).certificate.create({
-      data: {
-        templateId,
-        internId: internId || null,
-        data,
-        issuedAt: new Date()
-      },
-      include: {
-        template: true,
-        intern: true
-      }
+    const convex = getConvexClient()
+    const id = await convex.mutation(api.certificates.issue, {
+      templateId: templateId as Id<'certificateTemplates'>,
+      internId:   internId  ? internId as Id<'interns'> : undefined,
+      data,
     })
-
-    return NextResponse.json(certificate, { status: 201 })
+    return NextResponse.json({ _id: id }, { status: 201 })
   } catch (error) {
     console.error('Error generating certificate:', error)
     return NextResponse.json({ error: 'Failed to generate certificate' }, { status: 500 })
@@ -56,42 +51,30 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'No data found in file' }, { status: 400 })
     }
 
-    // Get template to validate fields
-    const template = await (prisma as any).certificateTemplate.findUnique({
-      where: { id: templateId }
+    const convex  = getConvexClient()
+    const template = await convex.query(api.certificates.getTemplateById, {
+      id: templateId as Id<'certificateTemplates'>,
     })
+    if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 })
 
-    if (!template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
-    }
+    const allInterns = await convex.query(api.interns.getAll)
 
-    // Generate certificates for each row
     const certificates = []
     for (const row of rows) {
-      // Try to match intern by name if provided
-      let internId = null
-      if (row.fullName || row.name || row.Name) {
-        const nameToMatch = row.fullName || row.name || row.Name
-        const intern = await (prisma as any).intern.findFirst({
-          where: {
-            fullName: {
-              contains: nameToMatch,
-              mode: 'insensitive'
-            }
-          }
-        })
-        if (intern) internId = intern.id
+      let internId: Id<'interns'> | undefined
+      const nameToMatch: string | undefined = row.fullName || row.name || row.Name
+      if (nameToMatch) {
+        const match = allInterns.find(i =>
+          i.fullName.toLowerCase().includes(nameToMatch.toLowerCase())
+        )
+        if (match) internId = match._id
       }
-
-      const cert = await (prisma as any).certificate.create({
-        data: {
-          templateId,
-          internId,
-          data: row,
-          issuedAt: new Date()
-        }
+      const id = await convex.mutation(api.certificates.issue, {
+        templateId: templateId as Id<'certificateTemplates'>,
+        internId,
+        data: row,
       })
-      certificates.push(cert)
+      certificates.push({ _id: id })
     }
 
     return NextResponse.json({

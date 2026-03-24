@@ -1,7 +1,8 @@
 export const dynamic = 'force-dynamic'
 // API endpoint for bridge agent to submit scan results
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 const AGENT_KEY = process.env.NETWORK_BRIDGE_KEY || 'change-this-in-production'
 
@@ -24,30 +25,12 @@ export async function POST(req: NextRequest) {
 
     console.log(`[BRIDGE] Received results for request ${requestId}: ${results.length} IPs scanned`)
 
-    // Store results in database
-    await prisma.setting.upsert({
-      where: { key: `bridge_results_${requestId}` },
-      update: { 
-        value: JSON.stringify({ 
-          results, 
-          timestamp: new Date().toISOString(),
-          completed: true
-        }) 
-      },
-      create: { 
-        key: `bridge_results_${requestId}`,
-        value: JSON.stringify({ 
-          results, 
-          timestamp: new Date().toISOString(),
-          completed: true
-        })
-      }
+    const convex = getConvexClient()
+    await convex.mutation(api.settings.set, {
+      key:   `bridge_results_${requestId}`,
+      value: JSON.stringify({ results, timestamp: new Date().toISOString(), completed: true }),
     })
-
-    // Clear the scan request
-    await prisma.setting.delete({ 
-      where: { key: 'bridge_scan_request' } 
-    }).catch(() => {}) // Ignore if already deleted
+    await convex.mutation(api.settings.deleteByKey, { key: 'bridge_scan_request' }).catch(() => {})
 
     console.log(`[BRIDGE] Results stored successfully for request ${requestId}`)
 

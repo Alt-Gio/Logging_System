@@ -1,7 +1,8 @@
 export const dynamic = 'force-dynamic'
 // API endpoint for bridge agent to poll for pending scan requests
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 const AGENT_KEY = process.env.NETWORK_BRIDGE_KEY || 'change-this-in-production'
 
@@ -15,28 +16,16 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Find oldest pending scan request
-    const scanRequest = await prisma.setting.findUnique({
-      where: { key: 'bridge_scan_request' }
-    })
+    const convex      = getConvexClient()
+    const scanSetting  = await convex.query(api.settings.getByKey, { key: 'bridge_scan_request' })
+    if (!scanSetting?.value) return NextResponse.json({ scanRequest: null })
 
-    if (!scanRequest || !scanRequest.value) {
-      return NextResponse.json({ scanRequest: null })
-    }
-
-    const request = JSON.parse(scanRequest.value)
-    
-    // Check if request is still pending (not older than 2 minutes)
-    const requestTime = new Date(request.timestamp)
-    const now = new Date()
-    const ageMinutes = (now.getTime() - requestTime.getTime()) / 1000 / 60
-    
+    const request    = JSON.parse(scanSetting.value)
+    const ageMinutes = (Date.now() - new Date(request.timestamp).getTime()) / 60_000
     if (ageMinutes > 2) {
-      // Request expired, clear it
-      await prisma.setting.delete({ where: { key: 'bridge_scan_request' } })
+      await convex.mutation(api.settings.deleteByKey, { key: 'bridge_scan_request' })
       return NextResponse.json({ scanRequest: null })
     }
-
     return NextResponse.json({ scanRequest: request })
   } catch (error) {
     console.error('[BRIDGE] Poll error:', error)

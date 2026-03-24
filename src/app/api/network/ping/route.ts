@@ -3,8 +3,10 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 import { validateIpAddress } from '@/lib/errors'
 import { z } from 'zod'
 
@@ -67,20 +69,18 @@ async function pingHost(ip: string): Promise<{ alive: boolean; responseTime: num
 }
 
 async function smartUpdatePcStatus(pcId: string, alive: boolean) {
-  const pc = await prisma.pC.findUnique({ where: { id: pcId } })
+  const convex   = getConvexClient()
+  const pc       = await convex.query(api.pcs.getById, { id: pcId as Id<'pcs'> })
   if (!pc) return
-  const activeLog = await prisma.logEntry.findFirst({
-    where: { pcId, timeOut: null, archived: false },
-  })
+  const activeLogs = await convex.query(api.logEntries.getActive)
+  const activeLog  = activeLogs.find(l => l.pcId === pcId)
   let newStatus: 'ONLINE' | 'OFFLINE' | 'IN_USE' | 'MAINTENANCE'
-  if (activeLog)             newStatus = 'IN_USE'
+  if (activeLog)                        newStatus = 'IN_USE'
   else if (pc.status === 'MAINTENANCE') newStatus = 'MAINTENANCE'
-  else if (alive)            newStatus = 'ONLINE'
-  else                       newStatus = 'OFFLINE'
-
-  await prisma.pC.update({
-    where: { id: pcId },
-    data: { status: newStatus, ...(alive ? { lastSeen: new Date() } : {}) },
+  else if (alive)                       newStatus = 'ONLINE'
+  else                                  newStatus = 'OFFLINE'
+  await convex.mutation(api.pcs.updateStatus, {
+    id: pcId as Id<'pcs'>, status: newStatus, lastSeen: alive ? Date.now() : undefined,
   })
 }
 
@@ -105,19 +105,21 @@ export async function POST(req: NextRequest) {
 
   let targets: { id?: string; ip: string }[] = []
 
+  const convex = getConvexClient()
   if ('pcId' in parsed.data) {
-    const pc = await prisma.pC.findUnique({ where: { id: parsed.data.pcId } })
+    const pc = await convex.query(api.pcs.getById, { id: parsed.data.pcId as Id<'pcs'> })
     if (!pc) return NextResponse.json({ error: 'PC not found' }, { status: 404 })
-    targets = [{ id: pc.id, ip: pc.ipAddress }]
+    targets = [{ id: pc._id, ip: pc.ipAddress }]
   } else if ('ip' in parsed.data) {
     try { validateIpAddress(parsed.data.ip) } catch { return NextResponse.json({ error: 'Invalid IP' }, { status: 400 }) }
-    const pc = await prisma.pC.findUnique({ where: { ipAddress: parsed.data.ip } })
-    targets = [{ id: pc?.id, ip: parsed.data.ip }]
+    const allPcs = await convex.query(api.pcs.getAll)
+    const pc     = allPcs.find(p => p.ipAddress === parsed.data.ip)
+    targets = [{ id: pc?._id, ip: (parsed.data as { ip: string }).ip }]
   } else if ('ips' in parsed.data) {
     targets = parsed.data.ips.map(ip => ({ ip }))
   } else if ('pingAll' in parsed.data) {
-    const pcs = await prisma.pC.findMany({ where: { isActive: true }, select: { id: true, ipAddress: true } })
-    targets = pcs.map((p: { id: string; ipAddress: string }) => ({ id: p.id, ip: p.ipAddress }))
+    const pcs = await convex.query(api.pcs.getActive)
+    targets   = pcs.map(p => ({ id: p._id, ip: p.ipAddress }))
   }
 
   const results = await Promise.all(
@@ -139,8 +141,10 @@ export async function GET(req: NextRequest) {
   if (!ip || !SAFE_IP.test(ip)) return NextResponse.json({ error: 'Valid ip param required' }, { status: 400 })
   try { validateIpAddress(ip) } catch { return NextResponse.json({ error: 'Invalid IP' }, { status: 400 }) }
 
-  const result = await pingHost(ip)
-  const pc = await prisma.pC.findUnique({ where: { ipAddress: ip } }).catch(() => null)
-  if (pc) await smartUpdatePcStatus(pc.id, result.alive)
-  return NextResponse.json({ ip, ...result, pcId: pc?.id ?? null, pcName: pc?.name ?? null })
+  const convex  = getConvexClient()
+  const result   = await pingHost(ip)
+  const allPcs   = await convex.query(api.pcs.getAll).catch(() => [])
+  const pc       = allPcs.find(p => p.ipAddress === ip) ?? null
+  if (pc) await smartUpdatePcStatus(pc._id, result.alive)
+  return NextResponse.json({ ip, ...result, pcId: pc?._id ?? null, pcName: pc?.name ?? null })
 }

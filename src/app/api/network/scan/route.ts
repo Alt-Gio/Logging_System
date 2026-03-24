@@ -2,8 +2,10 @@ export const dynamic = 'force-dynamic'
 // src/app/api/network/scan/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { scanRange, getLocalNetwork } from '@/lib/network-scanner'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 import { z } from 'zod'
 
 export const maxDuration = 60
@@ -34,24 +36,21 @@ export async function POST(req: NextRequest) {
   try {
     const results = await scanRange(baseIp, startOctet, endOctet, 50)
 
-    for (const result of results) {
-      const pc = await prisma.pC.findUnique({ where: { ipAddress: result.ip } })
-      if (pc) {
-        await prisma.pC.update({
-          where: { ipAddress: result.ip },
-          data: {
-            status: pc.status === 'IN_USE' ? 'IN_USE' : 'ONLINE',
-            lastSeen: new Date(),
-          },
-        })
-      }
-    }
-
+    const convex  = getConvexClient()
+    const allPcs   = await convex.query(api.pcs.getAll)
     const onlineIps = results.map(r => r.ip)
-    await prisma.pC.updateMany({
-      where: { ipAddress: { notIn: onlineIps }, status: { notIn: ['IN_USE', 'MAINTENANCE'] } },
-      data: { status: 'OFFLINE' },
-    })
+
+    await Promise.all(allPcs.map(pc => {
+      if (onlineIps.includes(pc.ipAddress)) {
+        return convex.mutation(api.pcs.updateStatus, {
+          id:       pc._id,
+          status:   pc.status === 'IN_USE' ? 'IN_USE' : 'ONLINE',
+          lastSeen: Date.now(),
+        })
+      } else if (pc.status !== 'IN_USE' && pc.status !== 'MAINTENANCE') {
+        return convex.mutation(api.pcs.updateStatus, { id: pc._id, status: 'OFFLINE' })
+      }
+    }))
 
     return NextResponse.json({
       scanned: `${baseIp}.${startOctet}–${baseIp}.${endOctet}`,
