@@ -11,7 +11,7 @@ import bcrypt from 'bcryptjs'
 const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL
 if (!CONVEX_URL) {
   console.error('❌  NEXT_PUBLIC_CONVEX_URL is not set')
-  process.exit(1)
+  throw new Error("NEXT_PUBLIC_CONVEX_URL is not set")
 }
 
 // Import api after _generated/ exists
@@ -40,4 +40,4 @@ async function main() {
   console.log(`\n    Sign in at /sign-in`)
 }
 
-main().catch(e => { console.error(e); process.exit(1) })
+main().catch(e => { console.error(e); throw new Error("NEXT_PUBLIC_CONVEX_URL is not set") })

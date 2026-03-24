@@ -13,7 +13,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "convex:seed": "tsx convex/seed.ts",
+    "convex:seed": "tsx scripts/convex-seed.ts",
     "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
   },
   "dependencies": {
