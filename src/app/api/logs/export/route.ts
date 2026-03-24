@@ -1,15 +1,9 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
 import { format } from 'date-fns'
-
-type LogWithPc = {
-  id: string; fullName: string; agency: string; purpose: string
-  equipmentUsed: string[]; serviceType: string; timeIn: Date; timeOut: Date | null
-  plannedDurationHours: number; satisfactionRating: number | null
-  staffNotes: string | null; pc: { name: string } | null
-}
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,30 +15,32 @@ export async function GET(req: NextRequest) {
     const month = searchParams.get('month')
     const all   = searchParams.get('all') === 'true'
 
-    const where: Record<string, unknown> = { archived: false }
+    const convex = getConvexClient()
+    let logs: Awaited<ReturnType<typeof convex.query<typeof api.logEntries.getByDate>>>
+
     if (date) {
-      const d = new Date(date)
-      where.timeIn = {
-        gte: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
-        lt:  new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1),
-      }
+      const d    = new Date(date)
+      const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+      const to   = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
+      logs = await convex.query(api.logEntries.getByDate, { dateFrom: from, dateTo: to })
     } else if (month) {
       const parts = month.split('-').map(Number)
       const y = parts[0], m = parts[1]
-      where.timeIn = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) }
-    } else if (!all) {
+      logs = await convex.query(api.logEntries.getByDate, {
+        dateFrom: new Date(y, m - 1, 1).getTime(),
+        dateTo:   new Date(y, m, 1).getTime(),
+      })
+    } else if (all) {
+      logs = await convex.query(api.logEntries.getRecent, { limit: 5000, archived: false })
+    } else {
       const today = new Date()
-      where.timeIn = {
-        gte: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-        lt:  new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1),
-      }
+      logs = await convex.query(api.logEntries.getByDate, {
+        dateFrom: new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime(),
+        dateTo:   new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime(),
+      })
     }
 
-    const logs = (await prisma.logEntry.findMany({
-      where,
-      include: { pc: { select: { name: true } } },
-      orderBy: { timeIn: 'asc' },
-    })) as LogWithPc[]
+    logs = logs.filter(l => !l.archived).sort((a, b) => a.timeIn - b.timeIn)
 
     const headers = [
       '#', 'Full Name', 'Agency / Organization', 'Purpose', 'Equipment / Services Used',
@@ -52,9 +48,9 @@ export async function GET(req: NextRequest) {
       'Planned Duration (hrs)', 'Actual Duration (mins)', 'Satisfaction Rating', 'Staff Notes',
     ]
 
-    const rows = logs.map((log: LogWithPc, i: number) => {
+    const rows = logs.map((log, i) => {
       const actualMins = log.timeOut
-        ? Math.round((new Date(log.timeOut).getTime() - new Date(log.timeIn).getTime()) / 60000)
+        ? Math.round((log.timeOut - log.timeIn) / 60000)
         : ''
       return [
         i + 1,
@@ -62,10 +58,10 @@ export async function GET(req: NextRequest) {
         `"${log.agency}"`,
         `"${log.purpose.replace(/"/g, '""')}"`,
         `"${log.equipmentUsed.join(', ')}"`,
-        `"${log.pc?.name ?? '—'}"`,
+        `"${log.pcId ?? '—'}"`,
         log.serviceType ?? 'SELF_SERVICE',
-        format(new Date(log.timeIn),  'yyyy-MM-dd'),
-        format(new Date(log.timeIn),  'hh:mm:ss a'),
+        format(new Date(log.timeIn), 'yyyy-MM-dd'),
+        format(new Date(log.timeIn), 'hh:mm:ss a'),
         log.timeOut ? format(new Date(log.timeOut), 'hh:mm:ss a') : '—',
         log.plannedDurationHours,
         actualMins,

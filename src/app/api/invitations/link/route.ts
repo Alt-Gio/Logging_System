@@ -1,9 +1,10 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 // POST /api/invitations/link — create a temporary staff account with a one-time password
 export async function POST(req: NextRequest) {
@@ -15,19 +16,22 @@ export async function POST(req: NextRequest) {
     const tempPassword = randomBytes(8).toString('hex')
     const hash = await bcrypt.hash(tempPassword, 12)
 
-    const record = await prisma.admin.create({
-      data: { username, password: hash, name: 'New Staff', role: 'STAFF' },
-      select: { id: true, createdAt: true },
+    const convex = getConvexClient()
+    const id     = await convex.mutation(api.admins.create, {
+      username,
+      passwordHash: hash,
+      name:         'New Staff',
+      role:         'STAFF',
     })
 
     const url = `${process.env.NEXTAUTH_URL || ''}/sign-in?hint=${username}`
 
     return NextResponse.json({
       invitation: {
-        id:           record.id,
+        id,
         emailAddress: null,
         status:       'pending',
-        createdAt:    record.createdAt.toISOString(),
+        createdAt:    new Date().toISOString(),
         url:          `${url}&pass=${tempPassword}`,
       }
     })
