@@ -1,7 +1,8 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -14,18 +15,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null
         try {
-          const admin = await prisma.admin.findUnique({
-            where: { username: credentials.username as string },
-            select: { id: true, username: true, name: true, role: true, password: true },
+          const convex = getConvexClient()
+          const admin  = await convex.query(api.admins.getByUsername, {
+            username: (credentials.username as string).trim().toLowerCase(),
           })
           if (!admin) return null
-          const valid = await bcrypt.compare(credentials.password as string, admin.password)
+          const valid = await bcrypt.compare(credentials.password as string, admin.passwordHash)
           if (!valid) return null
-          await prisma.admin.update({
-            where: { id: admin.id },
-            data: { lastLoginAt: new Date() },
-          })
-          return { id: admin.id, name: admin.name, email: admin.username, role: admin.role }
+          convex.mutation(api.admins.updateLastLogin, { id: admin._id }).catch(() => {})
+          return { id: admin._id, name: admin.name, email: admin.username, role: admin.role }
         } catch {
           return null
         }
