@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { SessionProvider } from 'next-auth/react'
+import { Providers } from './providers'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -17,7 +17,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
+    <Providers>
       <html lang="en">
         <head>
           <link rel="apple-touch-icon" href="/icon-192.png"/>
@@ -30,17 +30,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           />
         </head>
         <body>
-          {/*
-            BgStyle is a server component that reads the custom bgImageUrl from DB
-            at *request time* (not build time), injecting it as a CSS variable.
-            This prevents flash: the background is set before the page renders.
-            Client-side useEffect in each page also updates it live after settings save.
-          */}
           <BgStyle/>
           {children}
         </body>
       </html>
-    </SessionProvider>
+    </Providers>
   )
 }
 
@@ -48,6 +42,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 import { cache } from 'react'
 
 const getBgUrl = cache(async (): Promise<string> => {
+  // Try Convex first
+  try {
+    const { getConvexClient } = await import('@/lib/convex-client')
+    const { api }             = await import('@/convex/_generated/api')
+    const setting = await getConvexClient().query(api.settings.getByKey, { key: 'bgImageUrl' })
+    if (setting?.value) return setting.value
+  } catch { /* fall through */ }
+  // Prisma fallback (during migration period)
   try {
     const { prisma } = await import('@/lib/prisma')
     const row = await prisma.setting.findUnique({ where: { key: 'bgImageUrl' } })

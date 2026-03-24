@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { SignJWT } from 'jose'
 import { checkLoginRateLimit, recordFailedLogin, clearLoginAttempts } from '@/lib/auth'
+import { getConvexClient } from '@/lib/convex-client'
 
 const COOKIE = 'dict-session'
 const MAX_AGE = 8 * 60 * 60
@@ -27,21 +27,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Username and password required.' }, { status: 400 })
     }
 
-    const admin = await prisma.admin.findUnique({
-      where: { username: String(username).trim().toLowerCase() },
-      select: { id: true, username: true, name: true, role: true, password: true },
+    const { api } = await import('@/convex/_generated/api')
+    const convex   = getConvexClient()
+    const admin     = await convex.query(api.admins.getByUsername, {
+      username: String(username).trim().toLowerCase(),
     })
 
-    if (!admin || !(await bcrypt.compare(String(password), admin.password))) {
+    if (!admin || !(await bcrypt.compare(String(password), admin.passwordHash))) {
       recordFailedLogin(ip)
       return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 })
     }
 
     clearLoginAttempts(ip)
-    await prisma.admin.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } })
+    await convex.mutation(api.admins.updateLastLogin, { id: admin._id })
 
     const token = await new SignJWT({
-      id:    admin.id,
+      id:    admin._id,
       name:  admin.name ?? admin.username,
       email: admin.username,
       role:  admin.role,

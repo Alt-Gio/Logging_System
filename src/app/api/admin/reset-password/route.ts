@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
+import { getConvexClient } from '@/lib/convex-client'
 
 // POST /api/admin/reset-password
 // Resets an admin account password using ADMIN_RESET_SECRET env var as auth.
@@ -28,16 +28,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
     }
 
-    const admin = await prisma.admin.findUnique({ where: { username } })
+    const { api } = await import('@/convex/_generated/api')
+    const convex   = getConvexClient()
+    const admin     = await convex.query(api.admins.getByUsername, { username })
     if (!admin) {
       return NextResponse.json({ error: `No admin found with username "${username}"` }, { status: 404 })
     }
 
     const hash = await bcrypt.hash(newPassword as string, 12)
-    await prisma.admin.update({
-      where: { username },
-      data: { password: hash },
-    })
+    await convex.mutation(api.admins.updatePassword, { id: admin._id, passwordHash: hash })
 
     return NextResponse.json({
       message: `Password reset for "${username}". You can now sign in at /sign-in.`,
@@ -59,8 +58,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Provide ?secret=ADMIN_RESET_SECRET' }, { status: 403 })
   }
 
-  const admins = await prisma.admin.findMany({
-    select: { id: true, username: true, name: true, role: true, createdAt: true },
-  })
+  const { api } = await import('@/convex/_generated/api')
+  const admins   = await getConvexClient().query(api.admins.getAll, {})
   return NextResponse.json({ admins })
 }

@@ -4,12 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "convex:dev": "convex dev",
+    "build": "next build",
     "start": "next start",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "convex:seed": "tsx convex/seed.ts",
     "cron:test": "curl \"$NEXT_PUBLIC_APP_URL/api/cron?secret=$CRON_SECRET\""
   },
   "dependencies": {
@@ -18,6 +20,7 @@
     "@upstash/qstash": "^2.9.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.9.0",
+    "convex": "^1.34.0",
     "date-fns": "^3.3.1",
     "groq-sdk": "^0.3.3",
     "html2canvas": "^1.4.1",
