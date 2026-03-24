@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 // Lazy initialization to avoid build-time errors
 function getResendClient() {
@@ -141,32 +142,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Rate limiting: Check if user has requested OTP recently
-    const recentOtps = await (prisma as any).otpVerification.count({
-      where: {
-        contact,
-        createdAt: {
-          gte: new Date(Date.now() - 60 * 1000) // Last minute
-        }
-      }
-    })
+    const convex = getConvexClient()
 
-    if (recentOtps > 0) {
+    const recentOtps = await convex.query(api.otpVerifications.getRecentByContact, {
+      contact,
+      since: Date.now() - 60_000,
+    })
+    if (recentOtps.length > 0) {
       return NextResponse.json({ error: 'Please wait before requesting another OTP' }, { status: 429 })
     }
 
-    const otp = generateOTP()
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
+    const otp       = generateOTP()
+    const expiresAt = Date.now() + 5 * 60_000
 
-    // Save OTP to database
-    await (prisma as any).otpVerification.create({
-      data: {
-        contact,
-        contactType,
-        otpCode: otp,
-        purpose,
-        expiresAt,
-      }
+    await convex.mutation(api.otpVerifications.create, {
+      contact, contactType, otpCode: otp, purpose, expiresAt,
     })
 
     // Send OTP
@@ -183,15 +173,6 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       )
     }
-
-    // Clean up expired OTPs
-    await (prisma as any).otpVerification.deleteMany({
-      where: {
-        expiresAt: {
-          lt: new Date()
-        }
-      }
-    })
 
     return NextResponse.json({
       success: true,

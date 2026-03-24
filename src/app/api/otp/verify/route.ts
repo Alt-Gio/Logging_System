@@ -1,79 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { contact, otpCode } = body
 
-    // Validate input
     if (!contact || !otpCode) {
-      return NextResponse.json(
-        { error: 'Missing contact or OTP code' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing contact or OTP code' }, { status: 400 })
     }
 
-    // Find the most recent unverified OTP for this contact
-    const otpRecord = await (prisma as any).otpVerification.findFirst({
-      where: {
-        contact,
-        verified: false,
-        expiresAt: {
-          gt: new Date() // Not expired
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    })
+    const convex = getConvexClient()
+    const result = await convex.mutation(api.otpVerifications.verify, { contact, otpCode })
 
-    if (!otpRecord) {
-      return NextResponse.json(
-        { error: 'Invalid or expired OTP code' },
-        { status: 400 }
-      )
+    if (!result.success) {
+      const msg = result.reason === 'expired'    ? 'OTP has expired'
+                : result.reason === 'already_used' ? 'OTP already used'
+                : 'Invalid or expired OTP code'
+      return NextResponse.json({ error: msg }, { status: 400 })
     }
 
-    // Verify OTP code
-    if (otpRecord.otpCode !== otpCode) {
-      return NextResponse.json(
-        { error: 'Incorrect OTP code' },
-        { status: 400 }
-      )
-    }
-
-    // Mark OTP as verified
-    await (prisma as any).otpVerification.update({
-      where: {
-        id: otpRecord.id
-      },
-      data: {
-        verified: true
-      }
-    })
-
-    // Clean up old OTPs for this contact
-    await (prisma as any).otpVerification.deleteMany({
-      where: {
-        contact,
-        id: {
-          not: otpRecord.id
-        }
-      }
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: 'OTP verified successfully',
-      verificationId: otpRecord.id
-    })
-
+    return NextResponse.json({ success: true, message: 'OTP verified successfully' })
   } catch (error) {
     console.error('OTP verify error:', error)
-    return NextResponse.json(
-      { error: 'Failed to verify OTP' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to verify OTP' }, { status: 500 })
   }
 }

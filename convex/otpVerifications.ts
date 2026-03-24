@@ -1,6 +1,17 @@
 import { internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
+export const getRecentByContact = query({
+  args: { contact: v.string(), since: v.number() },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("otpVerifications")
+      .withIndex("by_contact", q => q.eq("contact", args.contact))
+      .filter(q => q.gte(q.field("_creationTime"), args.since))
+      .collect()
+  },
+})
+
 export const create = mutation({
   args: {
     contact:     v.string(),
