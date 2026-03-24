@@ -1,7 +1,9 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
+import type { Id } from '@/convex/_generated/dataModel'
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,51 +19,31 @@ export async function GET(req: NextRequest) {
     const to      = searchParams.get('to')      || ''
     const search  = searchParams.get('search')  || ''
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: Record<string, any> = {}
-    if (action)  where.action  = action
-    if (adminId) where.adminId = adminId
-
-    if (from || to) {
-      where.createdAt = {}
-      if (from) where.createdAt.gte = new Date(from)
-      if (to)   where.createdAt.lte = new Date(to + 'T23:59:59Z')
-    }
-
-    // Text search across detail + target
-    if (search) {
-      where.OR = [
-        { detail: { contains: search, mode: 'insensitive' } },
-        { target: { contains: search, mode: 'insensitive' } },
-        { action: { contains: search, mode: 'insensitive' } },
-      ]
-    }
-
-    const logs = await prisma.adminLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: { admin: { select: { username: true, name: true } } },
+    const convex = getConvexClient()
+    let logs = await convex.query(api.adminLogs.getFiltered, {
+      limit,
+      action:  action  || undefined,
+      adminId: adminId ? adminId as Id<'admins'> : undefined,
+      from:    from    ? new Date(from).getTime()            : undefined,
+      to:      to      ? new Date(to + 'T23:59:59Z').getTime(): undefined,
     })
 
-    // Summary counts for the current filter
-    const [totalCount, todayCount] = await Promise.all([
-      prisma.adminLog.count({ where }),
-      prisma.adminLog.count({
-        where: {
-          ...where,
-          createdAt: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          },
-        },
-      }),
-    ])
+    if (search) {
+      const q = search.toLowerCase()
+      logs = logs.filter(l =>
+        l.action?.toLowerCase().includes(q) ||
+        l.target?.toLowerCase().includes(q) ||
+        l.detail?.toLowerCase().includes(q),
+      )
+    }
 
-    // Action frequency map for sparkline
+    const todayStart = new Date().setHours(0, 0, 0, 0)
+    const todayCount = logs.filter(l => l._creationTime >= todayStart).length
+
     const actionFreq: Record<string, number> = {}
     for (const l of logs) actionFreq[l.action] = (actionFreq[l.action] ?? 0) + 1
 
-    return NextResponse.json({ logs, totalCount, todayCount, actionFreq })
+    return NextResponse.json({ logs, totalCount: logs.length, todayCount, actionFreq })
   } catch (err) {
     console.error('[API admin-logs]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })

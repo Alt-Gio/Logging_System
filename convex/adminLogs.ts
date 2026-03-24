@@ -11,6 +11,28 @@ export const getRecent = query({
   },
 })
 
+export const getFiltered = query({
+  args: {
+    limit:   v.optional(v.number()),
+    action:  v.optional(v.string()),
+    adminId: v.optional(v.id("admins")),
+    from:    v.optional(v.number()),
+    to:      v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let rows = await ctx.db
+      .query("adminLogs")
+      .order("desc")
+      .take(args.limit ?? 500)
+
+    if (args.action)  rows = rows.filter(r => r.action  === args.action)
+    if (args.adminId) rows = rows.filter(r => r.adminId === args.adminId)
+    if (args.from)    rows = rows.filter(r => r._creationTime >= args.from!)
+    if (args.to)      rows = rows.filter(r => r._creationTime <= args.to!)
+    return rows
+  },
+})
+
 export const getByAdmin = query({
   args: { adminId: v.id("admins") },
   handler: async (ctx, args) => {

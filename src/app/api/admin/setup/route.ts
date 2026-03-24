@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 // POST /api/admin/setup
 // Creates the first SUPER_ADMIN account.
 // This endpoint is ONLY active when zero admin accounts exist in the database.
 export async function POST(req: NextRequest) {
   try {
-    const count = await prisma.admin.count()
-    if (count > 0) {
+    const convex   = getConvexClient()
+    const existing = await convex.query(api.admins.getAll)
+    if (existing.length > 0) {
       return NextResponse.json(
         { error: 'Setup already completed. An admin account already exists.' },
         { status: 403 },
@@ -24,18 +26,15 @@ export async function POST(req: NextRequest) {
     }
 
     const hash = await bcrypt.hash(password as string, 12)
-    const admin = await prisma.admin.create({
-      data: {
-        username: (username as string).trim().toLowerCase(),
-        password: hash,
-        name: ((name as string | undefined) || username as string).trim(),
-        role: 'SUPER_ADMIN',
-      },
-      select: { id: true, username: true, name: true, role: true, createdAt: true },
+    const id   = await convex.mutation(api.admins.create, {
+      username:     (username as string).trim().toLowerCase(),
+      passwordHash: hash,
+      name:         ((name as string | undefined) || username as string).trim(),
+      role:         'SUPER_ADMIN',
     })
 
     return NextResponse.json(
-      { message: 'Admin account created. You can now sign in at /sign-in.', admin },
+      { message: 'Admin account created. You can now sign in at /sign-in.', admin: { _id: id, username, role: 'SUPER_ADMIN' } },
       { status: 201 },
     )
   } catch (e) {
@@ -46,6 +45,7 @@ export async function POST(req: NextRequest) {
 
 // GET — health check to see if setup is needed
 export async function GET() {
-  const count = await prisma.admin.count()
-  return NextResponse.json({ setupRequired: count === 0 })
+  const convex   = getConvexClient()
+  const existing = await convex.query(api.admins.getAll)
+  return NextResponse.json({ setupRequired: existing.length === 0 })
 }
