@@ -1,17 +1,8 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth'
-
-type HourRow    = { hour: number;  count: bigint }
-type AvgDurRow  = { avg_mins: number | null }
-type DailyRow   = { day: string;   count: bigint }
-type DurBucket  = { bucket: string; count: bigint }
-type AgencyRow  = { agency: string; _count: { _all: number } }
-type PurposeRow = { purpose: string; _count: { _all: number } }
-type ServiceRow = { serviceType: string; _count: { _all: number } }
-type RatingRow  = { satisfactionRating: number | null; _count: { _all: number } }
-type EquipRow   = { equipmentUsed: string[] }
+import { getConvexClient } from '@/lib/convex-client'
+import { api } from '@/convex/_generated/api'
 
 export async function GET(req: NextRequest) {
   try {
@@ -50,124 +41,83 @@ export async function GET(req: NextRequest) {
         prevFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 13)
     }
 
-    const where     = { archived: false, timeIn: { gte: dateFrom } }
-    const prevWhere = { archived: false, timeIn: { gte: prevFrom, lt: dateFrom } }
-
-    const [
-      total, active, checkedOut, prevTotal,
-      byPurpose, byAgency, byEquipment, byServiceType,
-      byHour, avgDuration, avgRating, ratingDist,
-      dailyTrend, durationBuckets,
-    ] = await Promise.all([
-      prisma.logEntry.count({ where }),
-      prisma.logEntry.count({ where: { ...where, timeOut: null } }),
-      prisma.logEntry.count({ where: { ...where, timeOut: { not: null } } }),
-      prisma.logEntry.count({ where: prevWhere }),
-
-      prisma.logEntry.groupBy({
-        by: ['purpose'], where,
-        _count: { _all: true },
-        orderBy: { _count: { purpose: 'desc' } },
-        take: 12,
-      }),
-
-      prisma.logEntry.groupBy({
-        by: ['agency'], where,
-        _count: { _all: true },
-        orderBy: { _count: { agency: 'desc' } },
-        take: 10,
-      }),
-
-      prisma.logEntry.findMany({ where, select: { equipmentUsed: true } }),
-
-      prisma.logEntry.groupBy({ by: ['serviceType'], where, _count: { _all: true } }),
-
-      prisma.$queryRaw<HourRow[]>`
-        SELECT EXTRACT(HOUR FROM "timeIn" AT TIME ZONE 'Asia/Manila')::int AS hour,
-               COUNT(*) AS count
-        FROM log_entries
-        WHERE archived = false AND "timeIn" >= ${dateFrom}
-        GROUP BY hour ORDER BY hour
-      `,
-
-      prisma.$queryRaw<AvgDurRow[]>`
-        SELECT AVG(EXTRACT(EPOCH FROM ("timeOut" - "timeIn")) / 60)::float AS avg_mins
-        FROM log_entries
-        WHERE archived = false AND "timeIn" >= ${dateFrom} AND "timeOut" IS NOT NULL
-      `,
-
-      prisma.logEntry.aggregate({
-        where: { ...where, satisfactionRating: { not: null } },
-        _avg:   { satisfactionRating: true },
-        _count: { satisfactionRating: true },
-      }),
-
-      prisma.logEntry.groupBy({
-        by: ['satisfactionRating'],
-        where: { ...where, satisfactionRating: { not: null } },
-        _count: { _all: true },
-      }),
-
-      prisma.$queryRaw<DailyRow[]>`
-        SELECT DATE("timeIn" AT TIME ZONE 'Asia/Manila')::text AS day,
-               COUNT(*) AS count
-        FROM log_entries
-        WHERE archived = false AND "timeIn" >= ${dateFrom}
-        GROUP BY day ORDER BY day
-      `,
-
-      // Session duration histogram (buckets: <30m, 30-60m, 1-2h, 2-3h, 3h+)
-      prisma.$queryRaw<DurBucket[]>`
-        SELECT
-          CASE
-            WHEN EXTRACT(EPOCH FROM ("timeOut" - "timeIn"))/60 < 30  THEN '<30 min'
-            WHEN EXTRACT(EPOCH FROM ("timeOut" - "timeIn"))/60 < 60  THEN '30–60 min'
-            WHEN EXTRACT(EPOCH FROM ("timeOut" - "timeIn"))/60 < 120 THEN '1–2 hrs'
-            WHEN EXTRACT(EPOCH FROM ("timeOut" - "timeIn"))/60 < 180 THEN '2–3 hrs'
-            ELSE '3+ hrs'
-          END AS bucket,
-          COUNT(*) AS count
-        FROM log_entries
-        WHERE archived = false AND "timeIn" >= ${dateFrom} AND "timeOut" IS NOT NULL
-        GROUP BY bucket ORDER BY MIN(EXTRACT(EPOCH FROM ("timeOut" - "timeIn")))
-      `,
+    const convex      = getConvexClient()
+    const dateTo      = now.getTime()
+    const [logs, prevLogs] = await Promise.all([
+      convex.query(api.logEntries.getByDate, { dateFrom: dateFrom.getTime(), dateTo }),
+      convex.query(api.logEntries.getByDate, { dateFrom: prevFrom.getTime(), dateTo: dateFrom.getTime() }),
     ])
+    const entries     = logs.filter(l => !l.archived)
+    const prevEntries = prevLogs.filter(l => !l.archived)
 
-    const equipmentMap: Record<string, number> = {}
-    for (const row of (byEquipment as EquipRow[])) {
-      for (const eq of row.equipmentUsed) {
-        equipmentMap[eq] = (equipmentMap[eq] ?? 0) + 1
+    const total      = entries.length
+    const prevTotal  = prevEntries.length
+    const active     = entries.filter(l => !l.timeOut).length
+    const checkedOut = entries.filter(l => !!l.timeOut).length
+
+    // ── Aggregations ─────────────────────────────────────────────────────────
+    const purposeMap:  Record<string, number> = {}
+    const agencyMap:   Record<string, number> = {}
+    const serviceMap:  Record<string, number> = {}
+    const equipMap:    Record<string, number> = {}
+    const hourMap:     Record<number, number> = {}
+    const dayMap:      Record<string, number> = {}
+    const ratingMap:   Record<number, number> = {}
+    const bucketOrder = ['<30 min', '30–60 min', '1–2 hrs', '2–3 hrs', '3+ hrs']
+    const bucketMap:   Record<string, number> = Object.fromEntries(bucketOrder.map(b => [b, 0]))
+    let durationSum = 0, durationCount = 0, ratingSum = 0, ratingCount = 0
+
+    const TZ_OFFSET = 8 * 3600_000 // Asia/Manila = UTC+8
+
+    for (const l of entries) {
+      purposeMap[l.purpose]           = (purposeMap[l.purpose]           ?? 0) + 1
+      agencyMap[l.agency]             = (agencyMap[l.agency]             ?? 0) + 1
+      serviceMap[l.serviceType ?? ''] = (serviceMap[l.serviceType ?? ''] ?? 0) + 1
+      for (const eq of l.equipmentUsed) equipMap[eq] = (equipMap[eq] ?? 0) + 1
+
+      const localMs  = l.timeIn + TZ_OFFSET
+      const hour     = Math.floor((localMs % 86_400_000) / 3_600_000)
+      hourMap[hour]  = (hourMap[hour] ?? 0) + 1
+
+      const dayStr   = new Date(localMs).toISOString().slice(0, 10)
+      dayMap[dayStr] = (dayMap[dayStr] ?? 0) + 1
+
+      if (l.timeOut) {
+        const mins = (l.timeOut - l.timeIn) / 60_000
+        durationSum += mins; durationCount++
+        const bucket = mins < 30 ? '<30 min' : mins < 60 ? '30–60 min' : mins < 120 ? '1–2 hrs' : mins < 180 ? '2–3 hrs' : '3+ hrs'
+        bucketMap[bucket]++
+      }
+      if (l.satisfactionRating != null) {
+        ratingSum += l.satisfactionRating; ratingCount++
+        ratingMap[l.satisfactionRating] = (ratingMap[l.satisfactionRating] ?? 0) + 1
       }
     }
 
-    // Period-over-period change
-    const trend = prevTotal > 0
-      ? Math.round(((total - prevTotal) / prevTotal) * 100)
-      : null
-
-    // Completion rate (checked out vs total with planned duration)
+    const trend        = prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : null
     const completionRate = total > 0 ? Math.round((checkedOut / total) * 100) : 0
 
     return NextResponse.json({
       range, dateFrom: dateFrom.toISOString(),
       summary: {
-        total, active, checkedOut, completionRate,
-        trend, // % change vs previous period
-        avgDurationMins: (avgDuration as AvgDurRow[])[0]?.avg_mins
-          ? Math.round((avgDuration as AvgDurRow[])[0].avg_mins!) : null,
-        avgRating: avgRating._avg.satisfactionRating
-          ? Math.round(avgRating._avg.satisfactionRating * 10) / 10 : null,
-        ratingCount: avgRating._count.satisfactionRating,
+        total, active, checkedOut, completionRate, trend,
+        avgDurationMins: durationCount > 0 ? Math.round(durationSum / durationCount) : null,
+        avgRating:   ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
+        ratingCount,
       },
-      byPurpose:       (byPurpose    as PurposeRow[]).map(p  => ({ purpose: p.purpose,   count: p._count._all })),
-      byAgency:        (byAgency     as AgencyRow[]).map(a   => ({ agency:  a.agency,     count: a._count._all })),
-      byEquipment:     Object.entries(equipmentMap).map(([equipment, count]) => ({ equipment, count }))
-                         .sort((a, b) => b.count - a.count),
-      byServiceType:   (byServiceType as ServiceRow[]).map(s => ({ type: s.serviceType, count: s._count._all })),
-      byHour:          (byHour as HourRow[]).map(h           => ({ hour: Number(h.hour), count: Number(h.count) })),
-      ratingDist:      (ratingDist as RatingRow[]).map(r     => ({ rating: r.satisfactionRating, count: r._count._all })),
-      dailyTrend:      (dailyTrend as DailyRow[]).map(d      => ({ day: d.day, count: Number(d.count) })),
-      durationBuckets: (durationBuckets as DurBucket[]).map(b => ({ bucket: b.bucket, count: Number(b.count) })),
+      byPurpose:  Object.entries(purposeMap).map(([purpose, count]) => ({ purpose, count }))
+                    .sort((a, b) => b.count - a.count).slice(0, 12),
+      byAgency:   Object.entries(agencyMap).map(([agency, count]) => ({ agency, count }))
+                    .sort((a, b) => b.count - a.count).slice(0, 10),
+      byEquipment: Object.entries(equipMap).map(([equipment, count]) => ({ equipment, count }))
+                    .sort((a, b) => b.count - a.count),
+      byServiceType: Object.entries(serviceMap).map(([type, count]) => ({ type, count })),
+      byHour:      Object.entries(hourMap).map(([h, count]) => ({ hour: Number(h), count }))
+                    .sort((a, b) => a.hour - b.hour),
+      ratingDist:  Object.entries(ratingMap).map(([r, count]) => ({ rating: Number(r), count })),
+      dailyTrend:  Object.entries(dayMap).map(([day, count]) => ({ day, count }))
+                    .sort((a, b) => a.day.localeCompare(b.day)),
+      durationBuckets: bucketOrder.map(bucket => ({ bucket, count: bucketMap[bucket] })),
     })
   } catch (err) {
     console.error('[stats/GET]', err instanceof Error ? err.message : err)
