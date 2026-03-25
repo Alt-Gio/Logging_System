@@ -107,7 +107,8 @@ export async function middleware(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
       const signInUrl = new URL('/sign-in', req.url)
-      signInUrl.searchParams.set('callbackUrl', req.url)
+      const cb = req.nextUrl.pathname + (req.nextUrl.search || '')
+      signInUrl.searchParams.set('callbackUrl', cb)
       return NextResponse.redirect(signInUrl)
     }
   }
