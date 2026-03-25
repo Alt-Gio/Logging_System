@@ -74,11 +74,11 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   res.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()')
   res.headers.set('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://challenges.cloudflare.com blob:",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com",
-    "connect-src 'self' https://*.pusher.com wss://*.pusher.com https://res.cloudinary.com https://api.groq.com wss://localhost:3210 ws://localhost:3210",
+    "connect-src 'self' https://res.cloudinary.com https://api.groq.com wss://localhost:3210 ws://localhost:3210",
     "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",
