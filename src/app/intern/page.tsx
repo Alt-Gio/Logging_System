@@ -269,7 +269,7 @@ export default function InternPortal() {
               </button>
             ))}
             {(interns ?? []).length === 0 && (
-              <p className="text-center text-gray-400 text-sm py-12">{interns === undefined ? 'Loading…' : 'No interns registered yet.'}</p>
+              <p className="text-center text-gray-400 text-sm py-12">{interns === null ? 'Loading…' : 'No active interns registered yet.'}</p>
             )}
           </div>
         </div>

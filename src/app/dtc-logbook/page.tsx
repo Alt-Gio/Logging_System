@@ -171,6 +171,123 @@ function DataPrivacyModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── House Rules Modal ───────────────────────────────────────────────────────
+function HouseRulesModal({ onClose, onAgree }: { onClose: () => void; onAgree: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      style={{ backdropFilter: 'blur(16px)', backgroundColor: 'rgba(0,20,80,0.65)' }}
+      onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="bg-[var(--dict-blue)] text-white rounded-t-2xl px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="font-display font-bold text-lg">House Rules &amp; Guidelines</h3>
+            <p className="text-blue-200 text-xs">DICT Digital Transformation Center — Region V</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors">✕</button>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-4 text-sm text-gray-600">
+          <p className="text-xs text-gray-400 bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
+            By using this facility you agree to comply with the following rules. Ignorance of these rules is not an excuse.
+          </p>
+
+          {/* Section 1 */}
+          <div className="rounded-xl border border-blue-100 overflow-hidden">
+            <div className="bg-blue-50 px-4 py-2.5 font-bold text-blue-700 text-xs uppercase tracking-wide flex items-center gap-2">🖥️ Section 1 — Computer Laboratory</div>
+            <ul className="p-4 space-y-2">
+              {['Maintain cleanliness at all times. No food or drinks inside the laboratory.',
+                'Treat all equipment with care. Report damage or defects to staff immediately.',
+                'Do not install unauthorized software or modify any hardware or system settings.',
+                'Do not access inappropriate, illegal, or malicious websites or content.',
+                'Plug in USB drives or external devices only with staff permission.',
+                'Log out of all accounts and properly shut down the computer before leaving.',
+                'Sessions are limited to 2 hours during peak hours. Vacate on time.'].map((r,i) => (
+                <li key={i} className="flex gap-2 text-xs leading-snug">
+                  <span className="text-blue-400 font-bold mt-0.5 flex-shrink-0">{i+1}.</span>
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Section 2 */}
+          <div className="rounded-xl border border-indigo-100 overflow-hidden">
+            <div className="bg-indigo-50 px-4 py-2.5 font-bold text-indigo-700 text-xs uppercase tracking-wide flex items-center gap-2">🏛️ Section 2 — DTC Hall &amp; Premises</div>
+            <ul className="p-4 space-y-2">
+              {['Keep noise to a minimum at all times. No shouting or disruptive behavior.',
+                'Dispose of trash properly. Eat only in designated areas outside.',
+                'Respect all furniture and fixtures. Vandalism is strictly prohibited.',
+                'Keep all emergency exits and pathways clear at all times.',
+                'Follow instructions from staff and facilitators at all times.'].map((r,i) => (
+                <li key={i} className="flex gap-2 text-xs leading-snug">
+                  <span className="text-indigo-400 font-bold mt-0.5 flex-shrink-0">{i+1}.</span>
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Section 3 */}
+          <div className="rounded-xl border border-emerald-100 overflow-hidden">
+            <div className="bg-emerald-50 px-4 py-2.5 font-bold text-emerald-700 text-xs uppercase tracking-wide flex items-center gap-2">🔒 Conduct &amp; Digital Security</div>
+            <ul className="p-4 space-y-2">
+              {['Respect all persons — staff, clients, interns, and visitors.',
+                'Bullying, harassment, or any form of abuse is strictly prohibited.',
+                'Hacking, unauthorized access, or data interception is a serious offense and may result in legal action.',
+                'Do not share, disclose, or misuse any personal data you encounter.',
+                'Playing games is not allowed unless authorized by staff.'].map((r,i) => (
+                <li key={i} className="flex gap-2 text-xs leading-snug">
+                  <span className="text-emerald-500 font-bold mt-0.5 flex-shrink-0">{i+1}.</span>
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Violations */}
+          <div className="rounded-xl border border-red-100 overflow-hidden">
+            <div className="bg-red-50 px-4 py-2.5 font-bold text-red-700 text-xs uppercase tracking-wide flex items-center gap-2">⚖️ Violations &amp; Sanctions</div>
+            <div className="p-4 space-y-2">
+              {[
+                { level:'Minor',    ex:'Noise, cleanliness',           action:'Verbal warning',        color:'bg-yellow-50 text-yellow-800' },
+                { level:'Moderate', ex:'Unauthorized USB, no log-out',  action:'Session termination',   color:'bg-orange-50 text-orange-800' },
+                { level:'Major',    ex:'Harassment, tampering',         action:'Removal from premises',  color:'bg-red-50 text-red-800' },
+                { level:'Severe',   ex:'Hacking, data theft',           action:'Ban + legal action',     color:'bg-rose-50 text-rose-900' },
+              ].map((v,i) => (
+                <div key={i} className={`rounded-lg px-3 py-2 ${v.color} flex items-start gap-2`}>
+                  <span className="font-bold text-xs w-16 flex-shrink-0">{v.level}</span>
+                  <span className="text-xs flex-1 opacity-80">{v.ex}</span>
+                  <span className="text-xs font-bold flex-shrink-0">→ {v.action}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-400 text-center">
+            Full rules available at{' '}
+            <a href="/rules" target="_blank" rel="noopener noreferrer" className="text-[var(--dict-blue)] underline font-medium">dict.it.com/rules</a>
+          </p>
+        </div>
+
+        {/* Footer buttons */}
+        <div className="p-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">
+            Close
+          </button>
+          <button onClick={onAgree}
+            className="flex-[2] py-3 bg-[var(--dict-blue)] text-white rounded-xl text-sm font-bold hover:bg-blue-800 transition-colors">
+            ✓ I Have Read and Agree
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Terms Checkbox Block ──────────────────────────────────────────────────────
 function TermsBlock({ title, icon, color, terms, checked, onChange }: {
   title: string; icon: string; color: string
@@ -774,6 +891,7 @@ export default function LogbookPage() {
   const [consentChecked, setConsentChecked] = useState(false)
   const [rulesAgreed, setRulesAgreed]     = useState(false)
   const [showConsentModal, setShowConsentModal] = useState(false)
+  const [showRulesModal,   setShowRulesModal]   = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -1488,6 +1606,7 @@ export default function LogbookPage() {
     <div className="min-h-screen" style={{position:"relative",zIndex:1}}>
       {AccessGate}
       {showPrivacyModal && <DataPrivacyModal onClose={() => setShowPrivacyModal(false)}/>}
+      {showRulesModal   && <HouseRulesModal  onClose={() => setShowRulesModal(false)} onAgree={() => { setRulesAgreed(true); setShowRulesModal(false) }}/>}
 
       {/* Announcements banner */}
       {announcements.length > 0 && accessGranted && (
@@ -1959,10 +2078,10 @@ export default function LogbookPage() {
               </div>
               <p className="text-sm text-gray-700 leading-snug flex-1">
                 I have read and agree to the{' '}
-                <a href="/rules" target="_blank" rel="noopener noreferrer"
-                  className="text-[var(--dict-blue)] font-bold underline" onClick={e => e.stopPropagation()}>
+                <button type="button" onClick={() => setShowRulesModal(true)}
+                  className="text-[var(--dict-blue)] font-bold underline hover:text-blue-800">
                   DTC House Rules and Guidelines
-                </a>
+                </button>
                 . I understand that violations may result in session termination or removal from the premises.
               </p>
             </label>

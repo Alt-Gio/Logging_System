@@ -10,14 +10,31 @@ export async function GET(req: NextRequest) {
     const convex = getConvexClient()
 
     if (!internId) {
-      const sessions = await convex.query(api.internSessions.getAllActiveSessions, {})
+      const raw = await convex.query(api.internSessions.getAllActiveSessions, {})
+      const sessions = raw.map((s: Record<string,unknown>) => ({
+        id:         s._id,
+        _id:        s._id,
+        internId:   s.internId,
+        timeIn:     new Date(s.timeIn as number).toISOString(),
+        status:     s.status,
+        internName: s.internName ?? null,
+        internPhoto:s.internPhoto ?? null,
+      }))
       return NextResponse.json(sessions)
     }
 
-    const session = await convex.query(api.internSessions.getActiveSession, {
+    const raw = await convex.query(api.internSessions.getActiveSession, {
       internId: internId as Id<'interns'>,
     })
-    return NextResponse.json(session ?? null)
+    if (!raw) return NextResponse.json(null)
+    const session = {
+      id:       raw._id,
+      _id:      raw._id,
+      internId: raw.internId,
+      timeIn:   new Date(raw.timeIn as number).toISOString(),
+      status:   raw.status,
+    }
+    return NextResponse.json(session)
   } catch (e) {
     console.error('[intern-sessions GET]', e)
     return NextResponse.json({ error: 'Failed to fetch session' }, { status: 500 })
@@ -33,7 +50,13 @@ export async function POST(req: NextRequest) {
     const sessionId = await convex.mutation(api.internSessions.timeIn, {
       internId: internId as Id<'interns'>,
     })
-    return NextResponse.json({ _id: sessionId }, { status: 201 })
+    return NextResponse.json({
+      id:       sessionId,
+      _id:      sessionId,
+      internId: internId,
+      timeIn:   new Date().toISOString(),
+      status:   'ACTIVE',
+    }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     if (msg.includes('already active')) return NextResponse.json({ error: msg }, { status: 409 })

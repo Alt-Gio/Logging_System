@@ -7,7 +7,28 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
     const convex  = getConvexClient()
-    const interns = await convex.query(api.interns.getAll, status ? { status } : {})
+    const raw = await convex.query(api.interns.getAll, status ? { status } : {})
+    const interns = raw.map((i: Record<string, unknown>) => ({
+      id:           i._id,
+      _id:          i._id,
+      fullName:     i.fullName,
+      school:       i.school,
+      course:       i.course,
+      department:   i.department   ?? null,
+      supervisor:   i.supervisor   ?? null,
+      status:       i.status,
+      totalHours:   i.totalHoursLogged ?? 0,
+      totalHoursLogged: i.totalHoursLogged ?? 0,
+      requiredHours: i.requiredHours ?? 486,
+      photoUrl:     i.photoUrl     ?? null,
+      email:        i.email        ?? null,
+      phone:        i.phone        ?? null,
+      startDate:    i.startDate    ? new Date(i.startDate as number).toISOString() : null,
+      endDate:      i.endDate      ? new Date(i.endDate   as number).toISOString() : null,
+      notes:        i.notes        ?? null,
+      attendance:   [],
+      tasks:        [],
+    }))
     return NextResponse.json(interns)
   } catch (e) {
     console.error('[interns/GET]', e)
