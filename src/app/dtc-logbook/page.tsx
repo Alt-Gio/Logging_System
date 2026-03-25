@@ -772,6 +772,7 @@ export default function LogbookPage() {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [consentChecked, setConsentChecked] = useState(false)
+  const [rulesAgreed, setRulesAgreed]     = useState(false)
   const [showConsentModal, setShowConsentModal] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -982,6 +983,7 @@ export default function LogbookPage() {
       if (!hasContact) e.contact = 'Email address is required to borrow a workstation'
       else if (form.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail.trim())) e.contact = 'Please enter a valid email address'
     }
+    if (!rulesAgreed) e.rules = 'Please read and agree to the DTC House Rules to continue'
     if (!pcTermsOk) e.terms = 'Please agree to all computer use terms'
     if (!wifiTermsOk) e.terms = 'Please agree to all WiFi use terms'
     setErrors(e)
@@ -1047,6 +1049,7 @@ export default function LogbookPage() {
       setPcTerms(PC_TERMS.map(() => true))
       setWifiTerms(WIFI_TERMS.map(() => true))
       setConsentChecked(true)
+      setRulesAgreed(true)
       // Pre-fill contact info from verified contact
       if (otpChannel === 'email') setForm(f => ({ ...f, contactEmail: otpContact.trim() }))
       else setForm(f => ({ ...f, contactPhone: otpContact.trim() }))
@@ -1062,6 +1065,7 @@ export default function LogbookPage() {
     setPcTerms(PC_TERMS.map(() => false))
     setWifiTerms(WIFI_TERMS.map(() => false))
     setConsentChecked(false)
+    setRulesAgreed(false)
     try { sessionStorage.removeItem(STORAGE_KEY_OTP) } catch {}
   }
 
@@ -1149,7 +1153,7 @@ export default function LogbookPage() {
     setErrors({}); setSubmitError(null); setSubmittedLog(null); setPhoto(null)
     setUsageDuration('1'); setCustomDuration(''); setShowCustom(false)
     setPcTerms(PC_TERMS.map(() => false)); setWifiTerms(WIFI_TERMS.map(() => false))
-    setConsentChecked(false); stopCamera(); setStep('form'); fetchPCs()
+    setConsentChecked(false); setRulesAgreed(false); stopCamera(); setStep('form'); fetchPCs()
     // Clear OTP state for next user (new person at the kiosk)
     setOtpVerified(false); setOtpSent(false); setOtpCode(''); setOtpError(null)
     setOtpCountdown(0); setOtpContact(''); setOtpChannel('email')
@@ -1942,6 +1946,29 @@ export default function LogbookPage() {
             </div>
           )}
 
+          {/* House Rules Agreement — always required */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <div onClick={() => setRulesAgreed(v => !v)}
+                className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                  rulesAgreed ? 'bg-[var(--dict-blue)] border-[var(--dict-blue)]' : 'border-gray-300 bg-white'
+                }`}>
+                {rulesAgreed && (
+                  <svg className="w-3 h-3 text-white" viewBox="0 0 12 12"><path fill="currentColor" d="M10 3L5 8.5 2 5.5 1 6.5 5 10.5 11 4z"/></svg>
+                )}
+              </div>
+              <p className="text-sm text-gray-700 leading-snug flex-1">
+                I have read and agree to the{' '}
+                <a href="/rules" target="_blank" rel="noopener noreferrer"
+                  className="text-[var(--dict-blue)] font-bold underline" onClick={e => e.stopPropagation()}>
+                  DTC House Rules and Guidelines
+                </a>
+                . I understand that violations may result in session termination or removal from the premises.
+              </p>
+            </label>
+            {errors.rules && <p className="text-red-500 text-xs mt-2">⚠ {errors.rules}</p>}
+          </div>
+
           {/* Terms — shown only when equipment is selected */}
           {(hasPC || hasWifi) && (
             <div className="space-y-3 pt-1">
@@ -2007,9 +2034,10 @@ export default function LogbookPage() {
 
           {/* Submit */}
           <button onClick={handleNext}
-            disabled={form.equipmentUsed.length > 0 && (!pcTermsOk || !wifiTermsOk)}
+            disabled={!rulesAgreed || (form.equipmentUsed.length > 0 && (!pcTermsOk || !wifiTermsOk))}
             className="w-full py-4 rounded-xl bg-[var(--dict-blue)] text-white font-bold hover:bg-blue-800 transition-all shadow-lg shadow-blue-100 text-base disabled:opacity-50 disabled:cursor-not-allowed">
-            {!form.equipmentUsed.length ? 'Select a Service to Continue'
+            {!rulesAgreed ? 'Please agree to the House Rules above'
+              : !form.equipmentUsed.length ? 'Select a Service to Continue'
               : !pcTermsOk || !wifiTermsOk ? 'Please agree to all terms above'
               : hasPC && hasWifi ? '🖥️ Choose Workstation →'
               : hasPC ? '🖥️ Choose Workstation →'

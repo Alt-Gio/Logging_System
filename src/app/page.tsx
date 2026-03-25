@@ -165,6 +165,7 @@ export default function HomePage() {
               {[['#about','About'],['#events','Events'],['#services','Services']].map(([h,l]) => (
                 <a key={h} href={h} className="text-gray-400 hover:text-white transition-colors">{l}</a>
               ))}
+              <Link href="/rules" className="text-gray-400 hover:text-amber-400 transition-colors">Rules</Link>
               <Link href="/intern-logbook" className="text-gray-400 hover:text-violet-400 transition-colors">Interns</Link>
               <Link href="/dtc-logbook" className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-white transition-colors text-sm">
                 Logbook
@@ -181,6 +182,9 @@ export default function HomePage() {
               {[['#about','About'],['#events','Events'],['#services','Services']].map(([h,l]) => (
                 <a key={h} href={h} onClick={() => setMenuOpen(false)} className="block text-gray-300 text-sm py-1.5">{l}</a>
               ))}
+              <Link href="/rules" onClick={() => setMenuOpen(false)} className="block text-amber-400 text-sm py-1.5">
+                📋 House Rules
+              </Link>
               <Link href="/intern-logbook" onClick={() => setMenuOpen(false)} className="block text-violet-400 text-sm py-1.5">
                 🎓 Intern Logbook
               </Link>

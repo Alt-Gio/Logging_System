@@ -23,6 +23,7 @@ const PUBLIC_PATHS = [
   '/',
   '/sign-in',
   '/setup',
+  '/rules',
   '/print',
   '/offline',
   '/api/health',
