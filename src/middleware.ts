@@ -22,10 +22,12 @@ async function getSessionUserId(req: NextRequest): Promise<string | null> {
 const PUBLIC_PATHS = [
   '/',
   '/sign-in',
+  '/setup',
   '/print',
   '/offline',
   '/api/health',
   '/api/auth',
+  '/api/setup',
   '/api/settings',
   '/api/pcs',
   '/api/cron',

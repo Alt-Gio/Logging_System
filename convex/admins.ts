@@ -77,3 +77,27 @@ export const remove = mutation({
     await ctx.db.delete(args.id)
   },
 })
+
+export const createOrUpdate = mutation({
+  args: {
+    username:     v.string(),
+    passwordHash: v.string(),
+    name:         v.string(),
+    role:         v.union(v.literal("SUPER_ADMIN"), v.literal("ADMIN"), v.literal("STAFF")),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("admins")
+      .withIndex("by_username", q => q.eq("username", args.username))
+      .first()
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        passwordHash: args.passwordHash,
+        name:         args.name,
+        role:         args.role,
+      })
+      return existing._id
+    }
+    return ctx.db.insert("admins", args)
+  },
+})
