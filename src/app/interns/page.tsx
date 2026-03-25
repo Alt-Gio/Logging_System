@@ -1,6 +1,5 @@
 'use client'
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { useSession, signOut } from 'next-auth/react'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth, isToday, parseISO } from 'date-fns'
 import * as XLSX from 'xlsx'
@@ -179,8 +178,20 @@ function HoursProgress({ current, required }: { current: number; required: numbe
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
+async function doSignOut() {
+  await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {})
+  window.location.href = '/sign-in'
+}
+
 export default function InternsPage() {
-  const { status } = useSession()
+  const [_sessionData, _setSessionData] = useState<{ user: { id: string; name: string; role: string } } | null | undefined>(undefined)
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then(d => _setSessionData(d ?? null))
+      .catch(() => _setSessionData(null))
+  }, [])
+  const status = _sessionData === undefined ? 'loading' : _sessionData ? 'authenticated' : 'unauthenticated'
   const clerkLoaded = status !== 'loading'
   const isSignedIn  = status === 'authenticated'
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -1126,7 +1137,7 @@ export default function InternsPage() {
                 ← Admin Dashboard
               </a>
               <GovHeaderLogos/>
-              <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-200 hover:text-white hover:bg-white/10 transition-all">🔒 Sign Out</button>
+              <button onClick={doSignOut} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-200 hover:text-white hover:bg-white/10 transition-all">🔒 Sign Out</button>
             </div>
           </div>
         </div>

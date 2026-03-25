@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { useSession, signOut } from 'next-auth/react'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -49,8 +48,20 @@ type GeneratedCert = {
 const CERT_WIDTH = 1122  // A4 landscape width in pixels at 96 DPI
 const CERT_HEIGHT = 794  // A4 landscape height in pixels at 96 DPI
 
+async function doSignOut() {
+  await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {})
+  window.location.href = '/sign-in'
+}
+
 export default function CertificatesPage() {
-  const { status } = useSession()
+  const [_sessionData, _setSessionData] = useState<{ user: unknown } | null | undefined>(undefined)
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then(d => _setSessionData(d ?? null))
+      .catch(() => _setSessionData(null))
+  }, [])
+  const status = _sessionData === undefined ? 'loading' : _sessionData ? 'authenticated' : 'unauthenticated'
   const clerkLoaded = status !== 'loading'
   const isSignedIn  = status === 'authenticated'
   const [view, setView] = useState<'templates' | 'designer' | 'generate'>('templates')
@@ -423,7 +434,7 @@ export default function CertificatesPage() {
                 </button>
               )}
             </nav>
-            <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-all">🔒 Sign Out</button>
+            <button onClick={doSignOut} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-all">🔒 Sign Out</button>
           </div>
         </div>
       </header>

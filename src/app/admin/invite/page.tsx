@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useSession, signOut } from 'next-auth/react'
 
 type Invite = {
   id: string
@@ -26,10 +25,23 @@ const S = {
   },
 }
 
+type DictSession = { user: { id: string; name: string; email: string; role: string } } | null
+
+async function doSignOut() {
+  await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {})
+  window.location.href = '/sign-in'
+}
+
 export default function InvitePage() {
-  const { data: session, status } = useSession()
-  const isLoaded = status !== 'loading'
-  const user = session?.user
+  const [sessionData, setSessionData] = useState<DictSession | undefined>(undefined)
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then((d: DictSession) => setSessionData(d ?? null))
+      .catch(() => setSessionData(null))
+  }, [])
+  const isLoaded = sessionData !== undefined
+  const user = sessionData?.user
   const [emails, setEmails]     = useState('')
   const [invites, setInvites]   = useState<Invite[]>([])
   const [loading, setLoading]   = useState(false)
@@ -128,7 +140,7 @@ export default function InvitePage() {
               <span style={{ color: 'rgba(255,255,255,0.70)', fontSize: '12px', fontWeight: 500 }}>
                 {user.name}
               </span>
-              <button onClick={() => signOut({ callbackUrl: '/sign-in' })} style={{ padding: '6px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.20)', background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.80)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
+              <button onClick={doSignOut} style={{ padding: '6px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.20)', background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.80)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
             </div>
           )}
         </div>

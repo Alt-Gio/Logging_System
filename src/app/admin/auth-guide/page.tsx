@@ -1,18 +1,31 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
+type DictSession = { user: { id: string; name: string; email: string; role: string } } | null
+
+async function doSignOut() {
+  await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {})
+  window.location.href = '/sign-in'
+}
+
 export default function AuthGuidePage() {
-  const { data: session, status } = useSession()
+  const [sessionData, setSessionData] = useState<DictSession | undefined>(undefined)
   const router = useRouter()
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/sign-in')
-  }, [status, router])
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then((d: DictSession) => setSessionData(d ?? null))
+      .catch(() => setSessionData(null))
+  }, [])
 
-  if (status === 'loading' || !session) return null
-  const user = session.user
+  useEffect(() => {
+    if (sessionData === null) router.push('/sign-in')
+  }, [sessionData, router])
+
+  if (sessionData === undefined || !sessionData) return null
+  const user = sessionData.user
 
   const steps = [
     {
@@ -84,7 +97,7 @@ export default function AuthGuidePage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>{user.name}</span>
-            <button onClick={() => signOut({ callbackUrl: '/sign-in' })} style={{ padding: '6px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.20)', background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.8)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
+            <button onClick={doSignOut} style={{ padding: '6px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.20)', background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.8)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
           </div>
         </div>
       </header>
@@ -119,7 +132,7 @@ export default function AuthGuidePage() {
             </p>
           </div>
           <button
-            onClick={() => signOut({ callbackUrl: '/sign-in' })}
+            onClick={doSignOut}
             style={{ padding: '8px 18px', borderRadius: '10px', border: '1px solid rgba(220,38,38,0.25)', background: 'rgba(220,38,38,0.06)', color: '#dc2626', fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
             Sign Out
           </button>
