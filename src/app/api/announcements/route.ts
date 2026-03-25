@@ -9,7 +9,14 @@ export async function GET() {
   try {
     const convex = getConvexClient()
     const announcements = await convex.query(api.announcements.getActive, {})
-    return NextResponse.json(announcements)
+    return NextResponse.json(announcements.map(a => ({
+      id:        a._id,
+      title:     a.title,
+      content:   a.body,
+      urgent:    a.type === 'WARNING' || a.type === 'MAINTENANCE',
+      createdAt: new Date(a._creationTime).toISOString(),
+      expiresAt: a.expiresAt ? new Date(a.expiresAt).toISOString() : undefined,
+    })))
   } catch (err) {
     console.error('[announcements/GET]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 })

@@ -108,6 +108,19 @@ export const archive = mutation({
   },
 })
 
+export const getTodayCount = query({
+  args: {},
+  handler: async (ctx) => {
+    const now       = Date.now()
+    const startOfDay = now - (now % 86_400_000)
+    const entries = await ctx.db
+      .query("logEntries")
+      .withIndex("by_timeIn", q => q.gte("timeIn", startOfDay).lte("timeIn", now))
+      .collect()
+    return entries.length
+  },
+})
+
 export const search = query({
   args: { searchTerm: v.string() },
   handler: async (ctx, args) => {

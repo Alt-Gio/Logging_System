@@ -68,14 +68,14 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   res.headers.set('X-XSS-Protection', '1; mode=block')
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
-  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
+  res.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()')
   res.headers.set('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://challenges.cloudflare.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.pusher.com https://challenges.cloudflare.com blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com",
-    "connect-src 'self' https://*.pusher.com wss://*.pusher.com https://res.cloudinary.com",
+    "connect-src 'self' https://*.pusher.com wss://*.pusher.com https://res.cloudinary.com https://api.groq.com wss://localhost:3210 ws://localhost:3210",
     "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",

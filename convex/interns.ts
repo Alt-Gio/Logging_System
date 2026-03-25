@@ -1,6 +1,17 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
+export const getActiveCount = query({
+  args: {},
+  handler: async (ctx) => {
+    const active = await ctx.db
+      .query("interns")
+      .withIndex("by_status", q => q.eq("status", "ACTIVE"))
+      .collect()
+    return active.length
+  },
+})
+
 export const getAll = query({
   args: { status: v.optional(v.string()) },
   handler: async (ctx, args) => {

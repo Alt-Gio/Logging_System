@@ -62,6 +62,7 @@ export default function HomePage() {
   const [expanded, setExpanded] = useState<Announcement | null>(null)
   const [liveTime, setLiveTime] = useState('')
   const [heroIndex, setHeroIndex] = useState(0)
+  const [liveStats, setLiveStats] = useState<{ todayCount: number; activeInterns: number; activeNow: number } | null>(null)
   const statsRef = useRef<HTMLElement>(null)
 
   const active = announcements.filter(a => !a.expiresAt || new Date(a.expiresAt) > new Date())
@@ -70,6 +71,16 @@ export default function HomePage() {
 
   useEffect(() => {
     fetch('/api/announcements').then(r => r.json()).then(d => { if (Array.isArray(d)) setAnnouncements(d) }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const fetchLive = () =>
+      fetch('/api/stats/live').then(r => r.json()).then(d => {
+        if (d && typeof d.todayCount === 'number') setLiveStats({ todayCount: d.todayCount, activeInterns: d.activeInterns ?? 0, activeNow: d.activeNow ?? 0 })
+      }).catch(() => {})
+    fetchLive()
+    const t = setInterval(fetchLive, 30_000)
+    return () => clearInterval(t)
   }, [])
 
   useEffect(() => {
@@ -334,10 +345,10 @@ export default function HomePage() {
             {/* Stats strip */}
             <div ref={statsRef as React.RefObject<HTMLDivElement>} className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               {[
-                { val: workstations, suffix: '',   label: 'Workstations',    color: 'text-cyan-400'    },
-                { val: 100,          suffix: '%',  label: 'Free of Charge',  color: 'text-emerald-400' },
-                { val: 6,            suffix: '',   label: 'Bicol Offices',   color: 'text-violet-400'  },
-                { val: 5,            suffix: ' days/wk', label: 'Mon–Fri 8AM–5PM', color: 'text-blue-400' },
+                { val: workstations,                  suffix: '',   label: 'Workstations',    color: 'text-cyan-400'    },
+                { val: 100,                             suffix: '%',  label: 'Free of Charge',  color: 'text-emerald-400' },
+                { val: liveStats?.todayCount  ?? 0,     suffix: '+',  label: 'Logged Today',    color: 'text-amber-400'   },
+                { val: liveStats?.activeInterns ?? 0,   suffix: '',   label: 'Active Interns',  color: 'text-violet-400'  },
               ].map(s => (
                 <div key={s.label} className="bg-gray-800/50 rounded-xl p-4 sm:p-5 text-center border border-gray-700 hover:border-gray-600 transition-colors">
                   <div className={`text-2xl sm:text-3xl font-black ${s.color} mb-1`}>{s.val.toLocaleString()}{s.suffix}</div>

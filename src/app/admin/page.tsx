@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession, signOut } from 'next-auth/react'
-import { usePusher } from '@/lib/usePusher'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { VoiceAssistant } from '@/components/VoiceAssistant'
 import { format, formatDistanceToNow, isToday, differenceInMinutes } from 'date-fns'
@@ -451,25 +450,6 @@ export default function AdminPage() {
       new Notification(title, { body, icon: '/dict-seal.png', badge: '/dict-seal.png', tag: urgent ? 'urgent' : 'info' })
     }
   }
-
-  usePusher({
-    onLogCreated: (data: unknown) => {
-      const d = data as { fullName: string; pcName?: string }
-      fetchLogs(); fetchStats()
-      sendNotif('New Client Logged In', `${d.fullName}${d.pcName ? ' · ' + d.pcName : ''}`)
-    },
-    onLogUpdated: () => { fetchLogs(); fetchPcs() },
-    onLogArchived: () => { fetchLogs(); fetchStats() },
-    onPcUpdated: () => { fetchPcs() },
-    onStatsUpdate: (data: unknown) => {
-      setLiveStats(data as {totalEntries:number;activeNow:number;pcsOnline:number;pcsInUse:number})
-    },
-    onSessionExpiry: (data: unknown) => {
-      const d = data as { fullName: string; pcName?: string }
-      fetchLogs(); fetchPcs(); fetchStats()
-      sendNotif('⏰ Session Auto-Ended', `${d.fullName}'s session has expired${d.pcName ? ' — ' + d.pcName + ' is now free' : ''}`, true)
-    },
-  })
 
   // Grid floor plan settings
   const [gridCols, setGridCols] = useState(5)
