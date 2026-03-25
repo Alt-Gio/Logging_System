@@ -1,11 +1,16 @@
 'use client'
-import { useQuery, useMutation } from 'convex/react'
-import { api } from '@/convex/_generated/api'
-import type { Id } from '@/convex/_generated/dataModel'
 import { useState, useEffect, useRef } from 'react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Screen = 'select' | 'home' | 'active' | 'timeout'
+type InternDoc = {
+  _id: string; fullName: string; school: string; course: string
+  department?: string | null; totalHoursLogged: number; requiredHours: number
+  photoUrl?: string | null; status: string
+}
+type SessionDoc = { _id: string; internId: string; timeIn: number; status: string }
+type TaskDoc    = { _id: string; title: string; status: string; priority: string }
+type AnnounceDoc = { id: string; title: string; content: string; urgent: boolean }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function fmtElapsed(ms: number) {
@@ -44,40 +49,89 @@ const INTERN_KEY = 'dtc_intern_portal_id'
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function InternPortal() {
-  const [screen,   setScreen]   = useState<Screen>('select')
-  const [internId, setInternId] = useState<Id<'interns'> | null>(null)
-  const [search,   setSearch]   = useState('')
-  const [elapsed,  setElapsed]  = useState(0)
-  const [clock,    setClock]    = useState(fmtClock())
-  const [note,     setNote]     = useState('')
-  const [saving,   setSaving]   = useState(false)
-  const [toast,    setToast]    = useState('')
+  const [screen,        setScreen]        = useState<Screen>('select')
+  const [internId,      setInternId]      = useState<string | null>(null)
+  const [search,        setSearch]        = useState('')
+  const [elapsed,       setElapsed]       = useState(0)
+  const [clock,         setClock]         = useState(fmtClock())
+  const [note,          setNote]          = useState('')
+  const [saving,        setSaving]        = useState(false)
+  const [toast,         setToast]         = useState('')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // ── Convex real-time queries ──────────────────────────────────────────────
-  const interns       = useQuery(api.interns.getAll, { status: 'ACTIVE' })
-  const announcements = useQuery(api.announcements.getActive)
-  const activeSession = useQuery(
-    api.internSessions.getActiveSession,
-    internId ? { internId } : 'skip',
-  )
-  const tasks = useQuery(
-    api.internTasks.getTasksForIntern,
-    internId ? { internId } : 'skip',
-  )
+  // ── API-backed state (replaces useQuery) ─────────────────────────────────
+  const [interns,       setInterns]       = useState<InternDoc[] | null>(null)
+  const [announce,      setAnnounce]      = useState<AnnounceDoc | null>(null)
+  const [activeSession, setActiveSession] = useState<SessionDoc | null | undefined>(undefined)
+  const [tasks,         setTasks]         = useState<TaskDoc[] | null>(null)
 
-  // ── Convex mutations ──────────────────────────────────────────────────────
-  const timeInMutation     = useMutation(api.internSessions.timeIn)
-  const timeOutMutation    = useMutation(api.internSessions.timeOut)
-  const updateTaskMutation = useMutation(api.internTasks.updateTaskStatus)
+  // ── Fetch interns + announcements once on mount ───────────────────────────
+  useEffect(() => {
+    fetch('/api/interns?status=ACTIVE')
+      .then(r => r.json())
+      .then((d: unknown) => setInterns(Array.isArray(d) ? (d as InternDoc[]) : []))
+      .catch(() => setInterns([]))
+
+    fetch('/api/announcements')
+      .then(r => r.json())
+      .then((d: unknown) => {
+        const list = Array.isArray(d) ? (d as AnnounceDoc[]) : []
+        setAnnounce(list[0] ?? null)
+      })
+      .catch(() => {})
+  }, [])
+
+  // ── Restore intern from localStorage once list loads ─────────────────────
+  useEffect(() => {
+    if (!interns || interns.length === 0) return
+    const saved = localStorage.getItem(INTERN_KEY)
+    if (saved) {
+      const found = interns.find(i => i._id === saved)
+      if (found) { setInternId(found._id); setScreen('home') }
+    }
+  }, [interns])
+
+  // ── Poll session + tasks whenever internId changes ────────────────────────
+  useEffect(() => {
+    if (!internId) { setActiveSession(undefined); setTasks(null); return }
+
+    const fetchSession = () =>
+      fetch(`/api/intern-sessions?internId=${internId}`)
+        .then(r => r.json())
+        .then((d: unknown) => setActiveSession((d as SessionDoc) ?? null))
+        .catch(() => {})
+
+    const fetchTasks = () =>
+      fetch(`/api/intern-tasks?internId=${internId}`)
+        .then(r => r.json())
+        .then((d: unknown) => setTasks(Array.isArray(d) ? (d as TaskDoc[]) : []))
+        .catch(() => {})
+
+    setActiveSession(undefined)
+    fetchSession()
+    fetchTasks()
+
+    const t = setInterval(() => { fetchSession(); fetchTasks() }, 5_000)
+    return () => clearInterval(t)
+  }, [internId])
+
+  // ── React to session state change — switch screen ────────────────────────
+  useEffect(() => {
+    if (!internId || activeSession === undefined) return
+    if (activeSession) {
+      setElapsed(Date.now() - activeSession.timeIn)
+      setScreen(prev => prev === 'timeout' ? 'timeout' : 'active')
+    } else {
+      setScreen(prev => (prev === 'select' || prev === 'timeout') ? 'home' : prev)
+    }
+  }, [internId, activeSession?._id])
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const intern   = interns?.find(i => i._id === internId) ?? null
-  const announce = announcements?.[0] ?? null
-  const done     = (tasks ?? []).filter(t => t.status === 'COMPLETED')
-  const mins     = minsUntil5PM()
-  const fname    = intern?.fullName.split(' ')[0] ?? ''
-  const loading  = internId !== null && activeSession === undefined
+  const intern  = interns?.find(i => i._id === internId) ?? null
+  const done    = (tasks ?? []).filter(t => t.status === 'COMPLETED')
+  const mins    = minsUntil5PM()
+  const fname   = intern?.fullName.split(' ')[0] ?? ''
+  const loading = internId !== null && activeSession === undefined
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3200) }
 
@@ -91,29 +145,8 @@ export default function InternPortal() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSession?._id])
 
-  // ── Restore intern from localStorage once interns list loads ─────────────
-  useEffect(() => {
-    if (!interns || interns.length === 0) return
-    const saved = localStorage.getItem(INTERN_KEY)
-    if (saved) {
-      const found = interns.find(i => i._id === saved)
-      if (found) { setInternId(found._id); setScreen('home') }
-    }
-  }, [interns])
-
-  // ── React to active session loading — switch screen ──────────────────────
-  useEffect(() => {
-    if (!internId || activeSession === undefined) return
-    if (activeSession) {
-      setElapsed(Date.now() - activeSession.timeIn)
-      setScreen(prev => prev === 'timeout' ? 'timeout' : 'active')
-    } else {
-      setScreen(prev => (prev === 'select' || prev === 'timeout') ? 'home' : prev)
-    }
-  }, [internId, activeSession?._id])
-
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const selectIntern = (i: NonNullable<typeof interns>[number]) => {
+  const selectIntern = (i: InternDoc) => {
     setInternId(i._id)
     localStorage.setItem(INTERN_KEY, i._id)
     setScreen('home')
@@ -122,31 +155,48 @@ export default function InternPortal() {
   const handleTimeIn = async () => {
     if (!internId) return
     try {
-      await timeInMutation({ internId })
+      const r = await fetch('/api/intern-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ internId }),
+      })
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? 'Failed') }
+      // re-fetch session to get the full document with timeIn timestamp
+      const s = await fetch(`/api/intern-sessions?internId=${internId}`)
+        .then(res => res.json()).catch(() => null)
+      setActiveSession((s as SessionDoc) ?? null)
       setElapsed(0)
       showToast('Session started ✓')
-    } catch { showToast('Failed to start session') }
+    } catch (e) { showToast((e as Error).message || 'Failed to start session') }
   }
 
-  const handleToggleTask = async (task: NonNullable<typeof tasks>[number]) => {
+  const handleToggleTask = async (task: TaskDoc) => {
     const newStatus = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED'
+    setTasks(prev => prev?.map(t => t._id === task._id ? { ...t, status: newStatus } : t) ?? null)
     try {
-      await updateTaskMutation({
-        taskId: task._id,
-        status: newStatus as 'PENDING' | 'COMPLETED',
+      const r = await fetch('/api/intern-tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task._id, status: newStatus }),
       })
-    } catch { showToast('Failed to update task') }
+      if (!r.ok) throw new Error()
+    } catch {
+      setTasks(prev => prev?.map(t => t._id === task._id ? { ...t, status: task.status } : t) ?? null)
+      showToast('Failed to update task')
+    }
   }
 
   const handleSubmitSignOut = async () => {
     if (!activeSession || !note.trim()) return
     setSaving(true)
     try {
-      await timeOutMutation({
-        sessionId:    activeSession._id,
-        progressNote: note.trim(),
-        closedBy:     'intern',
+      const r = await fetch(`/api/intern-sessions/${activeSession._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ progressNote: note.trim(), closedBy: 'intern' }),
       })
+      if (!r.ok) throw new Error('Server error')
+      setActiveSession(null)
       setNote('')
       setScreen('home')
       showToast('Signed out successfully ✓')
@@ -247,8 +297,8 @@ export default function InternPortal() {
               <span className="text-xl mt-0.5">📢</span>
               <div>
                 <p className="font-bold text-white text-sm leading-snug">{announce.title}</p>
-                {announce.body && (
-                  <p className="text-white/70 text-xs mt-1 leading-relaxed">{announce.body}</p>
+                {announce.content && (
+                  <p className="text-white/70 text-xs mt-1 leading-relaxed">{announce.content}</p>
                 )}
               </div>
             </div>
@@ -295,7 +345,7 @@ export default function InternPortal() {
               </div>
             </div>
           )}
-          {tasks !== undefined && tasks.length === 0 && (
+          {tasks !== null && tasks.length === 0 && (
             <div className="text-center text-gray-400 text-sm py-4">No tasks assigned yet.</div>
           )}
 

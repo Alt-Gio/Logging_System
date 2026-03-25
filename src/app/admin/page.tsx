@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useSession, signOut } from 'next-auth/react'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { VoiceAssistant } from '@/components/VoiceAssistant'
 import { format, formatDistanceToNow, isToday, differenceInMinutes } from 'date-fns'
@@ -360,12 +359,26 @@ function EditPcModal({ pc, onSave, onClose }: {
   )
 }
 
+async function doSignOut() {
+  await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {})
+  window.location.href = '/sign-in'
+}
+
+type DictSession = { user: { id: string; name: string; email: string; role: string } } | null
+
 // ─── Main Admin Component ───────────────────────────────────────────────────────
 export default function AdminPage() {
-  const { data: session, status } = useSession()
+  const [sessionData, setSessionData] = useState<DictSession | undefined>(undefined)
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then((d: DictSession) => setSessionData(d ?? null))
+      .catch(() => setSessionData(null))
+  }, [])
+  const status = sessionData === undefined ? 'loading' : sessionData ? 'authenticated' : 'unauthenticated'
   const isSignedIn = status === 'authenticated'
   const clerkLoaded = status !== 'loading'
-  const currentAdmin = session?.user ? { id: session.user.id, name: session.user.name ?? 'Admin', role: session.user.role ?? 'ADMIN' } : null
+  const currentAdmin = sessionData?.user ? { id: sessionData.user.id, name: sessionData.user.name ?? 'Admin', role: sessionData.user.role ?? 'ADMIN' } : null
   const [tab, setTab] = useState<'dashboard' | 'logs' | 'pcs' | 'settings' | 'announcements' | 'analytics'>('dashboard')
   const [adminVoiceToast, setAdminVoiceToast] = useState<{ message: string; type: 'success'|'info'|'error' } | null>(null)
 
@@ -993,7 +1006,7 @@ export default function AdminPage() {
             </nav>
             <div className="flex items-center gap-3">
 
-              <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-all" title="Sign out">
+              <button onClick={doSignOut} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-all" title="Sign out">
                 <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold text-sm">{(currentAdmin?.name?.[0] ?? 'A').toUpperCase()}</span>
               </button>
             </div>
@@ -2004,7 +2017,7 @@ export default function AdminPage() {
 
             {/* ─── STAFF & AUTH ─────────────────────────────────────────── */}
             {settingsTab === 'staff' && (
-              <AdminsTab currentAdminId={currentAdmin?.id ?? ''}/>
+              <AdminsTab currentAdminId={currentAdmin?.id ?? ''} currentAdminName={currentAdmin?.name ?? 'Admin'} currentAdminRole={currentAdmin?.role ?? 'ADMIN'}/>
             )}
 
             {/* ─── PWA & OFFLINE ────────────────────────────────────────── */}
@@ -2248,9 +2261,8 @@ function AnnouncementsTab() {
 }
 
 // ── AdminsTab — staff management ────────────────────────────────────────────
-function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
-  const { data: session } = useSession()
-  const user = session?.user
+function AdminsTab({ currentAdminId, currentAdminName, currentAdminRole }: { currentAdminId: string; currentAdminName: string; currentAdminRole: string }) {
+  const user = { id: currentAdminId, name: currentAdminName, role: currentAdminRole }
   const [invites, setInvites] = useState<{id:string;emailAddress:string|null;status:string;createdAt:string;url?:string}[]>([])
   const [emails, setEmails] = useState('')
   const [sending, setSending] = useState(false)
@@ -2467,7 +2479,7 @@ function AdminsTab({ currentAdminId }: { currentAdminId: string }) {
             <h3 className="font-display font-semibold text-gray-800 mb-0.5">Account Settings</h3>
             <p className="text-xs text-gray-400">Signed in as <strong>{user?.name ?? 'Admin'}</strong>. Click Sign Out to end your session.</p>
           </div>
-          <button onClick={() => signOut({ callbackUrl: '/sign-in' })} className="px-4 py-2 rounded-xl border-2 border-red-200 text-red-600 text-sm font-bold hover:bg-red-50 transition-all flex-shrink-0">
+          <button onClick={doSignOut} className="px-4 py-2 rounded-xl border-2 border-red-200 text-red-600 text-sm font-bold hover:bg-red-50 transition-all flex-shrink-0">
             🔒 Sign Out
           </button>
         </div>
