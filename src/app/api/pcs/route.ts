@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   try {
     const admin  = await requireAuth(req)
     const convex = getConvexClient()
-    const pcs    = await convex.query(api.pcs.getActive)
+    const pcs    = await convex.query(api.pcs.getActive, {})
 
     return NextResponse.json(pcs.map(pc => ({
       ...pc,
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const convex = getConvexClient()
 
     // Auto-assign next available grid position
-    const existing = await convex.query(api.pcs.getAll)
+    const existing = await convex.query(api.pcs.getAll, {})
     const sorted   = [...existing].sort((a, b) =>
       (a.gridRow ?? 1) !== (b.gridRow ?? 1)
         ? (a.gridRow ?? 1) - (b.gridRow ?? 1)

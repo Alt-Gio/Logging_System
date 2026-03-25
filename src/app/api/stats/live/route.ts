@@ -7,8 +7,8 @@ export async function GET(_req: NextRequest) {
   try {
     const convex = getConvexClient()
     const [activeLogs, allPcs] = await Promise.all([
-      convex.query(api.logEntries.getActive),
-      convex.query(api.pcs.getActive),
+      convex.query(api.logEntries.getActive, {}),
+      convex.query(api.pcs.getActive, {}),
     ])
     const payload = {
       totalEntries: activeLogs.length,

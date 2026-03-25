@@ -72,7 +72,7 @@ async function smartUpdatePcStatus(pcId: string, alive: boolean) {
   const convex   = getConvexClient()
   const pc       = await convex.query(api.pcs.getById, { id: pcId as Id<'pcs'> })
   if (!pc) return
-  const activeLogs = await convex.query(api.logEntries.getActive)
+  const activeLogs = await convex.query(api.logEntries.getActive, {})
   const activeLog  = activeLogs.find(l => l.pcId === pcId)
   let newStatus: 'ONLINE' | 'OFFLINE' | 'IN_USE' | 'MAINTENANCE'
   if (activeLog)                        newStatus = 'IN_USE'
@@ -111,14 +111,15 @@ export async function POST(req: NextRequest) {
     if (!pc) return NextResponse.json({ error: 'PC not found' }, { status: 404 })
     targets = [{ id: pc._id, ip: pc.ipAddress }]
   } else if ('ip' in parsed.data) {
-    try { validateIpAddress(parsed.data.ip) } catch { return NextResponse.json({ error: 'Invalid IP' }, { status: 400 }) }
-    const allPcs = await convex.query(api.pcs.getAll)
-    const pc     = allPcs.find(p => p.ipAddress === parsed.data.ip)
-    targets = [{ id: pc?._id, ip: (parsed.data as { ip: string }).ip }]
+    const singleIp = (parsed.data as { ip: string }).ip
+    try { validateIpAddress(singleIp) } catch { return NextResponse.json({ error: 'Invalid IP' }, { status: 400 }) }
+    const allPcs = await convex.query(api.pcs.getAll, {})
+    const pc     = allPcs.find(p => p.ipAddress === singleIp)
+    targets = [{ id: pc?._id, ip: singleIp }]
   } else if ('ips' in parsed.data) {
     targets = parsed.data.ips.map(ip => ({ ip }))
   } else if ('pingAll' in parsed.data) {
-    const pcs = await convex.query(api.pcs.getActive)
+    const pcs = await convex.query(api.pcs.getActive, {})
     targets   = pcs.map(p => ({ id: p._id, ip: p.ipAddress }))
   }
 
@@ -143,7 +144,7 @@ export async function GET(req: NextRequest) {
 
   const convex  = getConvexClient()
   const result   = await pingHost(ip)
-  const allPcs   = await convex.query(api.pcs.getAll).catch(() => [])
+  const allPcs   = await convex.query(api.pcs.getAll, {}).catch(() => [])
   const pc       = allPcs.find(p => p.ipAddress === ip) ?? null
   if (pc) await smartUpdatePcStatus(pc._id, result.alive)
   return NextResponse.json({ ip, ...result, pcId: pc?._id ?? null, pcName: pc?.name ?? null })

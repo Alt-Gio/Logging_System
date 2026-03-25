@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const results = await scanRange(baseIp, startOctet, endOctet, 50)
 
     const convex  = getConvexClient()
-    const allPcs   = await convex.query(api.pcs.getAll)
+    const allPcs   = await convex.query(api.pcs.getAll, {})
     const onlineIps = results.map(r => r.ip)
 
     await Promise.all(allPcs.map(pc => {

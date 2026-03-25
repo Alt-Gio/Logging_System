@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const convex = getConvexClient()
 
     if (!internId) {
-      const sessions = await convex.query(api.internSessions.getAllActiveSessions)
+      const sessions = await convex.query(api.internSessions.getAllActiveSessions, {})
       return NextResponse.json(sessions)
     }
 

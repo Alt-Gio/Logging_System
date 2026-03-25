@@ -57,7 +57,7 @@ export async function PUT(req: NextRequest) {
     })
     if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 })
 
-    const allInterns = await convex.query(api.interns.getAll)
+    const allInterns = await convex.query(api.interns.getAll, {})
 
     const certificates = []
     for (const row of rows) {

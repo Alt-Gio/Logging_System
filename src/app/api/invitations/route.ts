@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const convex = getConvexClient()
-    const admins  = await convex.query(api.admins.getAll)
+    const admins  = await convex.query(api.admins.getAll, {})
     return NextResponse.json({
       invitations: admins.map(a => ({
         id:           a.id,

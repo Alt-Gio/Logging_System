@@ -8,7 +8,7 @@ import { api } from '@/convex/_generated/api'
 export async function GET() {
   try {
     const convex = getConvexClient()
-    const announcements = await convex.query(api.announcements.getActive)
+    const announcements = await convex.query(api.announcements.getActive, {})
     return NextResponse.json(announcements)
   } catch (err) {
     console.error('[announcements/GET]', err instanceof Error ? err.message : err)

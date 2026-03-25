@@ -15,7 +15,7 @@ const DEFAULTS = {
 export async function GET() {
   try {
     const convex = getConvexClient()
-    const rows   = await convex.query(api.settings.getAll)
+    const rows   = await convex.query(api.settings.getAll, {})
     const s = { ...DEFAULTS } as Record<string, string>
     for (const row of rows) s[row.key] = row.value
     return NextResponse.json(s)

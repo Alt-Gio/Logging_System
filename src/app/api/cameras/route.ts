@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const admin = await requireAuth(req)
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const convex  = getConvexClient()
-  const cameras = await convex.query(api.cameras.getAll)
+  const cameras = await convex.query(api.cameras.getAll, {})
   return NextResponse.json(cameras)
   } catch (err) {
     console.error('[API]', err instanceof Error ? err.message : err)

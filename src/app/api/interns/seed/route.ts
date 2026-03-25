@@ -5,7 +5,7 @@ import { api } from '@/convex/_generated/api'
 export async function POST(req: NextRequest) {
   try {
     const convex        = getConvexClient()
-    const existingAll   = await convex.query(api.interns.getAll)
+    const existingAll   = await convex.query(api.interns.getAll, {})
     const existingCount = existingAll.length
     if (existingCount > 0) {
       return NextResponse.json({ message: 'Interns already exist in database', count: existingCount }, { status: 200 })
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
         email: 'maria.santos@bicol.edu.ph',
         phone: '09171234567',
         requiredHours: 486,
-        status: 'ACTIVE',
+        status: 'ACTIVE' as const,
       },
       {
         fullName: 'John Paul Reyes',
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
         email: 'jp.reyes@aquinas.edu.ph',
         phone: '09187654321',
         requiredHours: 486,
-        status: 'ACTIVE',
+        status: 'ACTIVE' as const,
       },
       {
         fullName: 'Angela Cruz',
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         email: 'angela.cruz@dwc.edu.ph',
         phone: '09191234567',
         requiredHours: 486,
-        status: 'ACTIVE',
+        status: 'ACTIVE' as const,
       },
       {
         fullName: 'Carlos Mendoza',
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         email: 'carlos.mendoza@bicol.edu.ph',
         phone: '09201234567',
         requiredHours: 486,
-        status: 'ACTIVE',
+        status: 'ACTIVE' as const,
       },
       {
         fullName: 'Patricia Lim',
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         email: 'patricia.lim@aquinas.edu.ph',
         phone: '09211234567',
         requiredHours: 486,
-        status: 'ACTIVE',
+        status: 'ACTIVE' as const,
       },
     ]
 
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
     for (const internData of sampleInterns) {
       const internId = await convex.mutation(api.interns.create, {
         ...internData,
+        status:    internData.status as 'ACTIVE' | 'COMPLETED' | 'INACTIVE' | 'ON_LEAVE',
         startDate: startDate.getTime(),
         endDate:   endDate.getTime(),
       })

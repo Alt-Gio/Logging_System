@@ -5,7 +5,7 @@ import { api } from '@/convex/_generated/api'
 export async function GET() {
   try {
     const convex     = getConvexClient()
-    const templates  = await convex.query(api.certificates.getAllTemplates)
+    const templates  = await convex.query(api.certificates.getAllTemplates, {})
     return NextResponse.json(templates)
   } catch (error) {
     console.error('Error fetching templates:', error)

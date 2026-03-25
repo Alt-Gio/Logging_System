@@ -108,7 +108,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const convex   = getConvexClient()
-  const existing = await convex.query(api.admins.getAll)
+  const existing = await convex.query(api.admins.getAll, {})
   if (existing.length > 0) {
     return NextResponse.json({ error: 'Admin already exists' }, { status: 409 })
   }

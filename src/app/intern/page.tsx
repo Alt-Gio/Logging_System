@@ -247,8 +247,8 @@ export default function InternPortal() {
               <span className="text-xl mt-0.5">📢</span>
               <div>
                 <p className="font-bold text-white text-sm leading-snug">{announce.title}</p>
-                {announce.content && (
-                  <p className="text-white/70 text-xs mt-1 leading-relaxed">{announce.content}</p>
+                {announce.body && (
+                  <p className="text-white/70 text-xs mt-1 leading-relaxed">{announce.body}</p>
                 )}
               </div>
             </div>

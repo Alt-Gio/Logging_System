@@ -5,7 +5,7 @@ import { api } from '@/convex/_generated/api'
 export async function GET() {
   try {
     const convex   = getConvexClient()
-    const all      = await convex.query(api.interns.getAll)
+    const all      = await convex.query(api.interns.getAll, {})
     const total    = all.length
     const active   = all.filter(i => i.status === 'ACTIVE').length
     const completed = all.filter(i => i.status === 'COMPLETED').length

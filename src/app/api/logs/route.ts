@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       const isUrl = url?.startsWith('http')
       await convex.mutation(api.logEntries.update, {
         id: id as Id<'logEntries'>,
-        photoUrl:    isUrl ? url  : undefined,
+        photoUrl:    isUrl ? url ?? undefined  : undefined,
         photoDataUrl: isUrl ? undefined : (url ?? undefined),
       })
     }).catch(console.error)

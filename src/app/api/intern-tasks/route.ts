@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       })
       return NextResponse.json(tasks)
     }
-    const tasks = await convex.query(api.internTasks.getAllTasks)
+    const tasks = await convex.query(api.internTasks.getAllTasks, {})
     return NextResponse.json(tasks)
   } catch (e) {
     console.error('[intern-tasks GET]', e)

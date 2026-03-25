@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const convex   = getConvexClient()
-    const allSettings = await convex.query(api.settings.getAll)
+    const allSettings = await convex.query(api.settings.getAll, {})
     const cfg: Record<string,string> = {}
     for (const r of allSettings) cfg[r.key] = r.value
 

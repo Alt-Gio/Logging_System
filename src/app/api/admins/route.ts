@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     if (admin.role === 'STAFF') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const convex  = getConvexClient()
-    const admins  = await convex.query(api.admins.getAll)
+    const admins  = await convex.query(api.admins.getAll, {})
     return NextResponse.json(admins)
   } catch (err) {
     console.error('[admins/GET]', err instanceof Error ? err.message : err)

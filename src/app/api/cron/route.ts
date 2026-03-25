@@ -34,7 +34,7 @@ async function runExpiry(): Promise<NextResponse> {
   const now    = Date.now()
   const convex = getConvexClient()
 
-  const activeLogs = await convex.query(api.logEntries.getActive)
+  const activeLogs = await convex.query(api.logEntries.getActive, {})
 
   const toExpire = activeLogs.filter(log => {
     const expectedOut = log.timeIn + log.plannedDurationHours * 3_600_000

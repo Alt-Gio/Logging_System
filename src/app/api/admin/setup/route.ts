@@ -9,7 +9,7 @@ import { api } from '@/convex/_generated/api'
 export async function POST(req: NextRequest) {
   try {
     const convex   = getConvexClient()
-    const existing = await convex.query(api.admins.getAll)
+    const existing = await convex.query(api.admins.getAll, {})
     if (existing.length > 0) {
       return NextResponse.json(
         { error: 'Setup already completed. An admin account already exists.' },
@@ -46,6 +46,6 @@ export async function POST(req: NextRequest) {
 // GET — health check to see if setup is needed
 export async function GET() {
   const convex   = getConvexClient()
-  const existing = await convex.query(api.admins.getAll)
+  const existing = await convex.query(api.admins.getAll, {})
   return NextResponse.json({ setupRequired: existing.length === 0 })
 }
