@@ -19,6 +19,24 @@ async function getSessionUserId(req: NextRequest): Promise<string | null> {
   }
 }
 
+async function getInternSession(req: NextRequest): Promise<boolean> {
+  const token = req.cookies.get('intern-session')?.value
+  if (!token) return false
+  try {
+    const { payload } = await jwtVerify(token, getSecret())
+    return payload.role === 'INTERN'
+  } catch { return false }
+}
+
+async function getSupervisorSession(req: NextRequest): Promise<boolean> {
+  const token = req.cookies.get('supervisor-session')?.value
+  if (!token) return false
+  try {
+    const { payload } = await jwtVerify(token, getSecret())
+    return payload.role === 'SUPERVISOR'
+  } catch { return false }
+}
+
 const PUBLIC_PATHS = [
   '/',
   '/sign-in',
@@ -39,9 +57,39 @@ const PUBLIC_PATHS = [
   '/api/sheets',
   '/api/intern-sessions',
   '/api/intern-tasks',
+  '/api/otp',
+  '/api/intern-auth',
+  '/api/supervisor-auth',
+  '/api/notifications',
   '/intern-logbook',
-  '/intern',
+  '/intern/login',
+  '/intern/setup',
+  '/supervisor/login',
+  '/supervisor/setup',
+  '/dtc-logbook',
+  '/intern/dashboard',
+  '/supervisor/intern',
+
 ]
+
+const INTERN_PATHS = [
+  
+  '/intern/tasks',
+  '/intern/leaderboard',
+]
+
+const SUPERVISOR_PATHS = [
+  '/supervisor/dashboard',
+  '/supervisor/intern',
+]
+
+function isInternPath(pathname: string): boolean {
+  return INTERN_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
+}
+
+function isSupervisorPath(pathname: string): boolean {
+  return SUPERVISOR_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
+}
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/') || pathname.startsWith(p + '?'))
@@ -59,6 +107,7 @@ const ADMIN_PATHS = [
   '/api/logs/export',
   '/api/invitations',
   '/api/certificates',
+  '/intern/dashboard',
 ]
 
 function isAdmin(pathname: string): boolean {
@@ -95,6 +144,27 @@ export async function middleware(req: NextRequest) {
     /\.(png|jpg|jpeg|ico|svg|webp|json|txt|js|css|woff2?|ttf)$/.test(pathname)
   ) {
     return NextResponse.next()
+  }
+
+  // Protected paths are checked BEFORE public paths to prevent prefix leakage
+  if (isInternPath(pathname)) {
+    const ok = await getInternSession(req)
+    if (!ok) {
+      const loginUrl = new URL('/intern/login', req.url)
+      loginUrl.searchParams.set('callbackUrl', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+    return applySecurityHeaders(NextResponse.next())
+  }
+
+  if (isSupervisorPath(pathname)) {
+    const ok = await getSupervisorSession(req)
+    if (!ok) {
+      const loginUrl = new URL('/supervisor/login', req.url)
+      loginUrl.searchParams.set('callbackUrl', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+    return applySecurityHeaders(NextResponse.next())
   }
 
   if (isPublic(pathname)) {

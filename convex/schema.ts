@@ -190,10 +190,10 @@ export default defineSchema({
 
   // ── Intern tasks ─────────────────────────────────────────────────────────
   internTasks: defineTable({
-    internId:    v.optional(v.id("interns")),
-    title:       v.string(),
-    description: v.optional(v.string()),
-    status:      v.union(
+    internId:            v.optional(v.id("interns")),
+    title:               v.string(),
+    description:         v.optional(v.string()),
+    status:              v.union(
       v.literal("PENDING"),    v.literal("IN_PROGRESS"),
       v.literal("COMPLETED"),  v.literal("CANCELLED"),
     ),
@@ -201,14 +201,24 @@ export default defineSchema({
       v.literal("LOW"),  v.literal("MEDIUM"),
       v.literal("HIGH"), v.literal("URGENT"),
     ),
-    dueDate:     v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-    createdBy:   v.optional(v.id("admins")),
-    taskId:      v.string(),
+    dueDate:             v.optional(v.number()),
+    completedAt:         v.optional(v.number()),
+    createdBy:           v.optional(v.id("admins")),
+    createdBySupervisor: v.optional(v.id("supervisors")),
+    taskId:              v.string(),
+    difficulty:          v.optional(v.union(
+      v.literal("trivial"), v.literal("easy"),
+      v.literal("medium"),  v.literal("hard"), v.literal("epic"),
+    )),
+    xpReward:            v.optional(v.number()),
+    type:                v.optional(v.union(
+      v.literal("daily"), v.literal("todo"), v.literal("habit"),
+    )),
   })
-    .index("by_internId", ["internId"])
-    .index("by_status",   ["status"])
-    .index("by_taskId",   ["taskId"]),
+    .index("by_internId",            ["internId"])
+    .index("by_status",              ["status"])
+    .index("by_taskId",              ["taskId"])
+    .index("by_createdBySupervisor", ["createdBySupervisor"]),
 
   // ── Task comments ────────────────────────────────────────────────────────
   taskComments: defineTable({
@@ -267,4 +277,111 @@ export default defineSchema({
     errors:         v.optional(v.array(v.string())),
   })
     .index("by_syncedAt", ["syncedAt"]),
+
+  // ── Supervisors ──────────────────────────────────────────────────────────
+  supervisors: defineTable({
+    email:         v.string(),
+    name:          v.string(),
+    department:    v.string(),
+    passwordHash:  v.string(),
+    emailVerified: v.boolean(),
+    adminId:       v.optional(v.id("admins")),
+    fcmToken:      v.optional(v.string()),
+    lastLogin:     v.optional(v.number()),
+    inviteToken:   v.optional(v.string()),
+    inviteExpiry:  v.optional(v.number()),
+  })
+    .index("by_email",       ["email"])
+    .index("by_adminId",     ["adminId"])
+    .index("by_inviteToken", ["inviteToken"]),
+
+  // ── Intern personal accounts (gamification layer) ────────────────────────
+  internAccounts: defineTable({
+    internId:       v.id("interns"),
+    supervisorId:   v.optional(v.id("supervisors")),
+    email:          v.string(),
+    passwordHash:   v.string(),
+    emailVerified:  v.boolean(),
+    level:          v.number(),
+    xp:             v.number(),
+    health:         v.number(),
+    streak:         v.number(),
+    lastActiveDate: v.optional(v.number()),
+    lastLogin:      v.optional(v.number()),
+    achievements:   v.array(v.string()),
+    fcmToken:       v.optional(v.string()),
+    inviteToken:    v.optional(v.string()),
+    inviteExpiry:   v.optional(v.number()),
+  })
+    .index("by_email",        ["email"])
+    .index("by_internId",     ["internId"])
+    .index("by_supervisorId", ["supervisorId"])
+    .index("by_inviteToken",  ["inviteToken"]),
+
+  // ── Daily / weekly habits ─────────────────────────────────────────────────
+  internHabits: defineTable({
+    title:          v.string(),
+    description:    v.optional(v.string()),
+    difficulty:     v.union(
+      v.literal("trivial"), v.literal("easy"),
+      v.literal("medium"),  v.literal("hard"), v.literal("epic"),
+    ),
+    frequency:      v.union(v.literal("daily"), v.literal("weekly")),
+    positive:       v.boolean(),
+    active:         v.boolean(),
+    xpReward:       v.number(),
+    supervisorId:   v.optional(v.id("supervisors")),
+    targetInternId: v.optional(v.id("interns")),
+  })
+    .index("by_supervisorId",   ["supervisorId"])
+    .index("by_active",         ["active"])
+    .index("by_targetInternId", ["targetInternId"]),
+
+  // ── Habit completion log (one row per intern per habit per day) ───────────
+  internHabitLogs: defineTable({
+    habitId:     v.id("internHabits"),
+    internId:    v.id("interns"),
+    date:        v.number(),
+    completed:   v.boolean(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_habitId",               ["habitId"])
+    .index("by_internId",              ["internId"])
+    .index("by_internId_date",         ["internId", "date"])
+    .index("by_habitId_internId_date", ["habitId", "internId", "date"]),
+
+  // ── Notifications inbox ───────────────────────────────────────────────────
+  notifications: defineTable({
+    recipientId:   v.string(),
+    recipientType: v.union(
+      v.literal("intern"), v.literal("supervisor"), v.literal("admin"),
+    ),
+    title:     v.string(),
+    body:      v.string(),
+    type:      v.union(
+      v.literal("task"),         v.literal("timein"),
+      v.literal("timeout"),      v.literal("xp"),
+      v.literal("announcement"), v.literal("warning"),
+      v.literal("achievement"),  v.literal("levelup"),
+    ),
+    read:      v.boolean(),
+    createdAt: v.number(),
+    link:      v.optional(v.string()),
+  })
+    .index("by_recipientId",      ["recipientId"])
+    .index("by_recipientId_read", ["recipientId", "read"])
+    .index("by_createdAt",        ["createdAt"]),
+
+  // ── XP audit ledger ───────────────────────────────────────────────────────
+  xpLedger: defineTable({
+    internId:  v.id("interns"),
+    accountId: v.id("internAccounts"),
+    xp:        v.number(),
+    reason:    v.string(),
+    taskId:    v.optional(v.id("internTasks")),
+    createdAt: v.number(),
+  })
+    .index("by_internId",           ["internId"])
+    .index("by_accountId",          ["accountId"])
+    .index("by_internId_createdAt", ["internId", "createdAt"]),
 })

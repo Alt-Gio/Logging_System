@@ -53,13 +53,22 @@ export const updateTaskStatus = mutation({
 
 export const createTask = mutation({
   args: {
-    internId:    v.optional(v.id("interns")),
-    title:       v.string(),
-    description: v.optional(v.string()),
-    priority:    v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("URGENT")),
-    dueDate:     v.optional(v.number()),
-    createdBy:   v.optional(v.id("admins")),
-    taskId:      v.string(),
+    internId:            v.optional(v.id("interns")),
+    title:               v.string(),
+    description:         v.optional(v.string()),
+    priority:            v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("URGENT")),
+    dueDate:             v.optional(v.number()),
+    createdBy:           v.optional(v.id("admins")),
+    createdBySupervisor: v.optional(v.id("supervisors")),
+    taskId:              v.string(),
+    difficulty:          v.optional(v.union(
+      v.literal("trivial"), v.literal("easy"),
+      v.literal("medium"),  v.literal("hard"), v.literal("epic"),
+    )),
+    xpReward:            v.optional(v.number()),
+    type:                v.optional(v.union(
+      v.literal("daily"), v.literal("todo"), v.literal("habit"),
+    )),
   },
   handler: async (ctx, args) => {
     return ctx.db.insert("internTasks", { ...args, status: "PENDING" })
