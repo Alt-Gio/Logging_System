@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getConvexClient } from '@/lib/convex-client'
 import { api } from '@/convex/_generated/api'

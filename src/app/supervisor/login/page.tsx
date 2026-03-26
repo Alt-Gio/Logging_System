@@ -1,8 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function SupervisorLoginPage() {
+function SupervisorLoginContent() {
   const router      = useRouter()
   const params      = useSearchParams()
   const callbackUrl = params.get('callbackUrl') || '/supervisor/dashboard'
@@ -70,5 +70,17 @@ export default function SupervisorLoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function SupervisorLoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #312e81, #0f0e2a)' }}>
+        <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+      </div>
+    }>
+      <SupervisorLoginContent />
+    </Suspense>
   )
 }

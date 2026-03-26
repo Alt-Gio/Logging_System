@@ -98,6 +98,7 @@ const nextConfig = {
   output: 'standalone',
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', 'prisma'],
+    missingSuspenseWithCSRBailout: false,
   },
   async headers() {
     return [
