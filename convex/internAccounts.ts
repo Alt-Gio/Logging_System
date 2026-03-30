@@ -93,6 +93,10 @@ export const update = mutation({
     health:         v.optional(v.number()),
     streak:         v.optional(v.number()),
     achievements:   v.optional(v.array(v.string())),
+    passwordHash:   v.optional(v.string()),
+    supervisorId:   v.optional(v.id("supervisors")),
+    inviteToken:    v.optional(v.string()),
+    inviteExpiry:   v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { id, ...patch } = args
