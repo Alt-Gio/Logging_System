@@ -135,3 +135,97 @@ export const getLeaderboard = query({
     return enriched.sort((a, b) => b.xp - a.xp)
   }
 })
+
+export const getByInviteToken = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("internAccounts")
+      .withIndex("by_inviteToken", q => q.eq("inviteToken", args.token))
+      .first()
+  }
+})
+
+export const createWithInvite = mutation({
+  args: {
+    internId:    v.id("interns"),
+    email:       v.string(),
+    passwordHash: v.string(),
+    inviteToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("internAccounts")
+      .withIndex("by_email", q => q.eq("email", args.email))
+      .first()
+    if (existing) throw new Error("Account already exists")
+
+    return ctx.db.insert("internAccounts", {
+      internId:      args.internId,
+      email:         args.email,
+      passwordHash:  args.passwordHash,
+      emailVerified: true,
+      level:         1,
+      xp:            0,
+      health:        100,
+      streak:        0,
+      achievements:  [],
+    })
+  }
+})
+
+export const awardXP = mutation({
+  args: {
+    id:     v.id("internAccounts"),
+    amount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.id)
+    if (!account) throw new Error("Account not found")
+
+    const newXP = (account.xp ?? 0) + args.amount
+    let level = 1
+    let remaining = newXP
+    while (remaining >= level * 100) {
+      remaining -= level * 100
+      level++
+    }
+
+    await ctx.db.patch(args.id, {
+      xp:    newXP,
+      level,
+      lastActiveDate: Date.now(),
+    })
+
+    return { newXP, level }
+  }
+})
+
+export const updateHealth = mutation({
+  args: {
+    id:     v.id("internAccounts"),
+    health: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      health: Math.max(0, Math.min(100, args.health)),
+    })
+  }
+})
+
+export const addAchievement = mutation({
+  args: {
+    id:          v.id("internAccounts"),
+    achievement: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.id)
+    if (!account) throw new Error("Account not found")
+    const achievements = account.achievements ?? []
+    if (!achievements.includes(args.achievement)) {
+      await ctx.db.patch(args.id, {
+        achievements: [...achievements, args.achievement],
+      })
+    }
+  }
+})
