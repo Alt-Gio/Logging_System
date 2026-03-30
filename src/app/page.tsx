@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 type Ann = { id: string; title: string; content: string; type?: string; urgent: boolean; createdAt: string; expiresAt?: string; imageUrl?: string; featured?: boolean; highlight?: string }
 type FPSettings = { hero_media_url: string; hero_media_type: 'image'|'video'|'none'; office_hours: string; office_location: string }
 type LiveStats = { todayCount: number; activeInterns: number; activeNow: number }
+type FBPost = { id: string; message?: string; story?: string; created_time: string; full_picture?: string; permalink_url?: string }
 
 const FP_DEFAULTS: FPSettings = {
   hero_media_url:  '',
@@ -34,6 +35,7 @@ function useCount(target: number, dur: number, go: boolean) {
 export default function HomePage() {
   const [anns,      setAnns]      = useState<Ann[]>([])
   const [expanded,  setExpanded]  = useState<Ann | null>(null)
+  const [fbPosts,   setFbPosts]   = useState<FBPost[]>([])
   const [menuOpen,  setMenuOpen]  = useState(false)
   const [time,      setTime]      = useState('')
   const [sActive,   setSActive]   = useState(false)
@@ -60,6 +62,10 @@ export default function HomePage() {
     if (signageTimer.current) clearTimeout(signageTimer.current)
     signageTimer.current = setTimeout(() => setSignage(true), 10_000)
   }, [isVideo])
+
+  useEffect(() => {
+    fetch('/api/facebook/posts').then(r => r.json()).then(d => Array.isArray(d) && setFbPosts(d)).catch(() => {})
+  }, [])
 
   useEffect(() => {
     fetch('/api/announcements').then(r => r.json()).then(d => Array.isArray(d) && setAnns(d)).catch(() => {})
@@ -485,6 +491,64 @@ export default function HomePage() {
             })()}
           </div>
         </section>
+
+        {/* FACEBOOK FEED */}
+        {fbPosts.length > 0 && (
+          <section className="py-16 sm:py-20 px-4 sm:px-6 border-t border-white/[.04]">
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-10 flex items-end justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-blue-400 text-[10px] font-black uppercase tracking-[.35em] mb-3">From Our Facebook Page</p>
+                  <h2 className="text-3xl sm:text-4xl font-black text-white flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-[#1877F2] flex items-center justify-center text-white font-black text-lg flex-shrink-0">f</span>
+                    Latest Updates
+                  </h2>
+                </div>
+                {fbPosts[0]?.permalink_url && (
+                  <a href={fbPosts[0].permalink_url.replace(/\/posts\/.*/, '')} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 font-semibold">
+                    View all on Facebook →
+                  </a>
+                )}
+              </div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {fbPosts.slice(0, 6).map(post => {
+                  const text    = post.message || post.story || ''
+                  const dateStr = new Date(post.created_time).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+                  return (
+                    <a key={post.id}
+                      href={post.permalink_url || `https://www.facebook.com/${post.id}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="group gc rounded-2xl overflow-hidden hover:bg-white/[.05] transition-all hover:-translate-y-0.5 hover:shadow-xl flex flex-col">
+                      {post.full_picture && (
+                        <div className="relative overflow-hidden" style={{height:200}}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={post.full_picture} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"/>
+                          <div className="absolute top-3 right-3 w-7 h-7 bg-[#1877F2] rounded-lg flex items-center justify-center">
+                            <span className="text-white font-black text-sm">f</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="p-5 flex-1 flex flex-col">
+                        {!post.full_picture && (
+                          <div className="w-7 h-7 bg-[#1877F2] rounded-lg flex items-center justify-center mb-3 flex-shrink-0">
+                            <span className="text-white font-black text-sm">f</span>
+                          </div>
+                        )}
+                        <p className="text-gray-300 text-sm leading-relaxed flex-1 line-clamp-4 mb-4">{text}</p>
+                        <div className="flex items-center justify-between pt-3 border-t border-white/[.06]">
+                          <span className="text-gray-600 text-[11px]">{dateStr}</span>
+                          <span className="text-blue-400 text-xs font-semibold group-hover:text-blue-300 transition-colors">View post →</span>
+                        </div>
+                      </div>
+                    </a>
+                  )
+                })}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* OFFICES */}
         <section id="offices" className="py-16 sm:py-20 px-4 sm:px-6 border-t border-white/[.04]" style={{ background: 'rgba(255,255,255,.01)' }}>

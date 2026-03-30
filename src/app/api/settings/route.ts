@@ -20,7 +20,9 @@ const DEFAULTS = {
   office_lat:        '13.1391',
   office_lng:        '123.7438',
   checkin_radius_m:  '300',
-  mapbox_token:      '',
+  mapbox_token:          '',
+  facebook_page_id:      '',
+  facebook_access_token: '',
 }
 
 export async function GET() {

@@ -418,7 +418,7 @@ export default function AdminPage() {
     }
     setTimeout(() => setAdminVoiceToast(null), 4000)
   }
-  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '', hero_title: 'Free Digital\nServices for\nEvery Bicolano', hero_subtitle: 'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.', hero_badge: 'DICT REGION V · BICOL', hero_media_url: '', hero_media_type: 'none', office_hours: 'Monday – Friday  8:00 AM – 5:00 PM', office_location: '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City', office_lat: '13.1391', office_lng: '123.7438', checkin_radius_m: '300', mapbox_token: '' })
+  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '', hero_title: 'Free Digital\nServices for\nEvery Bicolano', hero_subtitle: 'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.', hero_badge: 'DICT REGION V · BICOL', hero_media_url: '', hero_media_type: 'none', office_hours: 'Monday – Friday  8:00 AM – 5:00 PM', office_location: '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City', office_lat: '13.1391', office_lng: '123.7438', checkin_radius_m: '300', mapbox_token: '', facebook_page_id: '', facebook_access_token: '' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [mediaUploading, setMediaUploading] = useState(false)
   const [mediaUploadErr, setMediaUploadErr] = useState<string|null>(null)
@@ -523,7 +523,9 @@ export default function AdminPage() {
         office_lat:        data.office_lat         ?? s.office_lat,
         office_lng:        data.office_lng         ?? s.office_lng,
         checkin_radius_m:  data.checkin_radius_m   ?? s.checkin_radius_m,
-        mapbox_token:      data.mapbox_token       ?? s.mapbox_token,
+        mapbox_token:        data.mapbox_token          ?? s.mapbox_token,
+        facebook_page_id:    data.facebook_page_id     ?? s.facebook_page_id,
+        facebook_access_token: data.facebook_access_token ?? s.facebook_access_token,
       }))
       // Load grid settings
       if (data.gridCols) setGridCols(parseInt(data.gridCols))
@@ -2078,7 +2080,52 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Future integrations placeholder */}
+                {/* Facebook Page Integration */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-lg">📘</div>
+                    <h3 className="font-display font-semibold text-gray-700">Facebook Page Feed</h3>
+                    {settings.facebook_page_id && settings.facebook_access_token && (
+                      <span className="ml-auto text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">Connected</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Automatically pulls your latest Facebook Page posts and displays them in the Events section of the front page.
+                    You need a <strong>Page Access Token</strong> from{' '}
+                    <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer" className="text-blue-500 underline">Meta Graph Explorer</a>.
+                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Facebook Page ID or Username</label>
+                      <input value={settings.facebook_page_id}
+                        onChange={e=>setSettings(s=>({...s,facebook_page_id:e.target.value}))}
+                        placeholder="e.g. DIGITALCommunicationsTech or 123456789"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] font-mono"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Page Access Token</label>
+                      <input type="password" value={settings.facebook_access_token}
+                        onChange={e=>setSettings(s=>({...s,facebook_access_token:e.target.value}))}
+                        placeholder="EAAxxxxxxxx…"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] font-mono"/>
+                      <p className="text-xs text-gray-400 mt-1">Token is stored securely and never exposed to visitors.</p>
+                    </div>
+                    <div className="flex items-center gap-3 pt-1">
+                      <button onClick={saveSettings}
+                        className="px-5 py-2.5 bg-[#3b5998] text-white rounded-xl text-sm font-bold hover:bg-[#2d4373] transition-colors flex items-center gap-2">
+                        📘 Save Facebook Settings
+                      </button>
+                      {settingsSaved && <span className="text-emerald-600 text-sm font-medium">✓ Saved</span>}
+                    </div>
+                    {settings.facebook_page_id && settings.facebook_access_token && (
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 flex items-start gap-2">
+                        <span>📘</span>
+                        <span>Posts will appear in the <strong>Events &amp; Announcements</strong> section on the front page. Refreshed every 5 minutes.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="glass rounded-2xl p-5 border border-dashed border-gray-200">
                   <div className="flex items-center gap-3 opacity-50">
                     <span className="text-2xl">🔌</span>
