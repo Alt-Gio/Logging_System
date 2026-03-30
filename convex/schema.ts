@@ -155,27 +155,51 @@ export default defineSchema({
 
   // ── Intern profiles ──────────────────────────────────────────────────────
   interns: defineTable({
-    fullName:         v.string(),
-    school:           v.string(),
-    course:           v.string(),
-    department:       v.optional(v.string()),
-    supervisor:       v.optional(v.string()),
-    startDate:        v.number(),
-    endDate:          v.number(),
-    requiredHours:    v.number(),
-    status:           v.union(
+    fullName:              v.string(),
+    school:                v.string(),
+    schoolId:              v.optional(v.id("schools")),
+    course:                v.string(),
+    department:            v.optional(v.string()),
+    supervisor:            v.optional(v.string()),
+    startDate:             v.number(),
+    endDate:               v.number(),
+    requiredHours:         v.number(),
+    status:                v.union(
       v.literal("ACTIVE"),  v.literal("COMPLETED"),
       v.literal("INACTIVE"), v.literal("ON_LEAVE"),
     ),
-    email:            v.optional(v.string()),
-    phone:            v.optional(v.string()),
-    photoUrl:         v.optional(v.string()),
-    notes:            v.optional(v.string()),
-    totalHoursLogged: v.optional(v.number()),
-    completedTasks:   v.optional(v.number()),
+    email:                 v.optional(v.string()),
+    phone:                 v.optional(v.string()),
+    photoUrl:              v.optional(v.string()),
+    photoStorageId:        v.optional(v.string()),
+    notes:                 v.optional(v.string()),
+    totalHoursLogged:      v.optional(v.number()),
+    completedTasks:        v.optional(v.number()),
+    sex:                   v.optional(v.union(v.literal("M"), v.literal("F"))),
+    age:                   v.optional(v.number()),
+    civilStatus:           v.optional(v.string()),
+    isIndigenous:          v.optional(v.boolean()),
+    isPWD:                 v.optional(v.boolean()),
+    isSoloParent:          v.optional(v.boolean()),
+    officeAssignment:      v.optional(v.string()),
+    onboardingDate:        v.optional(v.number()),
+    estimatedCompletion:   v.optional(v.number()),
+    completionDate:        v.optional(v.number()),
+    isCompleted:           v.optional(v.boolean()),
+    // Document storage IDs (Convex storage, admin-only)
+    doc2x2StorageId:       v.optional(v.string()),
+    docResumeStorageId:    v.optional(v.string()),
+    docApplicationStorageId: v.optional(v.string()),
+    docEndorsementStorageId: v.optional(v.string()),
+    docMedicalStorageId:   v.optional(v.string()),
+    docWfhStorageId:       v.optional(v.string()),
+    docWorkPlanStorageId:  v.optional(v.string()),
+    docNdaStorageId:       v.optional(v.string()),
+    docNotesStorageId:     v.optional(v.string()),
   })
     .index("by_status",    ["status"])
     .index("by_startDate", ["startDate"])
+    .index("by_schoolId",  ["schoolId"])
     .searchIndex("search_fullName", { searchField: "fullName", filterFields: ["status"] }),
 
   // ── Intern daily attendance ──────────────────────────────────────────────
@@ -292,12 +316,29 @@ export default defineSchema({
   })
     .index("by_syncedAt", ["syncedAt"]),
 
+  // ── Schools (Practicum Coordinator database) ────────────────────────────
+  schools: defineTable({
+    name:                  v.string(),
+    type:                  v.optional(v.string()),
+    address:               v.optional(v.string()),
+    email:                 v.optional(v.string()),
+    practicumCoordinator:  v.optional(v.string()),
+    coordinatorEmail:      v.optional(v.string()),
+    coordinatorPhone:      v.optional(v.string()),
+    active:                v.boolean(),
+  })
+    .index("by_name",   ["name"])
+    .index("by_active", ["active"]),
+
   // ── Supervisors ──────────────────────────────────────────────────────────
   supervisors: defineTable({
     email:         v.string(),
     name:          v.string(),
+    phone:         v.optional(v.string()),
+    position:      v.optional(v.string()),
     department:    v.string(),
-    passwordHash:  v.string(),
+    schoolId:      v.optional(v.id("schools")),
+    passwordHash:  v.optional(v.string()),
     emailVerified: v.boolean(),
     adminId:       v.optional(v.id("admins")),
     fcmToken:      v.optional(v.string()),
@@ -307,6 +348,7 @@ export default defineSchema({
   })
     .index("by_email",       ["email"])
     .index("by_adminId",     ["adminId"])
+    .index("by_schoolId",    ["schoolId"])
     .index("by_inviteToken", ["inviteToken"]),
 
   // ── Intern personal accounts (gamification layer) ────────────────────────

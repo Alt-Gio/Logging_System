@@ -40,7 +40,10 @@ export const create = mutation({
     email:        v.string(),
     name:         v.string(),
     department:   v.string(),
-    passwordHash: v.string(),
+    phone:        v.optional(v.string()),
+    position:     v.optional(v.string()),
+    schoolId:     v.optional(v.id("schools")),
+    passwordHash: v.optional(v.string()),
     adminId:      v.optional(v.id("admins")),
     inviteToken:  v.optional(v.string()),
     inviteExpiry: v.optional(v.number()),
@@ -65,6 +68,9 @@ export const update = mutation({
     id:            v.id("supervisors"),
     name:          v.optional(v.string()),
     department:    v.optional(v.string()),
+    phone:         v.optional(v.string()),
+    position:      v.optional(v.string()),
+    schoolId:      v.optional(v.id("schools")),
     passwordHash:  v.optional(v.string()),
     emailVerified: v.optional(v.boolean()),
     fcmToken:      v.optional(v.string()),
@@ -75,6 +81,47 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const { id, ...patch } = args
     await ctx.db.patch(id, patch)
+  },
+})
+
+export const upsertOtp = mutation({
+  args: { email: v.string(), code: v.string(), expiresAt: v.number() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("otpVerifications")
+      .withIndex("by_contact", q => q.eq("contact", args.email.toLowerCase()))
+      .filter(q => q.eq(q.field("purpose"), "supervisor_login"))
+      .first()
+    const data = {
+      contact:     args.email.toLowerCase(),
+      contactType: "email",
+      otpCode:     args.code,
+      purpose:     "supervisor_login",
+      verified:    false,
+      expiresAt:   args.expiresAt,
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, data)
+    } else {
+      await ctx.db.insert("otpVerifications", data)
+    }
+  },
+})
+
+export const verifyOtp = mutation({
+  args: { email: v.string(), code: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("otpVerifications")
+      .withIndex("by_contact", q => q.eq("contact", args.email.toLowerCase()))
+      .filter(q => q.eq(q.field("purpose"), "supervisor_login"))
+      .first()
+    if (!row) return { ok: false, error: "No OTP found" }
+    if (row.verified) return { ok: false, error: "OTP already used" }
+    if (row.expiresAt < Date.now()) return { ok: false, error: "OTP expired" }
+    if (row.otpCode !== args.code) return { ok: false, error: "Incorrect code" }
+    await ctx.db.patch(row._id, { verified: true })
+    return { ok: true }
   },
 })
 

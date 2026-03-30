@@ -425,7 +425,7 @@ export default function AdminPage() {
   const mediaFileRef = useRef<HTMLInputElement>(null)
   const [sheetSyncing, setSheetSyncing] = useState(false)
   const [sheetResult, setSheetResult] = useState<{ok:boolean;msg:string}|null>(null)
-  const [settingsTab, setSettingsTab] = useState<'general'|'frontpage'|'appearance'|'integrations'|'staff'|'pwa'>('general')
+  const [settingsTab, setSettingsTab] = useState<'general'|'frontpage'|'appearance'|'integrations'|'staff'|'pwa'|'schools'|'supervisors'>('general')
   const [stats, setStats] = useState<Record<string, unknown> | null>(null)
   const [liveStats, setLiveStats] = useState<{totalEntries:number;activeNow:number;pcsOnline:number;pcsInUse:number}|null>(null)
   const [allLogs, setAllLogs] = useState<Log[]>([])
@@ -1711,6 +1711,8 @@ export default function AdminPage() {
                 ['appearance',   '🎨', 'Appearance'],
                 ['integrations', '🔗', 'Integrations'],
                 ['frontpage',    '🌐', 'Front Page'],
+                ['schools',      '🏫', 'Schools'],
+                ['supervisors',  '👔', 'Supervisors'],
                 ['staff',        '👥', 'Staff & Auth'],
                 ['pwa',          '📱', 'PWA & Offline'],
               ] as const).map(([k,ic,lb]) => (
@@ -2199,6 +2201,12 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* ─── SCHOOLS ─────────────────────────────────────────────── */}
+            {settingsTab === 'schools' && <SchoolsTab />}
+
+            {/* ─── SUPERVISORS ─────────────────────────────────────────── */}
+            {settingsTab === 'supervisors' && <SupervisorsTab adminId={currentAdmin?.id ?? ''} />}
+
             {/* ─── STAFF & AUTH ─────────────────────────────────────────── */}
             {settingsTab === 'staff' && (
               <AdminsTab currentAdminId={currentAdmin?.id ?? ''} currentAdminName={currentAdmin?.name ?? 'Admin'} currentAdminRole={currentAdmin?.role ?? 'ADMIN'}/>
@@ -2636,6 +2644,328 @@ function AnnouncementsTab() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── SchoolsTab — school database management ──────────────────────────────────
+type School = {
+  _id: string; name: string; type?: string; address?: string; email?: string
+  practicumCoordinator?: string; coordinatorEmail?: string; coordinatorPhone?: string; active: boolean
+}
+const SCHOOL_TYPES = ['State University','Private University','State College','Private College','Technical-Vocational','Polytechnic University','Other']
+
+function SchoolsTab() {
+  const EMPTY = { name:'', type:'', address:'', email:'', practicumCoordinator:'', coordinatorEmail:'', coordinatorPhone:'' }
+  const [schools, setSchools] = useState<School[]>([])
+  const [form, setForm]       = useState(EMPTY)
+  const [editing, setEditing] = useState<School|null>(null)
+  const [saving, setSaving]   = useState(false)
+  const [search, setSearch]   = useState('')
+
+  const load = () => fetch('/api/schools').then(r=>r.json()).then((d:School[])=>{if(Array.isArray(d))setSchools(d)}).catch(()=>{})
+  useEffect(()=>{ load() },[])
+
+  const save = async () => {
+    if (!form.name.trim()) return
+    setSaving(true)
+    if (editing) {
+      await fetch(`/api/schools/${editing._id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) })
+      setEditing(null)
+    } else {
+      await fetch('/api/schools', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) })
+    }
+    setForm(EMPTY); load(); setSaving(false)
+  }
+
+  const startEdit = (s: School) => {
+    setEditing(s)
+    setForm({ name:s.name, type:s.type||'', address:s.address||'', email:s.email||'', practicumCoordinator:s.practicumCoordinator||'', coordinatorEmail:s.coordinatorEmail||'', coordinatorPhone:s.coordinatorPhone||'' })
+  }
+
+  const remove = async (id: string) => {
+    if (!confirm('Delete this school?')) return
+    await fetch(`/api/schools/${id}`, { method:'DELETE' })
+    load()
+  }
+
+  const toggleActive = async (s: School) => {
+    await fetch(`/api/schools/${s._id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active: !s.active }) })
+    load()
+  }
+
+  const filtered = schools.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || (s.practicumCoordinator||'').toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div className="space-y-5">
+      {/* Form */}
+      <div className="glass rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <h3 className="font-display font-semibold text-gray-800 text-lg flex items-center gap-2">
+            🏫 {editing ? 'Edit School' : 'Add School'}
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">This database links to intern registration so school info auto-fills.</p>
+        </div>
+        <div className="p-6 grid sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">School Name *</label>
+            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Bicol University"
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Type</label>
+            <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}
+              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+              <option value="">Select type…</option>
+              {SCHOOL_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">School Email</label>
+            <input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="school@university.edu.ph"
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">School Address</label>
+            <input value={form.address} onChange={e=>setForm(f=>({...f,address:e.target.value}))} placeholder="Street, City, Province"
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+          </div>
+          <div className="sm:col-span-2 border-t border-gray-100 pt-4">
+            <p className="text-xs font-black text-gray-500 uppercase tracking-wide mb-3">Practicum Coordinator</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Name</label>
+                <input value={form.practicumCoordinator} onChange={e=>setForm(f=>({...f,practicumCoordinator:e.target.value}))} placeholder="Full name"
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Email</label>
+                <input type="email" value={form.coordinatorEmail} onChange={e=>setForm(f=>({...f,coordinatorEmail:e.target.value}))} placeholder="coordinator@school.edu.ph"
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Contact No.</label>
+                <input value={form.coordinatorPhone} onChange={e=>setForm(f=>({...f,coordinatorPhone:e.target.value}))} placeholder="09xx-xxx-xxxx"
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+              </div>
+            </div>
+          </div>
+          <div className="sm:col-span-2 flex items-center gap-3">
+            <button onClick={save} disabled={saving || !form.name.trim()}
+              className="px-6 py-2.5 bg-[var(--dict-blue)] text-white rounded-xl text-sm font-bold hover:bg-blue-800 disabled:opacity-50 flex items-center gap-2 transition-colors">
+              {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>Saving…</> : (editing ? '✏️ Update School' : '+ Add School')}
+            </button>
+            {editing && (
+              <button onClick={()=>{setEditing(null);setForm(EMPTY)}}
+                className="px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="glass rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+          <h3 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+            School Database
+            <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{schools.length}</span>
+          </h3>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…"
+            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm outline-none focus:border-[var(--dict-blue)] w-48"/>
+        </div>
+        {filtered.length === 0 ? (
+          <div className="text-center py-12"><p className="text-3xl mb-2">🏫</p><p className="text-gray-400 text-sm">No schools added yet.</p></div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                <th className="px-5 py-3 text-left">School</th>
+                <th className="px-5 py-3 text-left">Type</th>
+                <th className="px-5 py-3 text-left">Practicum Coordinator</th>
+                <th className="px-5 py-3 text-left">Contact</th>
+                <th className="px-5 py-3 text-left">Status</th>
+                <th className="px-5 py-3 text-right">Actions</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map(s=>(
+                  <tr key={s._id} className={`hover:bg-gray-50/60 transition-colors ${!s.active?'opacity-50':''}`}>
+                    <td className="px-5 py-3">
+                      <p className="font-semibold text-gray-800">{s.name}</p>
+                      {s.address && <p className="text-xs text-gray-400 mt-0.5">{s.address}</p>}
+                    </td>
+                    <td className="px-5 py-3 text-gray-500 text-xs">{s.type||'—'}</td>
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-gray-700">{s.practicumCoordinator||'—'}</p>
+                      {s.coordinatorEmail && <p className="text-xs text-blue-600">{s.coordinatorEmail}</p>}
+                    </td>
+                    <td className="px-5 py-3 text-gray-500 text-xs">{s.coordinatorPhone||'—'}</td>
+                    <td className="px-5 py-3">
+                      <button onClick={()=>toggleActive(s)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${s.active?'bg-green-50 text-green-700 border-green-200':'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                        {s.active?'Active':'Inactive'}
+                      </button>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={()=>startEdit(s)} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">Edit</button>
+                        <button onClick={()=>remove(s._id)} className="w-7 h-7 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center text-xs transition-colors border border-red-100">✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── SupervisorsTab — supervisor invitation management ─────────────────────────
+type SupervisorRecord = {
+  _id: string; email: string; name: string; department: string
+  phone?: string; position?: string; emailVerified: boolean; lastLogin?: number; schoolId?: string
+}
+
+function SupervisorsTab({ adminId }: { adminId: string }) {
+  const EMPTY_FORM = { email:'', name:'', department:'DICT Region V', phone:'', position:'Practicum Coordinator', schoolId:'' }
+  const [supervisors, setSupervisors] = useState<SupervisorRecord[]>([])
+  const [schools, setSchools]         = useState<School[]>([])
+  const [form, setForm]               = useState(EMPTY_FORM)
+  const [sending, setSending]         = useState(false)
+  const [success, setSuccess]         = useState<string|null>(null)
+  const [error, setError]             = useState<string|null>(null)
+
+  const load = () => {
+    fetch('/api/supervisor-auth/session').then(()=>{}).catch(()=>{})
+    // Fetch list from supervisors Convex query via admin
+    fetch('/api/supervisors/list').then(r=>r.json()).then((d:SupervisorRecord[])=>{if(Array.isArray(d))setSupervisors(d)}).catch(()=>{})
+    fetch('/api/schools').then(r=>r.json()).then((d:School[])=>{if(Array.isArray(d))setSchools(d.filter(s=>s.active))}).catch(()=>{})
+  }
+  useEffect(()=>{ load() },[])
+
+  const sendInvite = async () => {
+    if (!form.email || !form.name) return
+    setSending(true); setSuccess(null); setError(null)
+    try {
+      const res  = await fetch('/api/supervisor-auth/invite', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ ...form, adminId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to send invite'); return }
+      setSuccess(`Invitation sent to ${form.email}`)
+      setForm(EMPTY_FORM)
+      load()
+    } catch { setError('Network error') } finally { setSending(false) }
+  }
+
+  const selectedSchool = schools.find(s=>s._id === form.schoolId)
+
+  return (
+    <div className="space-y-5">
+      {/* Invite form */}
+      <div className="glass rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <h3 className="font-display font-semibold text-gray-800 text-lg">👔 Invite Practicum Coordinator</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Supervisors receive an invitation email and can log in via one-time OTP — no password needed.
+          </p>
+        </div>
+        <div className="p-6 space-y-4">
+          {success && <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700"><span>✅</span>{success}</div>}
+          {error && <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600"><span>⚠</span>{error}</div>}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Full Name *</label>
+              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="First and Last Name"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Email Address *</label>
+              <input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="coordinator@school.edu.ph"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Position / Title</label>
+              <input value={form.position} onChange={e=>setForm(f=>({...f,position:e.target.value}))} placeholder="Practicum Coordinator"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Contact Number</label>
+              <input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="09xx-xxx-xxxx"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">School / Institution</label>
+              <select value={form.schoolId} onChange={e=>setForm(f=>({...f,schoolId:e.target.value}))}
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+                <option value="">Select school…</option>
+                {schools.map(s=><option key={s._id} value={s._id}>{s.name}</option>)}
+              </select>
+              {selectedSchool && <p className="text-xs text-blue-600 mt-1">{selectedSchool.type} · {selectedSchool.address}</p>}
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Department</label>
+              <input value={form.department} onChange={e=>setForm(f=>({...f,department:e.target.value}))} placeholder="DICT Region V"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
+            </div>
+          </div>
+
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-700 flex items-start gap-2">
+            <span className="flex-shrink-0 text-base">🔒</span>
+            <span>The supervisor will receive an invitation email. No password is required — they log in using a one-time code sent to their email each time.</span>
+          </div>
+
+          <button onClick={sendInvite} disabled={sending || !form.email || !form.name}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold text-sm hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-all shadow-md">
+            {sending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>Sending Invitation…</> : '📧 Send Invitation'}
+          </button>
+        </div>
+      </div>
+
+      {/* Supervisors list */}
+      <div className="glass rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+            Registered Supervisors
+            <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{supervisors.length}</span>
+          </h3>
+          <a href="/supervisor/login" target="_blank" className="text-xs text-indigo-600 hover:underline font-semibold">Supervisor Login →</a>
+        </div>
+        {supervisors.length === 0 ? (
+          <div className="text-center py-12"><p className="text-3xl mb-2">👔</p><p className="text-gray-400 text-sm">No supervisors invited yet. Send your first invitation above.</p></div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {supervisors.map(sv=>{
+              const school = schools.find(s=>s._id === sv.schoolId)
+              return (
+                <div key={sv._id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                    {sv.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm text-gray-800">{sv.name}</p>
+                    <p className="text-xs text-blue-600">{sv.email}</p>
+                    {sv.position && <p className="text-xs text-gray-400">{sv.position}</p>}
+                    {school && <p className="text-xs text-gray-500 mt-0.5">🏫 {school.name}</p>}
+                  </div>
+                  <div className="text-right flex-shrink-0 space-y-1">
+                    <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sv.emailVerified ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                      {sv.emailVerified ? '✓ Active' : '⏳ Pending'}
+                    </div>
+                    {sv.lastLogin && <p className="text-[10px] text-gray-400">Last: {new Date(sv.lastLogin).toLocaleDateString()}</p>}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

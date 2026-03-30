@@ -403,7 +403,7 @@ export default function HomePage() {
             ) : (() => {
               const featured = active.filter(a => a.featured)
               const regular  = active.filter(a => !a.featured)
-              const ACCENT: Record<string,{bar:string;badge:string;badgeText:string}> = {
+              const ACCENT: Record<string,{bar:string;badge:string}> = {
                 blue:   { bar:'from-blue-500 to-indigo-500',   badge:'bg-blue-500/20 text-blue-300 border-blue-500/20'   },
                 amber:  { bar:'from-amber-500 to-yellow-500',  badge:'bg-amber-500/20 text-amber-300 border-amber-500/20' },
                 red:    { bar:'from-red-500 to-rose-500',      badge:'bg-red-500/20 text-red-300 border-red-500/20'       },

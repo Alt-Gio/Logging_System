@@ -27,6 +27,7 @@ import type * as logEntries from "../logEntries.js";
 import type * as notifications from "../notifications.js";
 import type * as otpVerifications from "../otpVerifications.js";
 import type * as pcs from "../pcs.js";
+import type * as schools from "../schools.js";
 import type * as settings from "../settings.js";
 import type * as sheets from "../sheets.js";
 import type * as supervisors from "../supervisors.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   notifications: typeof notifications;
   otpVerifications: typeof otpVerifications;
   pcs: typeof pcs;
+  schools: typeof schools;
   settings: typeof settings;
   sheets: typeof sheets;
   supervisors: typeof supervisors;
