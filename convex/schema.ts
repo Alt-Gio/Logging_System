@@ -173,16 +173,17 @@ export default defineSchema({
 
   // ── Intern daily attendance ──────────────────────────────────────────────
   internAttendance: defineTable({
-    internId: v.id("interns"),
-    date:     v.number(),
-    timeIn:   v.optional(v.number()),
-    timeOut:  v.optional(v.number()),
-    hours:    v.optional(v.number()),
-    status:   v.union(
+    internId:     v.id("interns"),
+    date:         v.number(),
+    timeIn:       v.optional(v.number()),
+    timeOut:      v.optional(v.number()),
+    hours:        v.optional(v.number()),
+    status:       v.union(
       v.literal("PRESENT"), v.literal("ABSENT"),
       v.literal("HALF_DAY"), v.literal("LEAVE"), v.literal("HOLIDAY"),
     ),
-    notes: v.optional(v.string()),
+    notes:        v.optional(v.string()),
+    sessionCount: v.optional(v.number()),
   })
     .index("by_internId",      ["internId"])
     .index("by_date",          ["date"])

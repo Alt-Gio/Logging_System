@@ -15,14 +15,14 @@ type Intern = {
 }
 type AttendanceRecord = {
   id: string; date: string; timeIn: string | null
-  timeOut: string | null; hours: number | null; status: string
+  timeOut: string | null; hours: number | null; status: string; sessionCount?: number
 }
 type InternTask = {
   id: string; title: string; description: string | null
   status: string; priority: string; dueDate: string | null
 }
 type ClockEntry = { internId: string; startTime: string }
-type InternSessionRecord = { id: string; internId: string; timeIn: string; status: string }
+type InternSessionRecord = { id: string; internId: string; timeIn: string; status: string; checkInMethod?: string }
 type AddInternForm = {
   fullName: string; school: string; course: string; department: string
   supervisor: string; email: string; phone: string
@@ -410,7 +410,7 @@ export default function InternLogbookPage() {
 
   const clockedInInterns = useMemo(()=>interns.filter(i=>clocks[i.id]),[interns,clocks])
   const todayStr = new Date().toISOString().slice(0,10)
-  const todayLogs = useMemo(()=>interns.flatMap(i=>i.attendance.filter(a=>a.date.slice(0,10)===todayStr).map(a=>({...a,intern:i}))),[interns,todayStr])
+  const todayLogs = useMemo(()=>interns.flatMap(i=>i.attendance.filter(a=>(typeof a.date==='string'?a.date:new Date(a.date as unknown as number).toISOString()).slice(0,10)===todayStr).map(a=>({...a,intern:i}))),[interns,todayStr])
   const totalHours = useMemo(()=>interns.reduce((s,i)=>s+i.totalHours,0),[interns])
   const pendingTasks = useMemo(()=>interns.flatMap(i=>i.tasks).filter(t=>t.status==='PENDING'||t.status==='IN_PROGRESS').length,[interns])
   const schoolGroups = useMemo(()=>{
@@ -716,6 +716,9 @@ export default function InternLogbookPage() {
                         <div className="text-right">
                           <p className="text-green-700 font-mono font-bold text-sm">{fmt(elapsed[i.id]||0)}</p>
                           <p className="text-gray-400 text-[10px]">since {fmtTime(clocks[i.id]?.startTime||'')}</p>
+                          {dbSessions[i.id]?.checkInMethod === 'qr_location' && (
+                            <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">📍 GPS QR</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -736,19 +739,28 @@ export default function InternLogbookPage() {
                   <p className="text-center text-gray-400 text-sm py-6">No attendance logged today yet</p>
                 ) : (
                   <div className="space-y-2">
-                    {todayLogs.map(a=>(
+                    {todayLogs.map(a=>{
+                      const isComb = (a.sessionCount ?? 0) > 1
+                      return (
                       <div key={a.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                         <Avatar name={a.intern.fullName} photo={a.intern.photoUrl} size="sm"/>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-gray-800 truncate">{a.intern.fullName}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-sm text-gray-800 truncate">{a.intern.fullName}</p>
+                            {isComb && (
+                              <span className="text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                                ⊕ {a.sessionCount} sessions
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500">{a.intern.school}</p>
                         </div>
                         <div className="text-right text-xs">
                           <p className="font-semibold text-gray-700">{a.timeIn?fmtTime(a.timeIn):'—'} → {a.timeOut?fmtTime(a.timeOut):<span className="text-green-600 font-bold">Active</span>}</p>
-                          {a.hours!=null&&<p className="text-[var(--dict-blue)] font-bold">{a.hours}h</p>}
+                          {a.hours!=null&&<p className="text-[var(--dict-blue)] font-bold">{a.hours}h{isComb&&<span className="text-indigo-500 text-[9px] ml-0.5">total</span>}</p>}
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 )}
               </div>

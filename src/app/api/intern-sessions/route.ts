@@ -13,13 +13,16 @@ export async function GET(req: NextRequest) {
     if (!internId) {
       const raw = await convex.query(api.internSessions.getAllActiveSessions, {})
       const sessions = raw.map((s: Record<string,unknown>) => ({
-        id:         s._id,
-        _id:        s._id,
-        internId:   s.internId,
-        timeIn:     new Date(s.timeIn as number).toISOString(),
-        status:     s.status,
-        internName: s.internName ?? null,
-        internPhoto:s.internPhoto ?? null,
+        id:            s._id,
+        _id:           s._id,
+        internId:      s.internId,
+        timeIn:        new Date(s.timeIn as number).toISOString(),
+        status:        s.status,
+        internName:    s.internName ?? null,
+        internPhoto:   s.internPhoto ?? null,
+        checkInMethod: s.checkInMethod ?? 'direct',
+        checkInLat:    s.checkInLat ?? null,
+        checkInLng:    s.checkInLng ?? null,
       }))
       return NextResponse.json(sessions)
     }
@@ -29,11 +32,14 @@ export async function GET(req: NextRequest) {
     })
     if (!raw) return NextResponse.json(null)
     const session = {
-      id:       raw._id,
-      _id:      raw._id,
-      internId: raw.internId,
-      timeIn:   new Date(raw.timeIn as number).toISOString(),
-      status:   raw.status,
+      id:            raw._id,
+      _id:           raw._id,
+      internId:      raw.internId,
+      timeIn:        new Date(raw.timeIn as number).toISOString(),
+      status:        raw.status,
+      checkInMethod: (raw.checkInMethod as string) ?? 'direct',
+      checkInLat:    (raw.checkInLat as number|null) ?? null,
+      checkInLng:    (raw.checkInLng as number|null) ?? null,
     }
     return NextResponse.json(session)
   } catch (e) {
@@ -44,19 +50,29 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { internId } = await req.json()
+    const body = await req.json()
+    const { internId, checkInMethod, checkInLat, checkInLng } = body as {
+      internId:      string
+      checkInMethod?: 'direct' | 'qr' | 'qr_location'
+      checkInLat?:    number
+      checkInLng?:    number
+    }
     if (!internId) return NextResponse.json({ error: 'internId required' }, { status: 400 })
 
     const convex = getConvexClient()
     const sessionId = await convex.mutation(api.internSessions.timeIn, {
-      internId: internId as Id<'interns'>,
+      internId:      internId as Id<'interns'>,
+      checkInMethod: checkInMethod ?? 'direct',
+      checkInLat:    checkInLat,
+      checkInLng:    checkInLng,
     })
     return NextResponse.json({
-      id:       sessionId,
-      _id:      sessionId,
-      internId: internId,
-      timeIn:   new Date().toISOString(),
-      status:   'ACTIVE',
+      id:            sessionId,
+      _id:           sessionId,
+      internId:      internId,
+      timeIn:        new Date().toISOString(),
+      status:        'ACTIVE',
+      checkInMethod: checkInMethod ?? 'direct',
     }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

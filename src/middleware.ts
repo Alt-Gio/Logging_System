@@ -64,6 +64,9 @@ const PUBLIC_PATHS = [
   '/intern-logbook',
   '/intern/login',
   '/intern/setup',
+  '/intern/qr-checkin',
+  '/intern/qr-display',
+  '/api/qr',
   '/supervisor/login',
   '/supervisor/setup',
   '/dtc-logbook',
@@ -116,14 +119,14 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   res.headers.set('X-XSS-Protection', '1; mode=block')
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
-  res.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()')
+  res.headers.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()')
   res.headers.set('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com",
-    "connect-src 'self' https://res.cloudinary.com https://api.groq.com wss://localhost:3210 ws://localhost:3210",
+    "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com https://*.mapbox.com https://demotiles.maplibre.org",
+    "connect-src 'self' https://res.cloudinary.com https://api.groq.com wss://localhost:3210 ws://localhost:3210 https://*.mapbox.com https://api.mapbox.com https://events.mapbox.com https://demotiles.maplibre.org",
     "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",

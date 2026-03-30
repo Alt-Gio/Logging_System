@@ -8,6 +8,7 @@ type Account = { id: string; level: number; xp: number; xpInLevel: number; xpNee
 type InternProfile = { id: string; fullName: string; school: string; course: string; department: string | null; photoUrl: string | null; totalHoursLogged: number; requiredHours: number; status: string }
 type ActiveSession = { id: string; timeIn: string; status: string } | null
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; difficulty: string; xpReward: number; type: string; dueDate: string | null; completedAt: string | null }
+type SessionRecord = { id: string; timeIn: string; timeOut: string | null; hoursLogged: number | null; status: string; progressNote: string | null; checkInMethod: string }
 
 const DIFFICULTY_XP: Record<string, number> = { trivial: 5, easy: 10, medium: 20, hard: 40, epic: 100 }
 const DIFFICULTY_STARS: Record<string, string> = { trivial: '★', easy: '★★', medium: '★★★', hard: '★★★★', epic: '★★★★★' }
@@ -139,7 +140,8 @@ export default function InternDashboardPage() {
   const [showTimeout,   setShowTimeout]   = useState(false)
   const [elapsed,       setElapsed]       = useState(0)
   const [toast,         setToast]         = useState<{msg:string;type:'success'|'error'}|null>(null)
-  const [announcements, setAnnouncements] = useState<{id:string;title:string;body:string;type:string}[]>([])
+  const [announcements,   setAnnouncements]   = useState<{id:string;title:string;body:string;type:string}[]>([])
+  const [recentSessions,  setRecentSessions]  = useState<SessionRecord[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   function showToast(msg: string, type: 'success' | 'error' = 'success') {
@@ -164,6 +166,7 @@ export default function InternDashboardPage() {
         setActiveSession(d.activeSession)
         setTasks(d.tasks)
         setUnreadCount(d.unreadNotifications)
+        if (Array.isArray(d.recentSessions)) setRecentSessions(d.recentSessions)
       }
       if (annRes.ok) {
         const a = await annRes.json()
@@ -479,6 +482,91 @@ export default function InternDashboardPage() {
                 <div className="h-full bg-gradient-to-r from-[#0038A8] to-blue-400 rounded-full transition-all duration-700" style={{ width: `${hoursPct}%` }} />
               </div>
             </div>
+
+            {/* Session History — grouped by day */}
+            {(() => {
+              const allS = activeSession
+                ? [{ id: activeSession.id, timeIn: activeSession.timeIn, timeOut: null, hoursLogged: null, status: 'ACTIVE', progressNote: null, checkInMethod: 'direct' }, ...recentSessions]
+                : recentSessions
+              // Group by date (YYYY-MM-DD)
+              const byDay = new Map<string, SessionRecord[]>()
+              allS.forEach(s => {
+                const day = s.timeIn.slice(0, 10)
+                if (!byDay.has(day)) byDay.set(day, [])
+                byDay.get(day)!.push(s)
+              })
+              const days = Array.from(byDay.entries()).slice(0, 7)
+              if (days.length === 0) return null
+              const methodIcon = (m: string) => m === 'qr_location' ? '📍' : m === 'qr' ? '📱' : '🖐'
+              return (
+                <div>
+                  <p className="font-bold text-gray-700 text-sm mb-2">🕐 Session History</p>
+                  <div className="space-y-2">
+                    {days.map(([day, sessions]) => {
+                      const closed = sessions.filter(s => s.status === 'CLOSED')
+                      const active = sessions.find(s => s.status === 'ACTIVE')
+                      const totalH = closed.reduce((sum, s) => sum + (s.hoursLogged ?? 0), 0)
+                      const isCombined = sessions.length > 1
+                      const firstIn = sessions.reduce((min, s) => s.timeIn < min ? s.timeIn : min, sessions[0].timeIn)
+                      const lastOut = closed.length > 0 ? closed.reduce((max, s) => (s.timeOut ?? '') > max ? (s.timeOut ?? '') : max, '') : null
+                      const methods = [...new Set(sessions.map(s => s.checkInMethod))]
+                      return (
+                        <div key={day} className={`rounded-2xl border-2 p-3.5 ${
+                          active ? 'border-green-300 bg-green-50' : 'border-gray-100 bg-white'
+                        }`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-bold text-sm text-gray-800">
+                                  {new Date(day).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                </p>
+                                {isCombined && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                    ⊕ {sessions.length} sessions combined
+                                  </span>
+                                )}
+                                {active && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                                <span>In: {new Date(firstIn).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                                {lastOut && <span>Out: {new Date(lastOut).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>}
+                                {methods.map(m => <span key={m} title={m}>{methodIcon(m)}</span>)}
+                              </div>
+                              {isCombined && (
+                                <div className="mt-2 space-y-1">
+                                  {sessions.map((s, i) => (
+                                    <div key={s.id} className="flex items-center gap-2 text-[11px] text-gray-500 pl-2 border-l-2 border-indigo-200">
+                                      <span className="font-semibold text-indigo-500">#{i + 1}</span>
+                                      <span>{new Date(s.timeIn).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                                      {s.timeOut && <span>→ {new Date(s.timeOut).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>}
+                                      {s.hoursLogged && <span className="font-bold text-blue-600">{s.hoursLogged}h</span>}
+                                      <span title={s.checkInMethod}>{methodIcon(s.checkInMethod)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              {(totalH > 0 || active) && (
+                                <p className="font-black text-lg text-[#0038A8]">
+                                  {active && closed.length === 0 ? '…' : `${totalH.toFixed(1)}h`}
+                                </p>
+                              )}
+                              {isCombined && totalH > 0 && <p className="text-[9px] text-indigo-500 font-semibold">total</p>}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Today's tasks */}
             <div>

@@ -40,6 +40,7 @@ type AttendanceRecord = {
   hours: number | null
   status: AttendanceStatus
   notes: string | null
+  sessionCount?: number
 }
 
 type Task = {
@@ -1642,13 +1643,26 @@ export default function InternsPage() {
                         </thead>
                         <tbody>
                           {selectedIntern.attendance.slice().sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()).slice(-10).map(a => {
-                            const m = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
+                            const m      = ATTENDANCE_STATUS_META[a.status as AttendanceStatus]
+                            const isComb = (a.sessionCount ?? 0) > 1
                             return (
                               <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                                <td className="py-2 text-gray-700 font-medium">{format(new Date(a.date), 'MMM d, yyyy')}</td>
+                                <td className="py-2 text-gray-700 font-medium">
+                                  <div className="flex items-center gap-1.5">
+                                    {format(new Date(a.date), 'MMM d, yyyy')}
+                                    {isComb && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full">
+                                        ⊕ {a.sessionCount} sessions
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="py-2 text-gray-500 font-mono text-xs">{a.timeIn ? format(new Date(a.timeIn), 'h:mm a') : '—'}</td>
                                 <td className="py-2 text-gray-500 font-mono text-xs">{a.timeOut ? format(new Date(a.timeOut), 'h:mm a') : '—'}</td>
-                                <td className="py-2 font-bold text-gray-800">{a.hours ? `${a.hours}h` : '—'}</td>
+                                <td className="py-2 font-bold text-gray-800">
+                                  {a.hours ? `${a.hours}h` : '—'}
+                                  {isComb && <span className="ml-1 text-[9px] text-indigo-500 font-semibold">total</span>}
+                                </td>
                                 <td className="py-2">
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${m.color}`}>{m.label}</span>
                                 </td>

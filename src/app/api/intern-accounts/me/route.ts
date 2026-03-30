@@ -20,12 +20,13 @@ export async function GET(req: NextRequest) {
     const internId  = payload.internId as string
     const convex    = getConvexClient()
 
-    const [account, intern, activeSessions, tasks, notifications] = await Promise.all([
+    const [account, intern, activeSessions, tasks, notifications, allSessions] = await Promise.all([
       convex.query(api.internAccounts.getById, { id: accountId as Id<'internAccounts'> }),
       convex.query(api.interns.getById,        { id: internId  as Id<'interns'> }),
       convex.query(api.internSessions.getActiveSession, { internId: internId as Id<'interns'> }),
       convex.query(api.internTasks.getTasksForIntern,   { internId: internId as Id<'interns'> }),
       convex.query(api.notifications.getUnreadCount,    { recipientId: accountId }),
+      convex.query(api.internSessions.getRecentSessions, { limit: 50 }),
     ])
 
     if (!account || !intern) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -77,6 +78,18 @@ export async function GET(req: NextRequest) {
         completedAt: t.completedAt ? new Date(t.completedAt as number).toISOString() : null,
       })),
       unreadNotifications: notifications,
+      recentSessions: (allSessions as Record<string,unknown>[])
+        .filter(s => s.internId === internId)
+        .slice(0, 30)
+        .map(s => ({
+          id:            s._id,
+          timeIn:        new Date(s.timeIn as number).toISOString(),
+          timeOut:       s.timeOut ? new Date(s.timeOut as number).toISOString() : null,
+          hoursLogged:   s.hoursLogged ?? null,
+          status:        s.status,
+          progressNote:  s.progressNote ?? null,
+          checkInMethod: (s.checkInMethod as string) ?? 'direct',
+        })),
     })
   } catch (e) {
     console.error('[intern-accounts/me]', e)

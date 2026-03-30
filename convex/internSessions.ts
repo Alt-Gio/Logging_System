@@ -134,10 +134,26 @@ export const timeOut = mutation({
       )
       .first()
     if (att) {
+      // Sum ALL closed sessions for today (including the one we just closed)
+      const todaySessions = await ctx.db
+        .query("internSessions")
+        .withIndex("by_internId", q => q.eq("internId", session.internId))
+        .filter(q => q.gte(q.field("timeIn"), today.getTime()))
+        .collect()
+
+      const closedToday = todaySessions.filter(s => s.status === "CLOSED" || s._id === args.sessionId)
+      const totalHoursToday = closedToday.reduce((sum, s) => {
+        const h = s.hoursLogged ?? ((s.timeOut ?? now) - s.timeIn) / 3_600_000
+        return sum + h
+      }, 0)
+      const totalRounded   = Math.round(totalHoursToday * 100) / 100
+      const sessionCount   = closedToday.length
+
       await ctx.db.patch(att._id, {
-        timeOut: now,
-        hours:   Math.round(hoursLogged * 100) / 100,
-        status:  hoursLogged < 4 ? "HALF_DAY" : "PRESENT",
+        timeOut:      now,
+        hours:        totalRounded,
+        status:       totalHoursToday < 4 ? "HALF_DAY" : "PRESENT",
+        sessionCount: sessionCount,
       })
     }
 
