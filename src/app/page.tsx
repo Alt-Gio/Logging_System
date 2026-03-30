@@ -404,10 +404,10 @@ export default function HomePage() {
               const featured = active.filter(a => a.featured)
               const regular  = active.filter(a => !a.featured)
               const ACCENT: Record<string,{bar:string;badge:string;badgeText:string}> = {
-                blue:   { bar:'from-blue-500 to-indigo-500',   badge:'bg-blue-500/20 text-blue-300 border-blue-500/20'   },
-                amber:  { bar:'from-amber-500 to-yellow-500',  badge:'bg-amber-500/20 text-amber-300 border-amber-500/20' },
-                red:    { bar:'from-red-500 to-rose-500',      badge:'bg-red-500/20 text-red-300 border-red-500/20'       },
-                green:  { bar:'from-emerald-500 to-green-500', badge:'bg-emerald-500/20 text-emerald-300 border-emerald-500/20' },
+                blue:   { bar:'from-blue-500 to-indigo-500',   badge:'bg-blue-500/20 text-blue-300 border-blue-500/20',   badgeText:'text-blue-300'   },
+                amber:  { bar:'from-amber-500 to-yellow-500',  badge:'bg-amber-500/20 text-amber-300 border-amber-500/20', badgeText:'text-amber-300' },
+                red:    { bar:'from-red-500 to-rose-500',      badge:'bg-red-500/20 text-red-300 border-red-500/20',       badgeText:'text-red-300'   },
+                green:  { bar:'from-emerald-500 to-green-500', badge:'bg-emerald-500/20 text-emerald-300 border-emerald-500/20', badgeText:'text-emerald-300' },
                 purple: { bar:'from-purple-500 to-violet-500', badge:'bg-purple-500/20 text-purple-300 border-purple-500/20' },
                 rose:   { bar:'from-rose-500 to-pink-500',     badge:'bg-rose-500/20 text-rose-300 border-rose-500/20'   },
                 teal:   { bar:'from-teal-500 to-cyan-500',     badge:'bg-teal-500/20 text-teal-300 border-teal-500/20'   },
