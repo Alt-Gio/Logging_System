@@ -418,11 +418,11 @@ export default function AdminPage() {
     }
     setTimeout(() => setAdminVoiceToast(null), 4000)
   }
-  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '' })
+  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '', hero_title: 'Free Digital\nServices for\nEvery Bicolano', hero_subtitle: 'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.', hero_badge: 'DICT REGION V · BICOL', hero_media_url: '', hero_media_type: 'none', office_hours: 'Monday – Friday  8:00 AM – 5:00 PM', office_location: '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [sheetSyncing, setSheetSyncing] = useState(false)
   const [sheetResult, setSheetResult] = useState<{ok:boolean;msg:string}|null>(null)
-  const [settingsTab, setSettingsTab] = useState<'general'|'appearance'|'integrations'|'staff'|'pwa'>('general')
+  const [settingsTab, setSettingsTab] = useState<'general'|'frontpage'|'appearance'|'integrations'|'staff'|'pwa'>('general')
   const [stats, setStats] = useState<Record<string, unknown> | null>(null)
   const [liveStats, setLiveStats] = useState<{totalEntries:number;activeNow:number;pcsOnline:number;pcsInUse:number}|null>(null)
   const [allLogs, setAllLogs] = useState<Log[]>([])
@@ -510,6 +510,13 @@ export default function AdminPage() {
         interactiveBannerUrl: data.interactiveBannerUrl ?? s.interactiveBannerUrl,
         googleSheetId: data.googleSheetId ?? s.googleSheetId,
         googleServiceKey: data.googleServiceKey ?? s.googleServiceKey,
+        hero_title: data.hero_title ?? s.hero_title,
+        hero_subtitle: data.hero_subtitle ?? s.hero_subtitle,
+        hero_badge: data.hero_badge ?? s.hero_badge,
+        hero_media_url: data.hero_media_url ?? s.hero_media_url,
+        hero_media_type: data.hero_media_type ?? s.hero_media_type,
+        office_hours: data.office_hours ?? s.office_hours,
+        office_location: data.office_location ?? s.office_location,
       }))
       // Load grid settings
       if (data.gridCols) setGridCols(parseInt(data.gridCols))
@@ -1663,6 +1670,7 @@ export default function AdminPage() {
                 ['general',      '⚙️', 'General'],
                 ['appearance',   '🎨', 'Appearance'],
                 ['integrations', '🔗', 'Integrations'],
+                ['frontpage',    '🌐', 'Front Page'],
                 ['staff',        '👥', 'Staff & Auth'],
                 ['pwa',          '📱', 'PWA & Offline'],
               ] as const).map(([k,ic,lb]) => (
@@ -2011,6 +2019,74 @@ export default function AdminPage() {
                       <p className="text-xs text-gray-400">Google Data Studio, Power BI, email reports — planned.</p>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* ─── FRONT PAGE ─────────────────────────────────────────── */}
+            {settingsTab === 'frontpage' && (
+              <div className="space-y-5">
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-800 mb-1">Hero Heading</h3>
+                  <p className="text-xs text-gray-400 mb-4">Use \n to create line breaks in the title.</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Badge Text</label>
+                      <input value={settings.hero_badge} onChange={e => setSettings(s => ({...s, hero_badge: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" placeholder="DICT REGION V · BICOL" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Main Title (use \n for line breaks)</label>
+                      <textarea rows={3} value={settings.hero_title} onChange={e => setSettings(s => ({...s, hero_title: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)] resize-none font-mono" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Subtitle / Description</label>
+                      <textarea rows={3} value={settings.hero_subtitle} onChange={e => setSettings(s => ({...s, hero_subtitle: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)] resize-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-800 mb-4">Hero Media (Image or Video)</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Media Type</label>
+                      <select value={settings.hero_media_type} onChange={e => setSettings(s => ({...s, hero_media_type: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]">
+                        <option value="none">None (text-only hero)</option>
+                        <option value="image">Image</option>
+                        <option value="video">Video (autoplay, muted)</option>
+                      </select>
+                    </div>
+                    {settings.hero_media_type !== 'none' && (
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Media URL</label>
+                        <input value={settings.hero_media_url} onChange={e => setSettings(s => ({...s, hero_media_url: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" placeholder="https://... or /image.jpg or /video.mp4" />
+                        {settings.hero_media_url && settings.hero_media_type === 'image' && (
+                          <div className="mt-3 rounded-xl overflow-hidden border border-gray-200" style={{ maxHeight: 200 }}>
+                            <img src={settings.hero_media_url} alt="Preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-display font-semibold text-gray-800 mb-4">Office Info</h3>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Office Hours</label>
+                      <input value={settings.office_hours} onChange={e => setSettings(s => ({...s, office_hours: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Office Address</label>
+                      <input value={settings.office_location} onChange={e => setSettings(s => ({...s, office_location: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button onClick={saveSettings} className="px-5 py-2.5 bg-[var(--dict-blue)] text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">Save Front Page Settings</button>
+                  {settingsSaved && <span className="text-emerald-600 text-sm font-medium">✓ Saved</span>}
                 </div>
               </div>
             )}

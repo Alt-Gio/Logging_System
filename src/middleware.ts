@@ -67,13 +67,10 @@ const PUBLIC_PATHS = [
   '/supervisor/login',
   '/supervisor/setup',
   '/dtc-logbook',
-  '/intern/dashboard',
-  '/supervisor/intern',
-
 ]
 
 const INTERN_PATHS = [
-  
+  '/intern/dashboard',
   '/intern/tasks',
   '/intern/leaderboard',
 ]
@@ -107,7 +104,6 @@ const ADMIN_PATHS = [
   '/api/logs/export',
   '/api/invitations',
   '/api/certificates',
-  '/intern/dashboard',
 ]
 
 function isAdmin(pathname: string): boolean {

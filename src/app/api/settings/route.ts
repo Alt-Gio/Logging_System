@@ -10,6 +10,13 @@ const DEFAULTS = {
   accessCode: '1234', officeOpen: '08:00', officeClose: '17:00',
   bgImageUrl: '', interactiveBannerUrl: '',
   googleSheetId: '', googleServiceKey: '',
+  hero_title:        'Free Digital\nServices for\nEvery Bicolano',
+  hero_subtitle:     'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.',
+  hero_badge:        'DICT REGION V · BICOL',
+  hero_media_url:    '',
+  hero_media_type:   'none',
+  office_hours:      'Monday – Friday  8:00 AM – 5:00 PM',
+  office_location:   '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City',
 }
 
 export async function GET() {

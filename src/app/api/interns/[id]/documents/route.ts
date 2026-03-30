@@ -3,6 +3,8 @@ import { getConvexClient } from '@/lib/convex-client'
 import { api } from '@/convex/_generated/api'
 import type { Id } from '@/convex/_generated/dataModel'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const convex = getConvexClient()
@@ -48,5 +50,21 @@ export async function DELETE(req: NextRequest, _ctx: { params: { id: string } })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { docId, tags } = await req.json()
+    if (!docId || !Array.isArray(tags)) return NextResponse.json({ error: 'docId and tags[] required' }, { status: 400 })
+    const convex = getConvexClient()
+    await convex.mutation(api.internDocuments.updateTags, {
+      id:   docId as Id<'internDocuments'>,
+      tags: tags as string[],
+    })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: 'Failed to update tags' }, { status: 500 })
   }
 }

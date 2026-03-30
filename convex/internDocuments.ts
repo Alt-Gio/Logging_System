@@ -12,6 +12,13 @@ export const getForIntern = query({
   },
 })
 
+export const getAll = query({
+  args: {},
+  handler: async (ctx) => {
+    return ctx.db.query("internDocuments").order("desc").collect()
+  },
+})
+
 export const create = mutation({
   args: {
     internId:   v.id("interns"),
@@ -19,9 +26,33 @@ export const create = mutation({
     type:       v.string(),
     url:        v.string(),
     uploadedBy: v.optional(v.string()),
+    tags:       v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    return ctx.db.insert("internDocuments", args)
+    return ctx.db.insert("internDocuments", { ...args, syncedToSheets: false })
+  },
+})
+
+export const updateTags = mutation({
+  args: {
+    id:   v.id("internDocuments"),
+    tags: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { tags: args.tags })
+  },
+})
+
+export const updateSyncStatus = mutation({
+  args: {
+    id:             v.id("internDocuments"),
+    syncedToSheets: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      syncedToSheets: args.syncedToSheets,
+      syncedAt:       Date.now(),
+    })
   },
 })
 

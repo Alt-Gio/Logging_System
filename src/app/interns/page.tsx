@@ -62,6 +62,9 @@ type Document = {
   url: string
   uploadedBy: string | null
   createdAt: string
+  tags?: string[]
+  syncedToSheets?: boolean
+  syncedAt?: number
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -204,6 +207,16 @@ export default function InternsPage() {
   const [showAddIntern, setShowAddIntern] = useState(false)
   const [showAddAttendance, setShowAddAttendance] = useState(false)
   const [showAddTask, setShowAddTask] = useState(false)
+
+  // Document management state
+  const [docSort,      setDocSort]      = useState<'date'|'name'|'folder'|'intern'>('date')
+  const [docTagFilter, setDocTagFilter] = useState<string>('')
+  const [docSearch,    setDocSearch]    = useState('')
+  const [editingDocId, setEditingDocId] = useState<string | null>(null)
+  const [editingTags,  setEditingTags]  = useState<string[]>([])
+  const [tagInput,     setTagInput]     = useState('')
+  const [sheetSyncing, setSheetSyncing] = useState(false)
+  const [sheetSyncMsg, setSheetSyncMsg] = useState<string | null>(null)
 
   // Add intern form state
   const [newIntern, setNewIntern] = useState({
@@ -2724,121 +2737,295 @@ export default function InternsPage() {
 
           {/* ══ DOCUMENTS ════════════════════════════════════════════════════════ */}
           {activeSection === 'documents' && (() => {
-            const DOC_FOLDERS = [
-              { id: 'moa',        label: 'MOA / Endorsement',  icon: '📄', color: 'from-blue-500 to-indigo-500',   light: 'bg-blue-50 border-blue-200',   text: 'text-blue-700',   keys: ['moa','endorsement','letter'] },
-              { id: 'id',         label: 'IDs & Identification', icon: '🪪', color: 'from-green-500 to-teal-500',  light: 'bg-green-50 border-green-200', text: 'text-green-700', keys: ['id','identification','school id'] },
-              { id: 'report',     label: 'Reports & Output',   icon: '📝', color: 'from-purple-500 to-violet-500', light: 'bg-purple-50 border-purple-200',text: 'text-purple-700',keys: ['report','output','narrative'] },
-              { id: 'assessment', label: 'Assessment Forms',   icon: '📋', color: 'from-orange-500 to-red-500',    light: 'bg-orange-50 border-orange-200',text: 'text-orange-700',keys: ['assessment','evaluation','form'] },
-              { id: 'photo',      label: 'Photos & Media',     icon: '🖼️', color: 'from-pink-500 to-rose-500',     light: 'bg-pink-50 border-pink-200',   text: 'text-pink-700',  keys: ['image','photo','jpg','png'] },
-              { id: 'other',      label: 'Other Files',        icon: '📁', color: 'from-gray-400 to-slate-500',    light: 'bg-gray-50 border-gray-200',   text: 'text-gray-700',  keys: [] },
-            ]
-            const allDocs = interns.flatMap(intern => intern.documents.map(d => ({ ...d, intern })))
-            const getFolder = (doc: { name: string; type: string; url: string }) => {
-              const hay = (doc.name + ' ' + doc.type).toLowerCase()
-              for (const f of DOC_FOLDERS.slice(0, -1)) {
-                if (f.keys.some(k => hay.includes(k))) return f.id
-              }
-              if (doc.type === 'Image' || doc.url.startsWith('data:image')) return 'photo'
-              return 'other'
+            const TAG_COLORS: Record<string, string> = {
+              moa: 'bg-blue-100 text-blue-700 border-blue-200',
+              endorsement: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+              letter: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+              id: 'bg-green-100 text-green-700 border-green-200',
+              report: 'bg-purple-100 text-purple-700 border-purple-200',
+              assessment: 'bg-orange-100 text-orange-700 border-orange-200',
+              photo: 'bg-pink-100 text-pink-700 border-pink-200',
+              pdf: 'bg-red-100 text-red-700 border-red-200',
+              certificate: 'bg-amber-100 text-amber-700 border-amber-200',
+              contract: 'bg-teal-100 text-teal-700 border-teal-200',
             }
-            const totalFiles = allDocs.length
+            const TAG_COLOR_DEFAULT = 'bg-gray-100 text-gray-600 border-gray-200'
+
+            function autoSuggestTags(name: string, type: string, url: string): string[] {
+              const hay = (name + ' ' + type).toLowerCase()
+              const tags: string[] = []
+              if (/moa|memorandum|agreement/.test(hay)) tags.push('moa')
+              if (/endorsement/.test(hay)) tags.push('endorsement')
+              if (/letter/.test(hay)) tags.push('letter')
+              if (/school.?id|identification|id.?card/.test(hay)) tags.push('id')
+              if (/report|narrative|output/.test(hay)) tags.push('report')
+              if (/assessment|evaluation|form/.test(hay)) tags.push('assessment')
+              if (type === 'Image' || url.startsWith('data:image') || /photo|image|jpg|jpeg|png/.test(hay)) tags.push('photo')
+              if (type === 'PDF'   || url.startsWith('data:application/pdf') || /\.pdf/.test(hay)) tags.push('pdf')
+              if (/certificate|cert/.test(hay)) tags.push('certificate')
+              if (/contract/.test(hay)) tags.push('contract')
+              return [...new Set(tags)]
+            }
+
+            function getDocFolder(doc: Document): string {
+              const hay = (doc.name + ' ' + doc.type).toLowerCase()
+              if (/moa|endorsement|letter|agreement/.test(hay)) return 'Legal & MOA'
+              if (/school.?id|identification/.test(hay))        return 'IDs & Identification'
+              if (/report|narrative|output/.test(hay))          return 'Reports & Output'
+              if (/assessment|evaluation|form/.test(hay))       return 'Assessment Forms'
+              if (doc.type === 'Image' || doc.url.startsWith('data:image')) return 'Photos & Media'
+              if (doc.type === 'PDF'   || doc.url.startsWith('data:application/pdf')) return 'PDF Documents'
+              return 'Other Files'
+            }
+
+            const allDocs = interns.flatMap(intern => intern.documents.map(d => ({ ...d, intern })))
+
+            const allTags = [...new Set(allDocs.flatMap(d => d.tags ?? autoSuggestTags(d.name, d.type, d.url)))].sort()
+
+            let filteredDocs = allDocs
+              .filter(d => !docSearch || d.name.toLowerCase().includes(docSearch.toLowerCase()) || d.intern.fullName.toLowerCase().includes(docSearch.toLowerCase()))
+              .filter(d => {
+                if (!docTagFilter) return true
+                const tags = d.tags?.length ? d.tags : autoSuggestTags(d.name, d.type, d.url)
+                return tags.includes(docTagFilter)
+              })
+
+            filteredDocs = [...filteredDocs].sort((a, b) => {
+              if (docSort === 'name')   return a.name.localeCompare(b.name)
+              if (docSort === 'intern') return a.intern.fullName.localeCompare(b.intern.fullName)
+              if (docSort === 'folder') return getDocFolder(a).localeCompare(getDocFolder(b))
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            })
+
+            const unsyncedCount = allDocs.filter(d => !d.syncedToSheets).length
+
+            async function saveDocTags(internId: string, docId: string, tags: string[]) {
+              await fetch(`/api/interns/${internId}/documents`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ docId, tags }),
+              })
+              fetchInterns()
+              setEditingDocId(null)
+              setEditingTags([])
+              setTagInput('')
+            }
+
+            async function syncAllToSheets() {
+              setSheetSyncing(true)
+              setSheetSyncMsg(null)
+              try {
+                const r = await fetch('/api/sheets/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+                const d = await r.json()
+                if (d.skipped) setSheetSyncMsg('⚠ Google Sheets not configured in Settings.')
+                else if (d.success) { setSheetSyncMsg(`✓ Synced ${d.synced} document${d.synced !== 1 ? 's' : ''} to Google Sheets.`); fetchInterns() }
+                else setSheetSyncMsg(`Error: ${d.error ?? 'Unknown error'}`)
+              } catch { setSheetSyncMsg('Network error — could not sync.') }
+              finally { setSheetSyncing(false) }
+            }
+
             return (
               <div className="space-y-5">
-                <div className="flex items-center justify-between">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <h1 className="font-display font-bold text-2xl text-gray-800">Documents</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">{totalFiles} file{totalFiles !== 1 ? 's' : ''} across {interns.filter(i => i.documents.length > 0).length} intern{interns.filter(i => i.documents.length > 0).length !== 1 ? 's' : ''}</p>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      {allDocs.length} file{allDocs.length !== 1 ? 's' : ''} across {interns.filter(i => i.documents.length > 0).length} intern{interns.filter(i => i.documents.length > 0).length !== 1 ? 's' : ''}
+                      {unsyncedCount > 0 && <span className="ml-2 text-amber-600 font-medium">&bull; {unsyncedCount} unsynced</span>}
+                    </p>
                   </div>
-                  <button onClick={() => setShowAddIntern(true)}
-                    className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all">
-                    + Add Intern with Docs
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={syncAllToSheets} disabled={sheetSyncing || unsyncedCount === 0}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
+                      {sheetSyncing ? '⏳ Syncing…' : `📊 Sync to Sheets${unsyncedCount > 0 ? ` (${unsyncedCount})` : ''}`}
+                    </button>
+                    <button onClick={() => setShowAddIntern(true)}
+                      className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow-sm hover:shadow-md transition-all">
+                      + Add Docs
+                    </button>
+                  </div>
                 </div>
 
-                {/* Folder grid */}
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {DOC_FOLDERS.map(folder => {
-                    const folderDocs = allDocs.filter(d => getFolder(d) === folder.id)
-                    if (folderDocs.length === 0) return null
-                    const internCount = new Set(folderDocs.map(d => d.intern.id)).size
-                    return (
-                      <details key={folder.id} className="group glass rounded-2xl overflow-hidden">
-                        <summary className={`flex items-center gap-3 p-4 cursor-pointer select-none hover:bg-gray-50 transition-all list-none border-b border-gray-100`}>
-                          <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${folder.color} flex items-center justify-center text-2xl flex-shrink-0 shadow-md`}>{folder.icon}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-sm text-gray-800">{folder.label}</p>
-                            <p className="text-xs text-gray-400">{folderDocs.length} file{folderDocs.length !== 1 ? 's' : ''} · {internCount} intern{internCount !== 1 ? 's' : ''}</p>
-                          </div>
-                          <span className="text-gray-300 group-open:rotate-90 transition-transform text-lg">›</span>
-                        </summary>
-                        {/* Per-intern sub-folders */}
-                        <div className="p-3 space-y-3">
-                          {Array.from(new Set(folderDocs.map(d => d.intern.id))).map(internId => {
-                            const intern = interns.find(i => i.id === internId)!
-                            const internDocs = folderDocs.filter(d => d.intern.id === internId)
-                            const sc = getSchoolColor(intern.school)
-                            return (
-                              <details key={internId} className="group/intern">
-                                <summary className={`flex items-center gap-2.5 px-3 py-2 rounded-xl cursor-pointer list-none hover:${sc.light} transition-all border ${sc.border}`}>
-                                  <Avatar name={intern.fullName} photo={intern.photoUrl} size="sm"/>
-                                  <div className="flex-1 min-w-0">
-                                    <p className={`text-sm font-bold ${sc.text} truncate`}>{intern.fullName}</p>
-                                    <p className="text-xs text-gray-400">{internDocs.length} file{internDocs.length !== 1 ? 's' : ''}</p>
-                                  </div>
-                                  <span className="text-gray-300 group-open/intern:rotate-90 transition-transform">›</span>
-                                </summary>
-                                <div className="grid grid-cols-2 gap-2 mt-2 pl-2">
-                                  {internDocs.map(doc => {
-                                    const isImage = doc.type === 'Image' || doc.url.startsWith('data:image')
-                                    const isPDF   = doc.type === 'PDF' || doc.url.startsWith('data:application/pdf')
-                                    return (
-                                      <div key={doc.id} className="group/doc rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm hover:shadow-md transition-all">
-                                        {isImage ? (
-                                          <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                                            <div className="h-24 bg-gray-50 overflow-hidden">
-                                              <img src={doc.url} alt={doc.name} className="w-full h-full object-cover hover:scale-105 transition-transform"/>
-                                            </div>
-                                          </a>
-                                        ) : (
-                                          <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                                            className="h-24 bg-gray-50 flex flex-col items-center justify-center gap-1.5 hover:bg-blue-50 transition-colors">
-                                            <span className="text-3xl">{isPDF ? '📄' : '📎'}</span>
-                                            <span className="text-xs font-semibold text-gray-400">{doc.type}</span>
-                                          </a>
-                                        )}
-                                        <div className="p-2">
-                                          <p className="text-xs font-semibold text-gray-800 truncate" title={doc.name}>{doc.name}</p>
-                                          <p className="text-[10px] text-gray-400">{format(new Date(doc.createdAt), 'MMM d, yyyy')}</p>
-                                          <div className="flex gap-1 mt-1.5">
-                                            <a href={doc.url} download={doc.name} className="flex-1 text-center text-[10px] py-1 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100">↓</a>
-                                            <button onClick={async () => {
-                                              if (!confirm(`Delete "${doc.name}"?`)) return
-                                              await fetch(`/api/interns/${intern.id}/documents?docId=${doc.id}`, { method: 'DELETE' })
-                                              fetchInterns()
-                                            }} className="px-2 text-[10px] py-1 bg-red-50 text-red-400 rounded-lg hover:bg-red-100">✕</button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </details>
-                            )
-                          })}
-                        </div>
-                      </details>
-                    )
-                  })}
+                {sheetSyncMsg && (
+                  <div className={`px-4 py-3 rounded-xl text-sm font-medium ${sheetSyncMsg.startsWith('✓') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                    {sheetSyncMsg}
+                  </div>
+                )}
+
+                {/* Toolbar: search + sort + tag filter */}
+                <div className="glass rounded-2xl p-4 flex flex-wrap gap-3 items-center">
+                  <div className="relative flex-1 min-w-[180px]">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                    <input
+                      value={docSearch}
+                      onChange={e => setDocSearch(e.target.value)}
+                      placeholder="Search by filename or intern…"
+                      className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)] bg-white"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Sort:</span>
+                    {(['date','name','folder','intern'] as const).map(s => (
+                      <button key={s} onClick={() => setDocSort(s)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${docSort === s ? 'bg-[var(--dict-blue)] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                        {s === 'date' ? '🕐 Date' : s === 'name' ? '🔤 Name' : s === 'folder' ? '📁 Folder' : '🎓 Intern'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {totalFiles === 0 && (
+                {/* Tag filter chips */}
+                {allTags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Filter:</span>
+                    <button onClick={() => setDocTagFilter('')}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${!docTagFilter ? 'bg-[var(--dict-blue)] text-white border-[var(--dict-blue)]' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                      All
+                    </button>
+                    {allTags.map(tag => (
+                      <button key={tag} onClick={() => setDocTagFilter(docTagFilter === tag ? '' : tag)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${docTagFilter === tag ? 'bg-[var(--dict-blue)] text-white border-[var(--dict-blue)]' : `${TAG_COLORS[tag] ?? TAG_COLOR_DEFAULT} hover:opacity-80`}`}>
+                        #{tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Document list */}
+                {filteredDocs.length === 0 ? (
                   <div className="glass rounded-2xl p-12 text-center border-2 border-dashed border-gray-200">
                     <p className="text-5xl mb-3">📁</p>
-                    <p className="text-gray-600 font-semibold">No documents uploaded yet</p>
-                    <p className="text-sm text-gray-400 mt-1">Attach files when adding a new intern — MOA, IDs, endorsement letters, etc.</p>
-                    <button onClick={() => setShowAddIntern(true)} className="mt-4 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">
-                      + Add Intern with Documents
-                    </button>
+                    <p className="text-gray-600 font-semibold">{allDocs.length === 0 ? 'No documents uploaded yet' : 'No documents match your filter'}</p>
+                    {allDocs.length === 0 && (
+                      <>
+                        <p className="text-sm text-gray-400 mt-1">Attach files when adding a new intern — MOA, IDs, endorsement letters, etc.</p>
+                        <button onClick={() => setShowAddIntern(true)} className="mt-4 px-5 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold">
+                          + Add Intern with Documents
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredDocs.map(doc => {
+                      const intern  = doc.intern
+                      const isImage = doc.type === 'Image' || doc.url.startsWith('data:image')
+                      const isPDF   = doc.type === 'PDF'   || doc.url.startsWith('data:application/pdf')
+                      const effectiveTags = doc.tags?.length ? doc.tags : autoSuggestTags(doc.name, doc.type, doc.url)
+                      const isEditing = editingDocId === doc.id
+                      const sc = getSchoolColor(intern.school)
+                      return (
+                        <div key={doc.id} className="glass rounded-2xl overflow-hidden border border-gray-100 hover:border-blue-200 transition-all">
+                          <div className="flex items-center gap-4 p-4">
+                            {/* Thumbnail */}
+                            <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                              className="w-14 h-14 flex-shrink-0 rounded-xl overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center hover:opacity-80 transition-opacity">
+                              {isImage
+                                ? <img src={doc.url} alt={doc.name} className="w-full h-full object-cover" />
+                                : <span className="text-3xl">{isPDF ? '📄' : '📎'}</span>
+                              }
+                            </a>
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-gray-800 text-sm truncate" title={doc.name}>{doc.name}</p>
+                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${sc.badge}`}>{intern.fullName}</span>
+                                    <span className="text-xs text-gray-400">{format(new Date(doc.createdAt), 'MMM d, yyyy')}</span>
+                                    <span className="text-xs text-gray-400">&bull; {getDocFolder(doc)}</span>
+                                    {doc.syncedToSheets
+                                      ? <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Synced</span>
+                                      : <span className="text-[10px] text-amber-600 font-semibold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Unsynced</span>
+                                    }
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <a href={doc.url} download={doc.name} className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs transition-colors" title="Download">↓</a>
+                                  <button onClick={() => {
+                                    if (isEditing) { setEditingDocId(null); setEditingTags([]); setTagInput('') }
+                                    else { setEditingDocId(doc.id); setEditingTags(effectiveTags); setTagInput('') }
+                                  }} className={`p-1.5 rounded-lg text-xs transition-colors ${isEditing ? 'bg-[var(--dict-blue)] text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`} title="Edit tags">🏷</button>
+                                  <button onClick={async () => {
+                                    if (!confirm(`Delete "${doc.name}"?`)) return
+                                    await fetch(`/api/interns/${intern.id}/documents?docId=${doc.id}`, { method: 'DELETE' })
+                                    fetchInterns()
+                                  }} className="p-1.5 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 text-xs transition-colors" title="Delete">✕</button>
+                                </div>
+                              </div>
+
+                              {/* Tags row */}
+                              {!isEditing && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {effectiveTags.length > 0
+                                    ? effectiveTags.map(t => (
+                                        <span key={t} className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TAG_COLORS[t] ?? TAG_COLOR_DEFAULT}`}>#{t}</span>
+                                      ))
+                                    : <span className="text-[10px] text-gray-400 italic">No tags — click 🏷 to add</span>
+                                  }
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Inline tag editor */}
+                          {isEditing && (
+                            <div className="border-t border-gray-100 bg-blue-50/40 px-4 py-3">
+                              <p className="text-xs font-semibold text-gray-600 mb-2">Edit tags for this document:</p>
+                              <div className="flex flex-wrap gap-1.5 mb-2">
+                                {editingTags.map(t => (
+                                  <span key={t} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full border ${TAG_COLORS[t] ?? TAG_COLOR_DEFAULT}`}>
+                                    #{t}
+                                    <button onClick={() => setEditingTags(editingTags.filter(x => x !== t))} className="hover:text-red-500 leading-none">&times;</button>
+                                  </span>
+                                ))}
+                                {editingTags.length === 0 && <span className="text-xs text-gray-400 italic">No tags yet</span>}
+                              </div>
+                              <div className="flex gap-2">
+                                <input
+                                  value={tagInput}
+                                  onChange={e => setTagInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                                  onKeyDown={e => {
+                                    if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
+                                      e.preventDefault()
+                                      if (!editingTags.includes(tagInput.trim())) setEditingTags([...editingTags, tagInput.trim()])
+                                      setTagInput('')
+                                    }
+                                  }}
+                                  placeholder="Type tag + Enter…"
+                                  className="flex-1 px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)] bg-white"
+                                  list="tag-suggestions"
+                                />
+                                <datalist id="tag-suggestions">
+                                  {Object.keys(TAG_COLORS).map(t => <option key={t} value={t} />)}
+                                </datalist>
+                                {tagInput.trim() && (
+                                  <button onClick={() => {
+                                    if (!editingTags.includes(tagInput.trim())) setEditingTags([...editingTags, tagInput.trim()])
+                                    setTagInput('')
+                                  }} className="px-3 py-1.5 bg-[var(--dict-blue)] text-white text-xs rounded-lg font-semibold">Add</button>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                <span className="text-[10px] text-gray-400">Suggestions:</span>
+                                {autoSuggestTags(doc.name, doc.type, doc.url).filter(t => !editingTags.includes(t)).map(t => (
+                                  <button key={t} onClick={() => setEditingTags([...editingTags, t])}
+                                    className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${TAG_COLORS[t] ?? TAG_COLOR_DEFAULT} opacity-70 hover:opacity-100`}>+{t}</button>
+                                ))}
+                              </div>
+                              <div className="flex gap-2 mt-3">
+                                <button onClick={() => saveDocTags(intern.id, doc.id, editingTags)}
+                                  className="px-4 py-1.5 bg-[var(--dict-blue)] text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors">Save Tags</button>
+                                <button onClick={() => { setEditingDocId(null); setEditingTags([]); setTagInput('') }}
+                                  className="px-4 py-1.5 bg-white border border-gray-200 text-gray-500 text-xs font-semibold rounded-lg hover:bg-gray-50">Cancel</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>

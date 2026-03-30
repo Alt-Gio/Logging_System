@@ -231,12 +231,15 @@ export default defineSchema({
 
   // ── Intern documents ─────────────────────────────────────────────────────
   internDocuments: defineTable({
-    internId:   v.id("interns"),
-    name:       v.string(),
-    type:       v.string(),
-    url:        v.string(),
-    uploadedBy: v.optional(v.string()),
-    storageId:  v.optional(v.id("_storage")),
+    internId:       v.id("interns"),
+    name:           v.string(),
+    type:           v.string(),
+    url:            v.string(),
+    uploadedBy:     v.optional(v.string()),
+    storageId:      v.optional(v.id("_storage")),
+    tags:           v.optional(v.array(v.string())),
+    syncedToSheets: v.optional(v.boolean()),
+    syncedAt:       v.optional(v.number()),
   })
     .index("by_internId", ["internId"]),
 
