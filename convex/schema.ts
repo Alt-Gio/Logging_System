@@ -100,23 +100,30 @@ export default defineSchema({
 
   // ── Announcements ────────────────────────────────────────────────────────
   announcements: defineTable({
-    title:     v.string(),
-    body:      v.string(),
-    type:      v.union(
+    title:          v.string(),
+    body:           v.string(),
+    type:           v.union(
       v.literal("INFO"),    v.literal("WARNING"),
       v.literal("MAINTENANCE"), v.literal("HOLIDAY"),
     ),
-    active:    v.boolean(),
-    dateStart: v.optional(v.number()),
-    dateEnd:   v.optional(v.number()),
-    expiresAt: v.optional(v.number()),
-    createdBy: v.optional(v.string()),
+    active:         v.boolean(),
+    dateStart:      v.optional(v.number()),
+    dateEnd:        v.optional(v.number()),
+    expiresAt:      v.optional(v.number()),
+    createdBy:      v.optional(v.string()),
+    imageUrl:       v.optional(v.string()),
+    imageStorageId: v.optional(v.string()),
+    featured:       v.optional(v.boolean()),
+    highlight:      v.optional(v.string()),
+    featuredOrder:  v.optional(v.number()),
+    tags:           v.optional(v.array(v.string())),
   })
     .index("by_active",           ["active"])
     .index("by_dateStart",        ["dateStart"])
     .index("by_dateEnd",          ["dateEnd"])
     .index("by_expiresAt",        ["expiresAt"])
-    .index("by_active_expiresAt", ["active", "expiresAt"]),
+    .index("by_active_expiresAt", ["active", "expiresAt"])
+    .index("by_featured",         ["featured"]),
 
   // ── App settings (key-value store) ───────────────────────────────────────
   settings: defineTable({

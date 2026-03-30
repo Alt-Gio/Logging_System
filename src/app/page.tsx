@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-type Ann = { id: string; title: string; content: string; urgent: boolean; createdAt: string; expiresAt?: string }
+type Ann = { id: string; title: string; content: string; type?: string; urgent: boolean; createdAt: string; expiresAt?: string; imageUrl?: string; featured?: boolean; highlight?: string }
 type FPSettings = { hero_media_url: string; hero_media_type: 'image'|'video'|'none'; office_hours: string; office_location: string }
 type LiveStats = { todayCount: number; activeInterns: number; activeNow: number }
 
@@ -400,24 +400,89 @@ export default function HomePage() {
             </div>
             {active.length === 0 ? (
               <div className="text-center py-16 gc rounded-2xl"><p className="text-4xl mb-3">📅</p><p className="text-gray-500 text-sm">No active announcements.</p></div>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {active.slice(0, 6).map(a => (
-                  <div key={a.id} onClick={() => setExpanded(a)} className="group gc rounded-2xl overflow-hidden cursor-pointer hover:bg-white/[.05] transition-all">
-                    <div className={`h-1 ${a.urgent ? 'bg-gradient-to-r from-red-500 to-amber-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`} />
-                    <div className="p-5">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className={`text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${a.urgent ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-blue-500/20 text-blue-400 border border-blue-500/20'}`}>{a.urgent ? '⚠ Urgent' : '📌 Notice'}</span>
-                        <span className="text-gray-600 text-[10px] ml-auto">{new Date(a.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                      </div>
-                      <h3 className="font-bold text-white text-sm mb-2 group-hover:text-blue-400 transition-colors line-clamp-2">{a.title}</h3>
-                      <p className="text-gray-500 text-xs leading-relaxed line-clamp-3">{a.content}</p>
-                      <p className="mt-4 text-[10px] font-semibold text-gray-600 group-hover:text-blue-400 transition-colors">Read full notice →</p>
+            ) : (() => {
+              const featured = active.filter(a => a.featured)
+              const regular  = active.filter(a => !a.featured)
+              const ACCENT: Record<string,{bar:string;badge:string;badgeText:string}> = {
+                blue:   { bar:'from-blue-500 to-indigo-500',   badge:'bg-blue-500/20 text-blue-300 border-blue-500/20'   },
+                amber:  { bar:'from-amber-500 to-yellow-500',  badge:'bg-amber-500/20 text-amber-300 border-amber-500/20' },
+                red:    { bar:'from-red-500 to-rose-500',      badge:'bg-red-500/20 text-red-300 border-red-500/20'       },
+                green:  { bar:'from-emerald-500 to-green-500', badge:'bg-emerald-500/20 text-emerald-300 border-emerald-500/20' },
+                purple: { bar:'from-purple-500 to-violet-500', badge:'bg-purple-500/20 text-purple-300 border-purple-500/20' },
+                rose:   { bar:'from-rose-500 to-pink-500',     badge:'bg-rose-500/20 text-rose-300 border-rose-500/20'   },
+                teal:   { bar:'from-teal-500 to-cyan-500',     badge:'bg-teal-500/20 text-teal-300 border-teal-500/20'   },
+                gray:   { bar:'from-gray-500 to-slate-500',    badge:'bg-gray-500/20 text-gray-300 border-gray-500/20'   },
+              }
+              return (
+                <div className="space-y-6">
+                  {/* ── Featured cards ── */}
+                  {featured.length > 0 && (
+                    <div className={`grid gap-5 ${
+                      featured.length === 1 ? 'grid-cols-1 max-w-2xl' :
+                      featured.length === 2 ? 'md:grid-cols-2' :
+                      'md:grid-cols-2 lg:grid-cols-3'
+                    }`}>
+                      {featured.slice(0,6).map(a => {
+                        const ac = ACCENT[a.highlight||'blue'] || ACCENT.blue
+                        return (
+                          <div key={a.id} onClick={() => setExpanded(a)}
+                            className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-xl hover:shadow-2xl transition-all hover:-translate-y-0.5"
+                            style={{ minHeight: 300 }}>
+                            {/* Background image or gradient */}
+                            {a.imageUrl ? (
+                              <img src={a.imageUrl} alt={a.title} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"/>
+                            ) : (
+                              <div className={`absolute inset-0 bg-gradient-to-br ${ac.bar} opacity-20`}/>
+                            )}
+                            {/* Dark overlay */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent"/>
+                            {/* Top accent bar */}
+                            <div className={`absolute top-0 inset-x-0 h-1 bg-gradient-to-r ${ac.bar}`}/>
+                            {/* Content */}
+                            <div className="absolute inset-0 flex flex-col justify-end p-5">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${ac.badge}`}>⭐ Featured</span>
+                                {a.urgent && <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-red-500/30 text-red-300 border border-red-500/30">⚠ Urgent</span>}
+                              </div>
+                              <h3 className="font-black text-white text-lg sm:text-xl leading-tight mb-2 group-hover:text-blue-200 transition-colors">{a.title}</h3>
+                              <p className="text-white/60 text-xs leading-relaxed line-clamp-2">{a.content}</p>
+                              <div className="flex items-center justify-between mt-4">
+                                <span className="text-white/40 text-[10px]">{new Date(a.createdAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                                <span className="text-white/60 text-xs font-semibold group-hover:text-white transition-colors">Read more →</span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  )}
+                  {/* ── Regular cards ── */}
+                  {regular.length > 0 && (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {regular.slice(0,6).map(a => (
+                        <div key={a.id} onClick={() => setExpanded(a)} className="group gc rounded-2xl overflow-hidden cursor-pointer hover:bg-white/[.05] transition-all">
+                          <div className={`h-1 ${a.urgent ? 'bg-gradient-to-r from-red-500 to-amber-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`} />
+                          <div className="p-5">
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className={`text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${a.urgent ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-blue-500/20 text-blue-400 border border-blue-500/20'}`}>{a.urgent ? '⚠ Urgent' : '📌 Notice'}</span>
+                              <span className="text-gray-600 text-[10px] ml-auto">{new Date(a.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </div>
+                            {a.imageUrl && (
+                              <div className="rounded-xl overflow-hidden mb-3 -mx-1" style={{height:120}}>
+                                <img src={a.imageUrl} alt={a.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>
+                              </div>
+                            )}
+                            <h3 className="font-bold text-white text-sm mb-2 group-hover:text-blue-400 transition-colors line-clamp-2">{a.title}</h3>
+                            <p className="text-gray-500 text-xs leading-relaxed line-clamp-3">{a.content}</p>
+                            <p className="mt-4 text-[10px] font-semibold text-gray-600 group-hover:text-blue-400 transition-colors">Read full notice →</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </section>
 

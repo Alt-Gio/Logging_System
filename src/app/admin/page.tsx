@@ -2322,123 +2322,322 @@ export default function AdminPage() {
 
 
 // ── AnnouncementsTab ──────────────────────────────────────────────────────────
-function AnnouncementsTab() {
-  const [items, setItems] = useState<{id:string;title:string;body:string;type:string;active:boolean;dateStart:string|null;dateEnd:string|null;expiresAt:string|null;createdBy:string|null;createdAt:string}[]>([])
-  const [form, setForm] = useState({ title:'', body:'', type:'INFO', dateStart:'', dateEnd:'', expiresAt:'' })
-  const [saving, setSaving] = useState(false)
-  const colors: Record<string,string> = {
-    INFO:'bg-blue-100 text-blue-700 border-blue-200',
-    WARNING:'bg-amber-100 text-amber-700 border-amber-200',
-    MAINTENANCE:'bg-orange-100 text-orange-700 border-orange-200',
-    HOLIDAY:'bg-red-100 text-red-700 border-red-200',
-  }
-  const icons: Record<string,string> = { INFO:'ℹ️', WARNING:'⚠️', MAINTENANCE:'🔧', HOLIDAY:'🎉' }
+type AnnItem = {
+  id: string; title: string; body: string; type: string; active: boolean
+  expiresAt: string|null; createdBy: string|null; createdAt: string
+  imageUrl?: string; featured?: boolean; highlight?: string; featuredOrder?: number; tags?: string[]
+}
 
-  const load = () => fetch('/api/announcements').then(r=>r.json()).then(setItems).catch(()=>{})
-  useEffect(() => { load() }, [])
+const HIGHLIGHT_PALETTE = [
+  { key:'blue',   label:'Blue',   bg:'bg-blue-500',   ring:'ring-blue-400',   text:'text-blue-700',   light:'bg-blue-50 border-blue-200'   },
+  { key:'amber',  label:'Amber',  bg:'bg-amber-500',  ring:'ring-amber-400',  text:'text-amber-700',  light:'bg-amber-50 border-amber-200'  },
+  { key:'red',    label:'Red',    bg:'bg-red-500',    ring:'ring-red-400',    text:'text-red-700',    light:'bg-red-50 border-red-200'      },
+  { key:'green',  label:'Green',  bg:'bg-emerald-500',ring:'ring-emerald-400',text:'text-emerald-700',light:'bg-emerald-50 border-emerald-200'},
+  { key:'purple', label:'Purple', bg:'bg-purple-500', ring:'ring-purple-400', text:'text-purple-700', light:'bg-purple-50 border-purple-200' },
+  { key:'rose',   label:'Rose',   bg:'bg-rose-500',   ring:'ring-rose-400',   text:'text-rose-700',   light:'bg-rose-50 border-rose-200'    },
+  { key:'teal',   label:'Teal',   bg:'bg-teal-500',   ring:'ring-teal-400',   text:'text-teal-700',   light:'bg-teal-50 border-teal-200'    },
+  { key:'gray',   label:'Gray',   bg:'bg-gray-500',   ring:'ring-gray-400',   text:'text-gray-700',   light:'bg-gray-50 border-gray-200'    },
+]
+
+const TYPE_ICONS: Record<string,string> = { INFO:'ℹ️', WARNING:'⚠️', MAINTENANCE:'🔧', HOLIDAY:'🎉' }
+const TYPE_COLORS: Record<string,string> = {
+  INFO:'bg-blue-100 text-blue-700 border-blue-200',
+  WARNING:'bg-amber-100 text-amber-700 border-amber-200',
+  MAINTENANCE:'bg-orange-100 text-orange-700 border-orange-200',
+  HOLIDAY:'bg-red-100 text-red-700 border-red-200',
+}
+
+function AnnouncementsTab() {
+  const EMPTY_FORM = { title:'', body:'', type:'INFO', expiresAt:'', imageUrl:'', featured:false, highlight:'blue', tagInput:'' }
+  const [items, setItems] = useState<AnnItem[]>([])
+  const [form, setForm]   = useState(EMPTY_FORM)
+  const [saving, setSaving] = useState(false)
+  const [imgUploading, setImgUploading] = useState(false)
+  const [imgErr, setImgErr] = useState<string|null>(null)
+  const imgRef = useRef<HTMLInputElement>(null)
+
+  const load = () => fetch('/api/announcements?all=1').then(r=>r.json()).then((d:AnnItem[])=>{if(Array.isArray(d))setItems(d)}).catch(()=>{})
+  useEffect(()=>{ load() },[])
+
+  const uploadImage = async (file: File) => {
+    setImgUploading(true); setImgErr(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await fetch('/api/announcements/upload', { method:'POST', body: fd })
+      if (!r.ok) throw new Error((await r.json()).error || 'Upload failed')
+      const { url } = await r.json()
+      setForm(f=>({...f, imageUrl: url}))
+    } catch(e) { setImgErr(e instanceof Error ? e.message : 'Upload failed') }
+    setImgUploading(false)
+  }
 
   const save = async () => {
     if (!form.title || !form.body) return
     setSaving(true)
     await fetch('/api/announcements', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ 
-        ...form, 
-        dateStart: form.dateStart || null,
-        dateEnd: form.dateEnd || null,
-        expiresAt: form.expiresAt || null 
+      body: JSON.stringify({
+        title:    form.title,
+        body:     form.body,
+        type:     form.type,
+        active:   true,
+        expiresAt:form.expiresAt || null,
+        imageUrl: form.imageUrl || undefined,
+        featured: form.featured,
+        highlight:form.highlight,
       }),
     })
-    setForm({ title:'', body:'', type:'INFO', dateStart:'', dateEnd:'', expiresAt:'' })
+    setForm(EMPTY_FORM)
     load(); setSaving(false)
   }
 
-  const toggle = async (id: string, active: boolean) => {
+  const toggle = async (id:string, active:boolean) => {
     await fetch(`/api/announcements/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active: !active }) })
     load()
   }
 
-  const remove = async (id: string) => {
+  const toggleFeatured = async (item: AnnItem) => {
+    await fetch(`/api/announcements/${item.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ featured: !item.featured }) })
+    load()
+  }
+
+  const remove = async (id:string) => {
     if (!confirm('Delete this announcement?')) return
     await fetch(`/api/announcements/${id}`, { method:'DELETE' })
     load()
   }
 
+  const featuredItems = items.filter(i=>i.featured && i.active)
+  const otherItems    = items.filter(i=>!i.featured)
+  const hl = HIGHLIGHT_PALETTE.find(h=>h.key===form.highlight) || HIGHLIGHT_PALETTE[0]
+
   return (
-    <div className="space-y-4">
-      {/* Create form */}
-      <div className="glass rounded-2xl p-5">
-        <h3 className="font-display font-semibold text-gray-700 mb-4">Post Announcement</h3>
-        <div className="space-y-3">
-          <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}
-            placeholder="Title *" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
-          <textarea value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))}
-            placeholder="Message body *" rows={3}
-            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)] resize-none"/>
-          <div className="grid grid-cols-2 gap-3">
-            <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}
-              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
-              {['INFO','WARNING','MAINTENANCE','HOLIDAY'].map(t=>(
-                <option key={t} value={t}>{icons[t]} {t}</option>
-              ))}
-            </select>
-            <input type="datetime-local" value={form.expiresAt} onChange={e=>setForm(f=>({...f,expiresAt:e.target.value}))}
-              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"
-              title="Expires at (leave blank for permanent)"/>
+    <div className="space-y-5">
+
+      {/* ── Create / Post Form ── */}
+      <div className="glass rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <h3 className="font-display font-semibold text-gray-800 text-lg">📢 Post New Announcement</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Fill in the details below. Toggle <strong>Featured</strong> to highlight it as a card on the landing page.</p>
+        </div>
+        <div className="p-6 space-y-4">
+
+          {/* Title + Body */}
+          <div className="space-y-3">
+            <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}
+              placeholder="Announcement title *"
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100 transition-all"/>
+            <textarea value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))}
+              placeholder="Write the full announcement content here *" rows={4}
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[var(--dict-blue)] focus:ring-2 focus:ring-blue-100 resize-none transition-all"/>
           </div>
+
+          {/* Type + Expires */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">Start Date (optional)</label>
-              <input type="date" value={form.dateStart} onChange={e=>setForm(f=>({...f,dateStart:e.target.value}))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"
-                title="Announcement becomes visible from this date"/>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Type</label>
+              <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]">
+                {['INFO','WARNING','MAINTENANCE','HOLIDAY'].map(t=>(
+                  <option key={t} value={t}>{TYPE_ICONS[t]} {t}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">End Date (optional)</label>
-              <input type="date" value={form.dateEnd} onChange={e=>setForm(f=>({...f,dateEnd:e.target.value}))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"
-                title="Announcement hides after this date"/>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Expires (optional)</label>
+              <input type="datetime-local" value={form.expiresAt} onChange={e=>setForm(f=>({...f,expiresAt:e.target.value}))}
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--dict-blue)]"/>
             </div>
           </div>
+
+          {/* Image Upload */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Cover Image (optional)</label>
+            {form.imageUrl ? (
+              <div className="relative rounded-xl overflow-hidden border-2 border-gray-200 bg-gray-50" style={{height:160}}>
+                <img src={form.imageUrl} alt="Cover" className="w-full h-full object-cover"/>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"/>
+                <button onClick={()=>setForm(f=>({...f,imageUrl:''}))}
+                  className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center text-white text-sm font-bold transition-colors">
+                  ✕
+                </button>
+                <span className="absolute bottom-2 left-2 text-white text-xs font-semibold bg-black/50 px-2 py-0.5 rounded-full">✓ Image uploaded</span>
+              </div>
+            ) : (
+              <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl py-8 cursor-pointer transition-all ${imgUploading ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/40'}`}
+                onDragOver={e=>{e.preventDefault()}}
+                onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f) uploadImage(f)}}>
+                <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f) uploadImage(f)}}/>
+                {imgUploading
+                  ? <><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/><p className="text-xs text-blue-600 font-semibold">Uploading…</p></>
+                  : <><span className="text-2xl">🖼️</span><p className="text-sm font-semibold text-gray-600">Click or drag image here</p><p className="text-xs text-gray-400">PNG, JPG, WebP — shown as card cover on landing page</p></>
+                }
+              </label>
+            )}
+            {imgErr && <p className="text-xs text-red-500 mt-1">{imgErr}</p>}
+          </div>
+
+          {/* Featured + Highlight row */}
+          <div className="p-4 rounded-xl border-2 border-gray-100 bg-gray-50 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-gray-700">⭐ Featured on Landing Page</p>
+                <p className="text-xs text-gray-400 mt-0.5">Displays as a prominent image card in the Events section</p>
+              </div>
+              <button onClick={()=>setForm(f=>({...f,featured:!f.featured}))}
+                className={`relative w-12 h-6 rounded-full transition-all duration-300 flex-shrink-0 ${form.featured ? 'bg-[var(--dict-blue)]' : 'bg-gray-300'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 ${form.featured ? 'left-6' : 'left-0.5'}`}/>
+              </button>
+            </div>
+
+            {form.featured && (
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Highlight Color</p>
+                <div className="flex gap-2 flex-wrap">
+                  {HIGHLIGHT_PALETTE.map(h=>(
+                    <button key={h.key} onClick={()=>setForm(f=>({...f,highlight:h.key}))} title={h.label}
+                      className={`w-7 h-7 rounded-full ${h.bg} transition-all ${form.highlight===h.key ? 'ring-2 ring-offset-2 '+h.ring+' scale-110' : 'hover:scale-105'}`}/>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Live Preview (when featured) */}
+          {form.featured && (form.title || form.imageUrl) && (
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Landing Page Preview</p>
+              <div className={`rounded-2xl overflow-hidden border-2 ${hl.light} shadow-sm`} style={{maxWidth:340}}>
+                {form.imageUrl && <div className="relative h-40"><img src={form.imageUrl} alt="" className="w-full h-full object-cover"/><div className={`absolute inset-0 bg-gradient-to-t from-black/70 to-transparent`}/></div>}
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${hl.light} ${hl.text} border`}>⭐ Featured</span>
+                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${TYPE_COLORS[form.type]}`}>{TYPE_ICONS[form.type]} {form.type}</span>
+                  </div>
+                  <p className="font-bold text-gray-800 text-sm leading-tight">{form.title || 'Announcement Title'}</p>
+                  {form.body && <p className="text-xs text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">{form.body}</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
           <button onClick={save} disabled={saving || !form.title || !form.body}
-            className="w-full py-2.5 rounded-xl bg-[var(--dict-blue)] text-white font-bold text-sm hover:bg-blue-800 disabled:opacity-50">
-            {saving ? 'Posting...' : '📢 Post Announcement'}
+            className="w-full py-3 rounded-xl bg-[var(--dict-blue)] text-white font-bold text-sm hover:bg-blue-800 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+            {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>Posting…</> : '📢 Post Announcement'}
           </button>
         </div>
       </div>
 
-      {/* Active announcements */}
-      <div className="glass rounded-2xl p-5">
-        <h3 className="font-display font-semibold text-gray-700 mb-3">Active Notices ({items.filter(i=>i.active).length})</h3>
-        {items.length === 0
-          ? <p className="text-sm text-gray-400 text-center py-6">No announcements yet</p>
-          : <div className="space-y-2">
-            {items.map(item => (
-              <div key={item.id} className={`border rounded-2xl p-4 flex items-start gap-3 ${colors[item.type] || colors.INFO} ${!item.active ? 'opacity-50' : ''}`}>
-                <span className="text-xl flex-shrink-0">{icons[item.type]}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm">{item.title}</p>
-                  <p className="text-xs mt-0.5 opacity-80">{item.body}</p>
-                  <div className="flex gap-2 mt-1 text-[10px] opacity-60">
-                    <span>{item.type}</span>
-                    {item.expiresAt && <span>· Expires {new Date(item.expiresAt).toLocaleDateString()}</span>}
-                    {item.createdBy && <span>· By {item.createdBy}</span>}
+      {/* ── Featured Announcements ── */}
+      {featuredItems.length > 0 && (
+        <div className="glass rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center text-sm">⭐</span>
+              Featured on Landing Page
+              <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{featuredItems.length}</span>
+            </h3>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {featuredItems.map(item=>{
+              const pal = HIGHLIGHT_PALETTE.find(h=>h.key===item.highlight) || HIGHLIGHT_PALETTE[0]
+              return (
+                <div key={item.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/60 transition-colors">
+                  {/* Thumbnail */}
+                  <div className="w-20 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+                    {item.imageUrl
+                      ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover"/>
+                      : <div className={`w-full h-full flex items-center justify-center text-2xl ${pal.light}`}>{TYPE_ICONS[item.type]||'📢'}</div>
+                    }
+                  </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="font-bold text-sm text-gray-800 truncate">{item.title}</p>
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border flex-shrink-0 ${pal.light} ${pal.text}`}>⭐ Featured</span>
+                    </div>
+                    <p className="text-xs text-gray-500 truncate leading-relaxed">{item.body}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${TYPE_COLORS[item.type]||TYPE_COLORS.INFO}`}>{TYPE_ICONS[item.type]} {item.type}</span>
+                      <span className={`w-3 h-3 rounded-full ${pal.bg} flex-shrink-0`} title={pal.label}/>
+                    </div>
+                  </div>
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button onClick={()=>toggleFeatured(item)} title="Unfeature"
+                      className="text-xs px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700 font-semibold hover:bg-amber-200 transition-colors border border-amber-200">
+                      ✦ Unfeature
+                    </button>
+                    <button onClick={()=>toggle(item.id,item.active)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
+                      {item.active?'Hide':'Show'}
+                    </button>
+                    <button onClick={()=>remove(item.id)}
+                      className="w-7 h-7 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center text-xs transition-colors border border-red-100">
+                      ✕
+                    </button>
                   </div>
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  <button onClick={() => toggle(item.id, item.active)}
-                    className="text-xs px-2 py-1 rounded-lg border border-current opacity-70 hover:opacity-100">
-                    {item.active ? 'Hide' : 'Show'}
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── All Announcements ── */}
+      <div className="glass rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+            <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm">📋</span>
+            All Announcements
+            <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{items.length}</span>
+          </h3>
+        </div>
+        {items.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-4xl mb-3">📢</p>
+            <p className="text-gray-400 text-sm">No announcements yet. Post one above.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {otherItems.map(item=>(
+              <div key={item.id} className={`flex items-start gap-4 px-6 py-4 hover:bg-gray-50/60 transition-colors ${!item.active?'opacity-50':''}`}>
+                {/* Thumbnail / Icon */}
+                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+                  {item.imageUrl
+                    ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover"/>
+                    : <div className={`w-full h-full flex items-center justify-center text-xl ${TYPE_COLORS[item.type]||TYPE_COLORS.INFO}`}>{TYPE_ICONS[item.type]||'📢'}</div>
+                  }
+                </div>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-gray-800 truncate">{item.title}</p>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">{item.body}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${TYPE_COLORS[item.type]||TYPE_COLORS.INFO}`}>{TYPE_ICONS[item.type]} {item.type}</span>
+                    {item.expiresAt && <span className="text-[10px] text-gray-400">· Expires {new Date(item.expiresAt).toLocaleDateString()}</span>}
+                    {!item.active && <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">Hidden</span>}
+                  </div>
+                </div>
+                {/* Actions */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={()=>toggleFeatured(item)} title="Feature on landing page"
+                    className="text-xs px-3 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 transition-colors font-semibold">
+                    ☆ Feature
                   </button>
-                  <button onClick={() => remove(item.id)}
-                    className="text-xs px-2 py-1 rounded-lg border border-current opacity-70 hover:opacity-100">
-                    Delete
+                  <button onClick={()=>toggle(item.id,item.active)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
+                    {item.active?'Hide':'Show'}
+                  </button>
+                  <button onClick={()=>remove(item.id)}
+                    className="w-7 h-7 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center text-xs transition-colors border border-red-100">
+                    ✕
                   </button>
                 </div>
               </div>
             ))}
           </div>
-        }
+        )}
       </div>
     </div>
   )

@@ -28,7 +28,7 @@ type AddInternForm = {
   supervisor: string; email: string; phone: string
   startDate: string; endDate: string; requiredHours: string
 }
-type NavView = 'overview' | 'interns' | 'track' | 'attendance' | 'tasks'
+type NavView = 'track' | 'interns' | 'attendance'
 
 // ── Design constants ──────────────────────────────────────────────────────
 const SCHOOL_PALETTE = [
@@ -77,11 +77,9 @@ const PRIORITY_META: Record<string,{label:string;color:string}> = {
 }
 
 const NAV_ITEMS: { id: NavView; label: string; icon: string; description: string }[] = [
-  { id:'overview',    label:'Overview',        icon:'📊', description:'Dashboard & stats'    },
-  { id:'interns',     label:'Intern Roster',   icon:'👥', description:'View & manage interns' },
-  { id:'track',       label:'Time Track',      icon:'⏱️', description:'Clock in / clock out'  },
-  { id:'attendance',  label:'Attendance / DTR',icon:'📅', description:'Time records'          },
-  { id:'tasks',       label:'Tasks',           icon:'✅', description:'Assign & track'        },
+  { id:'track',      label:'Time Track & QR', icon:'⏱️', description:'Live attendance + daily QR' },
+  { id:'interns',    label:'Intern Roster',   icon:'👥', description:'View & manage interns'     },
+  { id:'attendance', label:'Attendance / DTR',icon:'📅', description:'Individual time records'   },
 ]
 
 const EMPTY_FORM: AddInternForm = {
@@ -232,9 +230,10 @@ export default function InternLogbookPage() {
   // Data
   const [interns, setInterns]     = useState<Intern[]>([])
   const [loading, setLoading]     = useState(true)
-  const [view, setView]           = useState<NavView>('overview')
+  const [view, setView]           = useState<NavView>('track')
   const [selected, setSelected]   = useState<Intern|null>(null)
   const [tasks, setTasks]         = useState<InternTask[]>([])
+  const [qrData, setQrData]       = useState<{qrDataUri:string;date:string;checkinUrl:string}|null>(null)
   const [search, setSearch]       = useState('')
   const [filterSchool, setFilterSchool] = useState('all')
 
@@ -413,6 +412,7 @@ export default function InternLogbookPage() {
   const todayLogs = useMemo(()=>interns.flatMap(i=>i.attendance.filter(a=>(typeof a.date==='string'?a.date:new Date(a.date as unknown as number).toISOString()).slice(0,10)===todayStr).map(a=>({...a,intern:i}))),[interns,todayStr])
   const totalHours = useMemo(()=>interns.reduce((s,i)=>s+i.totalHours,0),[interns])
   const pendingTasks = useMemo(()=>interns.flatMap(i=>i.tasks).filter(t=>t.status==='PENDING'||t.status==='IN_PROGRESS').length,[interns])
+  useEffect(()=>{ fetch('/api/qr/daily').then(r=>r.json()).then(d=>{ if(d?.qrDataUri) setQrData(d) }).catch(()=>{}) },[])
   const schoolGroups = useMemo(()=>{
     const map = new Map<string,Intern[]>()
     interns.forEach(i=>{ if(!map.has(i.school)) map.set(i.school,[]); map.get(i.school)!.push(i) })
@@ -662,158 +662,7 @@ export default function InternLogbookPage() {
         {/* ── Main Content ────────────────────────────────────────────────── */}
         <main className="flex-1 overflow-y-auto p-5 space-y-5 bg-[var(--bg-page)]">
 
-          {/* ════ OVERVIEW ════════════════════════════════════════════════ */}
-          {view==='overview' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="font-display font-bold text-2xl text-gray-800">Intern Overview</h1>
-                  <p className="text-sm text-gray-500 mt-0.5">Summary of all internship activity at DTC Region V</p>
-                </div>
-                <button onClick={()=>setShowAdd(true)} className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
-                  + Add Intern
-                </button>
-              </div>
-
-              {/* Stat cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {([
-                  { label:'Total Interns',    value:interns.length,                              icon:'👥', color:'from-blue-500 to-indigo-600',   sub:`${activeInterns.length} active`      },
-                  { label:'Hours Logged',     value:`${Math.round(totalHours)}h`,               icon:'⏱️', color:'from-green-500 to-emerald-600',  sub:'across all interns'                  },
-                  { label:'Pending Tasks',    value:pendingTasks,                               icon:'✅', color:'from-purple-500 to-purple-700',  sub:'need attention'                      },
-                  { label:"Today's Present",  value:todayLogs.filter(a=>a.status==='PRESENT').length, icon:'📅', color:'from-orange-500 to-red-500', sub:`of ${activeInterns.length} active`},
-                ] as {label:string;value:string|number;icon:string;color:string;sub:string}[]).map(c=>(
-                  <div key={c.label} className="glass rounded-2xl p-5 shadow-sm">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${c.color} flex items-center justify-center text-xl mb-3 shadow-md`}>{c.icon}</div>
-                    <p className="text-2xl font-display font-bold text-gray-800">{c.value}</p>
-                    <p className="text-sm font-semibold text-gray-700 mt-0.5">{c.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Clocked in strip */}
-              {clockedInInterns.length>0 && (
-                <div className="glass rounded-2xl p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-display font-semibold text-gray-800 flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm">🟢</span>
-                      Currently Clocked In
-                    </h2>
-                    <span className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
-                      <span className="relative flex h-2 w-2"><span className="animate-ping absolute inset-0 rounded-full bg-green-400 opacity-75"/><span className="relative block rounded-full h-2 w-2 bg-green-500"/></span>
-                      {clockedInInterns.length} Active
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {clockedInInterns.map(i=>(
-                      <div key={i.id} className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
-                        <Avatar name={i.fullName} photo={i.photoUrl} size="md"/>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-gray-800 truncate">{i.fullName}</p>
-                          <p className="text-xs text-gray-500 truncate">{i.school}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-green-700 font-mono font-bold text-sm">{fmt(elapsed[i.id]||0)}</p>
-                          <p className="text-gray-400 text-[10px]">since {fmtTime(clocks[i.id]?.startTime||'')}</p>
-                          {dbSessions[i.id]?.checkInMethod === 'qr_location' && (
-                            <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">📍 GPS QR</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Today log */}
-              <div className="glass rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display font-semibold text-gray-800 flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm">📅</span>
-                    Today&apos;s Attendance
-                  </h2>
-                  <p className="text-xs text-gray-400">{new Date().toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'})}</p>
-                </div>
-                {todayLogs.length===0 ? (
-                  <p className="text-center text-gray-400 text-sm py-6">No attendance logged today yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {todayLogs.map(a=>{
-                      const isComb = (a.sessionCount ?? 0) > 1
-                      return (
-                      <div key={a.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                        <Avatar name={a.intern.fullName} photo={a.intern.photoUrl} size="sm"/>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="font-bold text-sm text-gray-800 truncate">{a.intern.fullName}</p>
-                            {isComb && (
-                              <span className="text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                                ⊕ {a.sessionCount} sessions
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-500">{a.intern.school}</p>
-                        </div>
-                        <div className="text-right text-xs">
-                          <p className="font-semibold text-gray-700">{a.timeIn?fmtTime(a.timeIn):'—'} → {a.timeOut?fmtTime(a.timeOut):<span className="text-green-600 font-bold">Active</span>}</p>
-                          {a.hours!=null&&<p className="text-[var(--dict-blue)] font-bold">{a.hours}h{isComb&&<span className="text-indigo-500 text-[9px] ml-0.5">total</span>}</p>}
-                        </div>
-                      </div>
-                    )})}
-                  </div>
-                )}
-              </div>
-
-              {/* Progress overview */}
-              <div className="glass rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display font-semibold text-gray-800 flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm">📈</span>
-                    Intern Progress
-                  </h2>
-                  <button onClick={()=>setView('interns')} className="text-xs text-[var(--dict-blue)] hover:underline font-semibold">View all →</button>
-                </div>
-                {loading ? (
-                  <div className="space-y-3">{[...Array(3)].map((_,i)=>(
-                    <div key={i} className="animate-pulse flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0"/>
-                      <div className="flex-1 space-y-1.5"><div className="h-3 bg-gray-200 rounded-full w-1/2"/><div className="h-2 bg-gray-100 rounded-full"/></div>
-                    </div>
-                  ))}</div>
-                ) : interns.length===0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-400 text-sm mb-3">No interns registered yet</p>
-                    <button onClick={()=>setShowAdd(true)} className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-xs font-bold">+ Add First Intern</button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {interns.slice(0,6).map(i=>{
-                      const sc = getSchoolColor(i.school)
-                      const dept = getDeptBadge(i)
-                      const statusMeta = STATUS_META[i.status] || STATUS_META.INACTIVE
-                      return (
-                        <div key={i.id} className="flex items-center gap-4 cursor-pointer hover:bg-white/50 rounded-xl p-2 -mx-2 transition-all" onClick={()=>{setSelected(i);setView('attendance')}}>
-                          <Avatar name={i.fullName} photo={i.photoUrl} size="md"/>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="font-semibold text-sm text-gray-800 truncate">{i.fullName}</p>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0 ${statusMeta.badge}`}>{statusMeta.label}</span>
-                            </div>
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${sc.bg} ${sc.text} flex-shrink-0`}>{i.school}</span>
-                              {dept && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${dept.color} flex-shrink-0`}>{dept.icon} {dept.short}</span>}
-                            </div>
-                            <HoursProgress current={i.totalHours} required={i.requiredHours}/>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* ════ TIME TRACK & QR — PRIMARY VIEW ═══════════════════════ */}
 
           {/* ════ INTERN ROSTER ══════════════════════════════════════════ */}
           {view==='interns' && (
@@ -880,57 +729,203 @@ export default function InternLogbookPage() {
             </div>
           )}
 
-          {/* ════ TIME TRACK ══════════════════════════════════════════════ */}
+          {/* ════ TIME TRACK + QR — PRIMARY VIEW ═══════════════════════ */}
           {view==='track' && (
             <div className="space-y-5">
-              <div>
-                <h1 className="font-display font-bold text-2xl text-gray-800">Time Track</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Search your name to clock in or out</p>
+              {/* Header */}
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h1 className="font-display font-bold text-2xl text-gray-800">⏱️ Time Track &amp; Daily QR</h1>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    {new Date().toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
+                    {' · '}<span className="font-semibold text-green-600">{clockedInInterns.length} active now</span>
+                    {todayLogs.length>0 && <span className="text-gray-400"> · {todayLogs.length} logged today</span>}
+                  </p>
+                </div>
+                <button onClick={()=>setShowAdd(true)} className="px-4 py-2 bg-gradient-to-r from-[var(--dict-blue)] to-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                  + Add Intern
+                </button>
               </div>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search your name..."
-                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm outline-none focus:border-[var(--dict-blue)] bg-white"/>
-              </div>
-              {loading ? (
-                <div className="space-y-3">{[...Array(5)].map((_,i)=>(
-                  <div key={i} className="glass rounded-2xl p-4 animate-pulse flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-200"/><div className="flex-1 space-y-1.5"><div className="h-3 bg-gray-200 rounded-full w-1/2"/><div className="h-2 bg-gray-100 rounded-full w-1/3"/></div>
-                    <div className="w-24 h-9 bg-gray-200 rounded-xl"/>
+
+              <div className="grid lg:grid-cols-[320px_1fr] gap-5">
+
+                {/* ── LEFT: Daily QR Code ── */}
+                <div className="glass rounded-2xl overflow-hidden shadow-sm">
+                  <div className="px-5 pt-5 pb-3 border-b border-white/50">
+                    <h2 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm">📱</span>
+                      Daily QR Code
+                    </h2>
+                    <p className="text-xs text-gray-400 mt-0.5">Refreshes automatically at midnight</p>
                   </div>
-                ))}</div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredInterns.map(intern=>{
-                    const clocked = !!clocks[intern.id]
-                    const sc = getSchoolColor(intern.school)
-                    return (
-                      <div key={intern.id} className={`glass rounded-2xl p-4 flex items-center gap-4 transition-all ${clocked?'ring-2 ring-green-400 shadow-md':''}`}>
-                        <Avatar name={intern.fullName} photo={intern.photoUrl} size="md"/>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-gray-800">{intern.fullName}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${sc.bg} ${sc.text}`}>{intern.school}</span>
-                          </div>
-                          {clocked && <p className="text-green-700 font-mono font-bold text-sm mt-1">{fmt(elapsed[intern.id]||0)}</p>}
+                  <div className="p-5 flex flex-col items-center">
+                    {qrData ? (
+                      <>
+                        <div className="bg-white rounded-2xl p-3 shadow-inner border border-gray-100 w-full max-w-[240px]">
+                          <img src={qrData.qrDataUri} alt="Daily QR" className="w-full h-auto block"/>
                         </div>
-                        {clocked ? (
-                          <button onClick={()=>setConfirmOut(intern)} disabled={saving}
-                            className="px-4 py-2.5 bg-gradient-to-r from-red-500 to-rose-600 rounded-xl text-white text-sm font-bold disabled:opacity-50 hover:shadow-md transition-all">
-                            Time Out
-                          </button>
-                        ) : (
-                          <button onClick={()=>handleTimeIn(intern)}
-                            className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white text-sm font-bold hover:shadow-md transition-all">
-                            Time In
-                          </button>
+                        <p className="text-xs text-gray-500 mt-3 text-center font-mono">
+                          Valid for {new Date().toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}
+                        </p>
+                        <div className="mt-3 w-full space-y-1.5">
+                          <a href={qrData.checkinUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold border border-indigo-200 transition-colors">
+                            🔗 Copy check-in link
+                          </a>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center py-8 gap-3">
+                        <div className="w-8 h-8 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin"/>
+                        <p className="text-xs text-gray-400">Loading QR code…</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* School breakdown */}
+                  {schoolGroups.length > 0 && (
+                    <div className="px-5 pb-5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                        <span className="flex-1 h-px bg-gray-200"/>Schools<span className="flex-1 h-px bg-gray-200"/>
+                      </p>
+                      <div className="space-y-1.5">
+                        {schoolGroups.map(([school,members])=>{
+                          const sc = getSchoolColor(school)
+                          const activeCount = members.filter(m=>clocks[m.id]).length
+                          return (
+                            <div key={school} className={`flex items-center gap-2 px-3 py-2 rounded-xl ${sc.light} border ${sc.border}`}>
+                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sc.dot}`}/>
+                              <p className={`text-xs font-semibold flex-1 min-w-0 truncate ${sc.text}`}>{school}</p>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {activeCount > 0 && (
+                                  <span className="text-[10px] font-bold text-green-700 bg-green-100 border border-green-200 rounded-full px-1.5 py-0.5">
+                                    {activeCount} in
+                                  </span>
+                                )}
+                                <span className={`text-[10px] font-bold ${sc.bg.replace('bg-','text-').replace('-100','-700')} rounded-full px-1.5 py-0.5`}>{members.length}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── RIGHT: Time Track + Today's Attendance ── */}
+                <div className="space-y-4">
+
+                  {/* Search + clock in/out */}
+                  <div className="glass rounded-2xl p-5 shadow-sm">
+                    <h2 className="font-display font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm">🕐</span>
+                      Clock In / Clock Out
+                    </h2>
+                    <div className="relative mb-3">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search intern name…"
+                        className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm outline-none focus:border-[var(--dict-blue)] bg-white"/>
+                    </div>
+                    {loading ? (
+                      <div className="space-y-2">{[...Array(4)].map((_,i)=>(
+                        <div key={i} className="animate-pulse flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                          <div className="w-9 h-9 rounded-full bg-gray-200 flex-shrink-0"/>
+                          <div className="flex-1 space-y-1.5"><div className="h-3 bg-gray-200 rounded-full w-1/2"/><div className="h-2 bg-gray-100 rounded-full w-1/3"/></div>
+                          <div className="w-20 h-8 bg-gray-200 rounded-xl"/>
+                        </div>
+                      ))}</div>
+                    ) : (
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1" style={{scrollbarWidth:'thin'}}>
+                        {(search ? filteredInterns : activeInterns).map(intern=>{
+                          const clocked = !!clocks[intern.id]
+                          const sc = getSchoolColor(intern.school)
+                          return (
+                            <div key={intern.id} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${clocked?'bg-green-50 ring-2 ring-green-300':'bg-white/70 border border-gray-100 hover:bg-white'}`}>
+                              <Avatar name={intern.fullName} photo={intern.photoUrl} size="md"/>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-bold text-sm text-gray-800 truncate">{intern.fullName}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${sc.bg} ${sc.text}`}>{intern.school}</span>
+                                  {clocked && dbSessions[intern.id]?.checkInMethod === 'qr_location' && (
+                                    <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">📍 QR</span>
+                                  )}
+                                </div>
+                                {clocked && <p className="text-green-700 font-mono font-bold text-xs mt-1">{fmt(elapsed[intern.id]||0)}</p>}
+                              </div>
+                              {clocked ? (
+                                <button onClick={()=>setConfirmOut(intern)} disabled={saving}
+                                  className="px-3 py-2 bg-gradient-to-r from-red-500 to-rose-600 rounded-xl text-white text-xs font-bold disabled:opacity-50 hover:shadow-md transition-all whitespace-nowrap">
+                                  Time Out
+                                </button>
+                              ) : (
+                                <button onClick={()=>handleTimeIn(intern)}
+                                  className="px-3 py-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white text-xs font-bold hover:shadow-md transition-all whitespace-nowrap">
+                                  Time In
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                        {(search ? filteredInterns : activeInterns).length===0 && (
+                          <p className="text-center py-6 text-gray-400 text-sm">
+                            {search ? 'No interns match your search.' : 'No active interns.'}
+                          </p>
                         )}
                       </div>
-                    )
-                  })}
-                  {filteredInterns.length===0 && <p className="text-center py-12 text-gray-400 text-sm glass rounded-2xl">No results. Try a different name.</p>}
+                    )}
+                  </div>
+
+                  {/* Today's full attendance log */}
+                  <div className="glass rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="font-display font-semibold text-gray-800 flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm">📅</span>
+                        Today&apos;s Attendance
+                      </h2>
+                      <span className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">{todayLogs.length} logged</span>
+                    </div>
+                    {todayLogs.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-3xl mb-2">📋</p>
+                        <p className="text-gray-400 text-sm">No attendance recorded today yet.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {todayLogs.sort((a,b)=>{
+                          const aActive = !a.timeOut; const bActive = !b.timeOut
+                          if(aActive && !bActive) return -1; if(!aActive && bActive) return 1; return 0
+                        }).map(a=>{
+                          const sc = getSchoolColor(a.intern.school)
+                          const isActive = !a.timeOut
+                          const isComb = (a.sessionCount ?? 0) > 1
+                          return (
+                            <div key={a.id} className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all ${isActive ? 'bg-green-50 border-green-200' : 'bg-white/60 border-gray-100'}`}>
+                              <Avatar name={a.intern.fullName} photo={a.intern.photoUrl} size="md"/>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                  <p className="font-bold text-sm text-gray-800 truncate">{a.intern.fullName}</p>
+                                  {isComb && <span className="text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full">⊕ {a.sessionCount} sessions</span>}
+                                  {isActive && <span className="flex items-center gap-0.5 text-[9px] font-black text-green-700"><span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inset-0 rounded-full bg-green-400 opacity-75"/><span className="relative block rounded-full h-1.5 w-1.5 bg-green-500"/></span>Active</span>}
+                                </div>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${sc.bg} ${sc.text}`}>{a.intern.school}</span>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-xs font-semibold text-gray-700">
+                                  {a.timeIn?fmtTime(a.timeIn):'—'}
+                                  {' → '}
+                                  {a.timeOut ? fmtTime(a.timeOut) : <span className="text-green-600 font-bold">Now</span>}
+                                </p>
+                                {a.hours!=null && <p className="text-[var(--dict-blue)] font-bold text-xs">{a.hours}h{isComb&&<span className="text-indigo-500 text-[9px] ml-0.5">total</span>}</p>}
+                                {isActive && elapsed[a.intern.id] && <p className="text-green-600 font-mono text-[10px]">{fmt(elapsed[a.intern.id]||0)}</p>}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -1007,75 +1002,6 @@ export default function InternLogbookPage() {
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ════ TASKS ═══════════════════════════════════════════════════ */}
-          {view==='tasks' && (
-            <div className="space-y-5">
-              <h1 className="font-display font-bold text-2xl text-gray-800">Tasks</h1>
-              <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
-                {interns.map(i=>{
-                  const sc = getSchoolColor(i.school)
-                  return (
-                    <button key={i.id} onClick={()=>{setSelected(i);fetchTasks(i.id)}}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm font-semibold whitespace-nowrap flex-shrink-0 transition-all
-                        ${selected?.id===i.id?`${sc.light} ${sc.text} ${sc.border} shadow-sm`:'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}>
-                      <Avatar name={i.fullName} photo={i.photoUrl} size="sm"/>
-                      {i.fullName.split(' ')[0]}
-                    </button>
-                  )
-                })}
-              </div>
-              {!selected ? (
-                <div className="glass rounded-2xl p-10 text-center text-gray-400 text-sm">Select an intern above to view their task list</div>
-              ) : (
-                <div className="glass rounded-2xl shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 border-b border-white/50 flex items-center gap-3">
-                    <Avatar name={selected.fullName} photo={selected.photoUrl} size="md"/>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-display font-bold text-gray-800">{selected.fullName}</p>
-                      <p className="text-xs text-gray-500">{selected.course} · {selected.school}</p>
-                    </div>
-                    <span className="text-xs font-bold text-gray-500 bg-white/70 px-3 py-1.5 rounded-full border border-gray-200">
-                      {tasks.filter(t=>t.status==='COMPLETED').length}/{tasks.length} done
-                    </span>
-                  </div>
-                  {/* Add task */}
-                  <div className="px-6 py-3 border-b border-white/30 flex gap-2 bg-gray-50/50">
-                    <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
-                      placeholder="Type a task and press Enter to add..."
-                      className="flex-1 border-2 border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-[var(--dict-blue)] bg-white"/>
-                    <button onClick={addTask} disabled={!newTask.trim()}
-                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 flex items-center gap-1.5 hover:shadow-md transition-all">
-                      + Add
-                    </button>
-                  </div>
-                  {/* Task list */}
-                  {tasks.length===0 ? (
-                    <p className="px-6 py-10 text-center text-gray-400 text-sm">No tasks yet. Add one above!</p>
-                  ) : (
-                    <div className="divide-y divide-gray-50/80">
-                      {[...tasks].sort((a,b)=>a.status==='COMPLETED'?1:b.status==='COMPLETED'?-1:0).map(task=>{
-                        const pMeta = PRIORITY_META[task.priority] || PRIORITY_META.MEDIUM
-                        return (
-                          <div key={task.id} className="flex items-start gap-3 px-6 py-4 hover:bg-white/50 cursor-pointer transition-colors" onClick={()=>toggleTask(task)}>
-                            <div className={`mt-0.5 w-5 h-5 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all
-                              ${task.status==='COMPLETED'?'bg-green-500 border-green-500':'border-gray-300 hover:border-[var(--dict-blue)]'}`}>
-                              {task.status==='COMPLETED' && <span className="text-white text-[10px] font-black">✓</span>}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm font-semibold transition-colors ${task.status==='COMPLETED'?'line-through text-gray-400':'text-gray-800'}`}>{task.title}</p>
-                              {task.description && <p className="text-xs text-gray-400 mt-0.5">{task.description}</p>}
-                            </div>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${pMeta.color}`}>{pMeta.label}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
                 </div>
               )}
             </div>

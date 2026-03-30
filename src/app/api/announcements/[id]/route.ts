@@ -13,14 +13,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json()
     const convex = getConvexClient()
     await convex.mutation(api.announcements.update, {
-      id:        params.id as Id<'announcements'>,
-      title:     body.title,
-      body:      body.body ?? body.content,
-      active:    body.active,
-      type:      body.type,
-      dateStart: body.dateStart ? new Date(body.dateStart).getTime() : undefined,
-      dateEnd:   body.dateEnd   ? new Date(body.dateEnd).getTime()   : undefined,
-      expiresAt: body.expiresAt ? new Date(body.expiresAt).getTime() : undefined,
+      id:             params.id as Id<'announcements'>,
+      title:          body.title,
+      body:           body.body ?? body.content,
+      active:         body.active,
+      type:           body.type,
+      dateStart:      body.dateStart ? new Date(body.dateStart).getTime() : undefined,
+      dateEnd:        body.dateEnd   ? new Date(body.dateEnd).getTime()   : undefined,
+      expiresAt:      body.expiresAt ? new Date(body.expiresAt).getTime() : undefined,
+      imageUrl:       body.imageUrl,
+      imageStorageId: body.imageStorageId,
+      featured:       body.featured,
+      highlight:      body.highlight,
+      featuredOrder:  body.featuredOrder,
+      tags:           body.tags,
     })
     return NextResponse.json({ success: true })
   } catch (err) {
