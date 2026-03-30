@@ -58,7 +58,12 @@ export const getSessionsForIntern = query({
 })
 
 export const timeIn = mutation({
-  args: { internId: v.id("interns") },
+  args: {
+    internId:      v.id("interns"),
+    checkInMethod: v.optional(v.union(v.literal("direct"), v.literal("qr"), v.literal("qr_location"))),
+    checkInLat:    v.optional(v.number()),
+    checkInLng:    v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("internSessions")
@@ -69,9 +74,12 @@ export const timeIn = mutation({
     if (existing) throw new Error("Session already active")
 
     const sessionId = await ctx.db.insert("internSessions", {
-      internId: args.internId,
-      timeIn:   Date.now(),
-      status:   "ACTIVE",
+      internId:      args.internId,
+      timeIn:        Date.now(),
+      status:        "ACTIVE",
+      checkInMethod: args.checkInMethod ?? "direct",
+      checkInLat:    args.checkInLat,
+      checkInLng:    args.checkInLng,
     })
 
     const today = new Date()

@@ -245,13 +245,16 @@ export default defineSchema({
 
   // ── Intern sessions (time-in/time-out) ───────────────────────────────────
   internSessions: defineTable({
-    internId:     v.id("interns"),
-    timeIn:       v.number(),
-    timeOut:      v.optional(v.number()),
-    status:       v.union(v.literal("ACTIVE"), v.literal("CLOSED")),
-    progressNote: v.optional(v.string()),
-    closedBy:     v.optional(v.string()),
-    hoursLogged:  v.optional(v.number()),
+    internId:        v.id("interns"),
+    timeIn:          v.number(),
+    timeOut:         v.optional(v.number()),
+    status:          v.union(v.literal("ACTIVE"), v.literal("CLOSED")),
+    progressNote:    v.optional(v.string()),
+    closedBy:        v.optional(v.string()),
+    hoursLogged:     v.optional(v.number()),
+    checkInMethod:   v.optional(v.union(v.literal("direct"), v.literal("qr"), v.literal("qr_location"))),
+    checkInLat:      v.optional(v.number()),
+    checkInLng:      v.optional(v.number()),
   })
     .index("by_internId",        ["internId"])
     .index("by_status",          ["status"])

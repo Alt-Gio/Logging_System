@@ -17,6 +17,10 @@ const DEFAULTS = {
   hero_media_type:   'none',
   office_hours:      'Monday – Friday  8:00 AM – 5:00 PM',
   office_location:   '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City',
+  office_lat:        '13.1391',
+  office_lng:        '123.7438',
+  checkin_radius_m:  '300',
+  mapbox_token:      '',
 }
 
 export async function GET() {

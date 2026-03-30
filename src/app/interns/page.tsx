@@ -2933,7 +2933,7 @@ export default function InternsPage() {
                                 <div className="min-w-0">
                                   <p className="font-semibold text-gray-800 text-sm truncate" title={doc.name}>{doc.name}</p>
                                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${sc.badge}`}>{intern.fullName}</span>
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${sc.bg} ${sc.text} ${sc.border}`}>{intern.fullName}</span>
                                     <span className="text-xs text-gray-400">{format(new Date(doc.createdAt), 'MMM d, yyyy')}</span>
                                     <span className="text-xs text-gray-400">&bull; {getDocFolder(doc)}</span>
                                     {doc.syncedToSheets

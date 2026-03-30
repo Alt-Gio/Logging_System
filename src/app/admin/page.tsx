@@ -418,7 +418,7 @@ export default function AdminPage() {
     }
     setTimeout(() => setAdminVoiceToast(null), 4000)
   }
-  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '', hero_title: 'Free Digital\nServices for\nEvery Bicolano', hero_subtitle: 'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.', hero_badge: 'DICT REGION V · BICOL', hero_media_url: '', hero_media_type: 'none', office_hours: 'Monday – Friday  8:00 AM – 5:00 PM', office_location: '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City' })
+  const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '', hero_title: 'Free Digital\nServices for\nEvery Bicolano', hero_subtitle: 'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.', hero_badge: 'DICT REGION V · BICOL', hero_media_url: '', hero_media_type: 'none', office_hours: 'Monday – Friday  8:00 AM – 5:00 PM', office_location: '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City', office_lat: '13.1391', office_lng: '123.7438', checkin_radius_m: '300', mapbox_token: '' })
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [sheetSyncing, setSheetSyncing] = useState(false)
   const [sheetResult, setSheetResult] = useState<{ok:boolean;msg:string}|null>(null)
@@ -516,7 +516,11 @@ export default function AdminPage() {
         hero_media_url: data.hero_media_url ?? s.hero_media_url,
         hero_media_type: data.hero_media_type ?? s.hero_media_type,
         office_hours: data.office_hours ?? s.office_hours,
-        office_location: data.office_location ?? s.office_location,
+        office_location:   data.office_location   ?? s.office_location,
+        office_lat:        data.office_lat         ?? s.office_lat,
+        office_lng:        data.office_lng         ?? s.office_lng,
+        checkin_radius_m:  data.checkin_radius_m   ?? s.checkin_radius_m,
+        mapbox_token:      data.mapbox_token       ?? s.mapbox_token,
       }))
       // Load grid settings
       if (data.gridCols) setGridCols(parseInt(data.gridCols))
@@ -2008,6 +2012,44 @@ export default function AdminPage() {
                       ))}
                     </div>
                   </details>
+                </div>
+
+                {/* Location & QR Check-In */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-xl flex-shrink-0">📍</span>
+                    <div>
+                      <h3 className="font-display font-semibold text-gray-800">Location & QR Check-In</h3>
+                      <p className="text-xs text-gray-400">Configure GPS-based QR attendance. Interns must be within the set radius to check in via QR.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Office Latitude</label>
+                        <input value={settings.office_lat} onChange={e => setSettings(s => ({...s, office_lat: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" placeholder="13.1391" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Office Longitude</label>
+                        <input value={settings.office_lng} onChange={e => setSettings(s => ({...s, office_lng: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" placeholder="123.7438" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Check-In Radius (meters)</label>
+                      <input type="number" min="50" max="5000" value={settings.checkin_radius_m} onChange={e => setSettings(s => ({...s, checkin_radius_m: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" />
+                      <p className="text-xs text-gray-400 mt-1">Interns must be within this distance of the office to time in via QR. Default: 300m.</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mapbox Token (optional)</label>
+                      <input value={settings.mapbox_token} onChange={e => setSettings(s => ({...s, mapbox_token: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" placeholder="pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjaXh..." />
+                      <p className="text-xs text-gray-400 mt-1">For Mapbox street/satellite tiles. Without this, uses free OpenStreetMap tiles.</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={saveSettings} className="flex-1 py-2.5 bg-[var(--dict-blue)] text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition-colors">💾 Save Location Settings</button>
+                      <a href="/intern/qr-display" target="_blank" rel="noopener noreferrer" className="px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 text-sm font-bold rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-2">📺 Open QR Display</a>
+                    </div>
+                    {settingsSaved && <p className="text-emerald-600 text-sm font-medium text-center">✓ Settings saved</p>}
+                  </div>
                 </div>
 
                 {/* Future integrations placeholder */}

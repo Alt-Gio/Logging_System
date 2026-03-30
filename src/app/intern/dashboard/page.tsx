@@ -394,13 +394,28 @@ export default function InternDashboardPage() {
           </div>
 
           {/* Time In/Out Button */}
-          <div className="flex gap-3">
+          <div className="space-y-2">
             {!activeSession ? (
-              <button onClick={handleTimeIn} disabled={sessionLoading} className="flex-1 py-4 rounded-2xl bg-green-400 hover:bg-green-300 text-green-900 font-black text-base transition-all shadow-lg shadow-green-400/30 active:scale-95 disabled:opacity-50">
-                {sessionLoading ? '⏳ Please wait…' : '▶ TIME IN'}
-              </button>
+              <>
+                <div className="flex gap-2">
+                  <button onClick={handleTimeIn} disabled={sessionLoading} className="flex-1 py-4 rounded-2xl bg-green-400 hover:bg-green-300 text-green-900 font-black text-base transition-all shadow-lg shadow-green-400/30 active:scale-95 disabled:opacity-50">
+                    {sessionLoading ? '⏳ Please wait…' : '▶ TIME IN'}
+                  </button>
+                  <a href="/intern/qr-checkin-redirect" onClick={async e => {
+                    e.preventDefault()
+                    const r = await fetch('/api/qr/daily')
+                    if (!r.ok) { window.location.href = '/intern/qr-checkin?token=invalid'; return }
+                    const d = await r.json()
+                    window.location.href = `/intern/qr-checkin?token=${d.token}`
+                  }} className="px-4 py-4 rounded-2xl bg-blue-500/20 hover:bg-blue-500/30 border-2 border-blue-400/30 text-white font-bold text-sm transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5">
+                    <span className="text-xl">📱</span>
+                    <span className="text-[10px] leading-none">QR</span>
+                  </a>
+                </div>
+                <p className="text-center text-blue-300/50 text-[10px]">Or scan the DTC QR display with your phone for GPS-verified check-in</p>
+              </>
             ) : (
-              <div className="flex-1 flex gap-2">
+              <div className="flex gap-2">
                 <div className="flex-1 py-3 rounded-2xl bg-blue-400/20 border-2 border-blue-400/40 text-center">
                   <p className="text-white text-xs font-medium mb-0.5">Active Session</p>
                   <p className="text-white font-black text-xl tabular-nums">{fmtElapsed(elapsed)}</p>
