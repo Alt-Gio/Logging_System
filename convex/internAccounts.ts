@@ -103,3 +103,35 @@ export const getById = query({
     return ctx.db.get(args.id)
   }
 })
+
+export const getLeaderboard = query({
+  args: {
+    supervisorId: v.optional(v.id("supervisors")),
+  },
+  handler: async (ctx, args) => {
+    const accounts = args.supervisorId
+      ? await ctx.db
+          .query("internAccounts")
+          .withIndex("by_supervisorId", q => q.eq("supervisorId", args.supervisorId))
+          .collect()
+      : await ctx.db.query("internAccounts").collect()
+
+    const enriched = await Promise.all(
+      accounts.map(async (a) => {
+        const intern = await ctx.db.get(a.internId)
+        return {
+          id:       a._id,
+          internId: a.internId,
+          name:     intern?.fullName ?? "Unknown",
+          level:    a.level ?? 1,
+          xp:       a.xp ?? 0,
+          health:   a.health ?? 100,
+          streak:   a.streak ?? 0,
+          achievements: a.achievements ?? [],
+        }
+      })
+    )
+
+    return enriched.sort((a, b) => b.xp - a.xp)
+  }
+})
