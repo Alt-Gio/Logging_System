@@ -30,9 +30,12 @@ export const getByInternId = query({
 
 export const create = mutation({
   args: {
-    internId:    v.id("interns"),
-    email:       v.string(),
+    internId:     v.id("interns"),
+    email:        v.string(),
     passwordHash: v.string(),
+    supervisorId: v.optional(v.id("supervisors")),
+    inviteToken:  v.optional(v.string()),
+    inviteExpiry: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -51,6 +54,9 @@ export const create = mutation({
       health:        100,
       streak:        0,
       achievements:  [],
+      supervisorId:  args.supervisorId,
+      inviteToken:   args.inviteToken,
+      inviteExpiry:  args.inviteExpiry,
     })
   }
 })
