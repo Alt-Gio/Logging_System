@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { GovSeal, GovHeaderLogos } from '@/components/GovernmentHeader'
 import { VoiceAssistant } from '@/components/VoiceAssistant'
 import { format, formatDistanceToNow, isToday, differenceInMinutes } from 'date-fns'
@@ -420,6 +420,9 @@ export default function AdminPage() {
   }
   const [settings, setSettings] = useState({ wifiSsid: 'DICT-DTC-Free', wifiPassword: '', wifiNote: 'Free public WiFi', accessCode: '1234', officeOpen: '08:00', officeClose: '17:00', bgImageUrl: '', interactiveBannerUrl: '', googleSheetId: '', googleServiceKey: '', hero_title: 'Free Digital\nServices for\nEvery Bicolano', hero_subtitle: 'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.', hero_badge: 'DICT REGION V · BICOL', hero_media_url: '', hero_media_type: 'none', office_hours: 'Monday – Friday  8:00 AM – 5:00 PM', office_location: '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City', office_lat: '13.1391', office_lng: '123.7438', checkin_radius_m: '300', mapbox_token: '' })
   const [settingsSaved, setSettingsSaved] = useState(false)
+  const [mediaUploading, setMediaUploading] = useState(false)
+  const [mediaUploadErr, setMediaUploadErr] = useState<string|null>(null)
+  const mediaFileRef = useRef<HTMLInputElement>(null)
   const [sheetSyncing, setSheetSyncing] = useState(false)
   const [sheetResult, setSheetResult] = useState<{ok:boolean;msg:string}|null>(null)
   const [settingsTab, setSettingsTab] = useState<'general'|'frontpage'|'appearance'|'integrations'|'staff'|'pwa'>('general')
@@ -923,6 +926,39 @@ export default function AdminPage() {
       try { localStorage.removeItem('dtc_settings_cache') } catch {}
       setTimeout(() => setSettingsSaved(false), 3000)
     } catch { setOpError('Network error — settings could not be saved.') }
+  }
+
+  const handleMediaUpload = async (file: File) => {
+    setMediaUploading(true)
+    setMediaUploadErr(null)
+    try {
+      const urlRes = await fetch('/api/settings/upload', { method: 'POST' })
+      if (!urlRes.ok) throw new Error('Failed to get upload URL')
+      const { uploadUrl } = await urlRes.json()
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+      if (!uploadRes.ok) throw new Error('Upload failed')
+      const { storageId } = await uploadRes.json()
+
+      const mediaType = file.type.startsWith('video/') ? 'video' : 'image'
+      const saveRes = await fetch('/api/settings/save-media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storageId, mediaType }),
+      })
+      if (!saveRes.ok) throw new Error('Failed to save media')
+      const { url } = await saveRes.json()
+      setSettings(s => ({ ...s, hero_media_url: url, hero_media_type: mediaType }))
+      if (mediaFileRef.current) mediaFileRef.current.value = ''
+    } catch (e) {
+      setMediaUploadErr(e instanceof Error ? e.message : 'Upload failed')
+    } finally {
+      setMediaUploading(false)
+    }
   }
 
   // Drag and drop for PC grid
@@ -2088,28 +2124,58 @@ export default function AdminPage() {
                 </div>
 
                 <div className="glass rounded-2xl p-6 shadow-sm">
-                  <h3 className="font-display font-semibold text-gray-800 mb-4">Hero Media (Image or Video)</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Media Type</label>
-                      <select value={settings.hero_media_type} onChange={e => setSettings(s => ({...s, hero_media_type: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]">
-                        <option value="none">None (text-only hero)</option>
-                        <option value="image">Image</option>
-                        <option value="video">Video (autoplay, muted)</option>
-                      </select>
-                    </div>
-                    {settings.hero_media_type !== 'none' && (
-                      <div>
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Media URL</label>
-                        <input value={settings.hero_media_url} onChange={e => setSettings(s => ({...s, hero_media_url: e.target.value}))} className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--dict-blue)]" placeholder="https://... or /image.jpg or /video.mp4" />
-                        {settings.hero_media_url && settings.hero_media_type === 'image' && (
-                          <div className="mt-3 rounded-xl overflow-hidden border border-gray-200" style={{ maxHeight: 200 }}>
-                            <img src={settings.hero_media_url} alt="Preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
-                          </div>
-                        )}
-                      </div>
+                  <h3 className="font-display font-semibold text-gray-800 mb-1">Hero Background Media</h3>
+                  <p className="text-xs text-gray-400 mb-4">Upload an image or video. Videos loop as full-screen background and enter digital-signage mode after 10 s. Saved directly to Convex storage.</p>
+
+                  {/* Upload zone */}
+                  <label
+                    className={`group flex flex-col items-center justify-center gap-3 w-full rounded-2xl border-2 border-dashed transition-all cursor-pointer py-10 ${mediaUploading ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/40'}`}
+                    onDragOver={e => { e.preventDefault() }}
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleMediaUpload(f) }}
+                  >
+                    <input ref={mediaFileRef} type="file" accept="image/*,video/*" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload(f) }} />
+                    {mediaUploading ? (
+                      <>
+                        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        <p className="text-sm font-semibold text-blue-600">Uploading to Convex…</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">📤</div>
+                        <div className="text-center">
+                          <p className="text-sm font-bold text-gray-700">Click or drag &amp; drop</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Image (PNG, JPG, WebP) or Video (MP4, WebM, MOV)</p>
+                        </div>
+                      </>
                     )}
-                  </div>
+                  </label>
+
+                  {mediaUploadErr && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+                      <span>⚠️</span><span>{mediaUploadErr}</span>
+                    </div>
+                  )}
+
+                  {/* Current media preview */}
+                  {settings.hero_media_url && (
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Current Media ({settings.hero_media_type})</p>
+                        <button onClick={() => setSettings(s => ({...s, hero_media_url: '', hero_media_type: 'none'}))}
+                          className="text-[10px] font-bold text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-2.5 py-1 rounded-lg transition-colors">
+                          ✕ Remove
+                        </button>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border border-gray-200 bg-black" style={{ maxHeight: 220 }}>
+                        {settings.hero_media_type === 'video'
+                          ? <video src={settings.hero_media_url} autoPlay muted loop playsInline className="w-full object-cover" style={{ maxHeight: 220 }} />
+                          : <img src={settings.hero_media_url} alt="Hero preview" className="w-full object-cover" style={{ maxHeight: 220 }} />
+                        }
+                      </div>
+                      <p className="text-[10px] text-gray-400 break-all">{settings.hero_media_url}</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="glass rounded-2xl p-6 shadow-sm">

@@ -1,20 +1,20 @@
 'use client'
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 type Ann = { id: string; title: string; content: string; urgent: boolean; createdAt: string; expiresAt?: string }
-type FPSettings = { hero_title: string; hero_subtitle: string; hero_badge: string; hero_media_url: string; hero_media_type: 'image'|'video'|'none'; office_hours: string; office_location: string }
+type FPSettings = { hero_media_url: string; hero_media_type: 'image'|'video'|'none'; office_hours: string; office_location: string }
 type LiveStats = { todayCount: number; activeInterns: number; activeNow: number }
 
 const FP_DEFAULTS: FPSettings = {
-  hero_title:      'Free Digital\nServices for\nEvery Bicolano',
-  hero_subtitle:   'The DICT Digital Technology Center provides free computer access, e-government assistance, high-speed internet, and digital literacy programs — open to all citizens of Bicol.',
-  hero_badge:      'DICT REGION V · BICOL',
   hero_media_url:  '',
   hero_media_type: 'none',
   office_hours:    'Monday – Friday  8:00 AM – 5:00 PM',
   office_location: '2/F Post Telecom Bldg., Lapu Lapu St., Legazpi City',
 }
+
+// ── Keys to sync from /api/settings ─────────────────────────────────────────
+const FP_KEYS = Object.keys(FP_DEFAULTS)
 
 function useCount(target: number, dur: number, go: boolean) {
   const [v, setV] = useState(0)
@@ -32,14 +32,17 @@ function useCount(target: number, dur: number, go: boolean) {
 }
 
 export default function HomePage() {
-  const [anns,    setAnns]    = useState<Ann[]>([])
-  const [expanded,setExpanded]= useState<Ann | null>(null)
-  const [menuOpen,setMenuOpen]= useState(false)
-  const [time,    setTime]    = useState('')
-  const [sActive, setSActive] = useState(false)
-  const [live,    setLive]    = useState<LiveStats | null>(null)
-  const [fp,      setFp]      = useState<FPSettings>(FP_DEFAULTS)
-  const [imgOk,   setImgOk]   = useState(false)
+  const [anns,      setAnns]      = useState<Ann[]>([])
+  const [expanded,  setExpanded]  = useState<Ann | null>(null)
+  const [menuOpen,  setMenuOpen]  = useState(false)
+  const [time,      setTime]      = useState('')
+  const [sActive,   setSActive]   = useState(false)
+  const [live,      setLive]      = useState<LiveStats | null>(null)
+  const [fp,        setFp]        = useState<FPSettings>(FP_DEFAULTS)
+  const [imgOk,     setImgOk]     = useState(false)
+  // Video signage mode — after 10 s of video playing, UI fades out
+  const [signage,   setSignage]   = useState(false)
+  const signageTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sRef = useRef<HTMLDivElement>(null)
 
   const active = anns.filter(a => !a.expiresAt || new Date(a.expiresAt) > new Date())
@@ -47,12 +50,21 @@ export default function HomePage() {
   const isOpen = now.getDay() >= 1 && now.getDay() <= 5 && now.getHours() >= 8 && now.getHours() < 17
   const cLogged  = useCount(live?.todayCount ?? 0, 1200, sActive)
   const cInterns = useCount(live?.activeInterns ?? 0, 1200, sActive)
-  const hasMedia = fp.hero_media_url && fp.hero_media_type !== 'none'
+  const hasMedia = !!(fp.hero_media_url && fp.hero_media_type !== 'none')
+  const isVideo  = hasMedia && fp.hero_media_type === 'video'
+
+  // Wake up from signage mode on any interaction
+  const wakeUp = useCallback(() => {
+    if (!isVideo) return
+    setSignage(false)
+    if (signageTimer.current) clearTimeout(signageTimer.current)
+    signageTimer.current = setTimeout(() => setSignage(true), 10_000)
+  }, [isVideo])
 
   useEffect(() => {
     fetch('/api/announcements').then(r => r.json()).then(d => Array.isArray(d) && setAnns(d)).catch(() => {})
     fetch('/api/settings').then(r => r.json()).then((d: Record<string,string>) => {
-      setFp(prev => ({ ...prev, ...Object.fromEntries(Object.entries(d).filter(([k]) => k in FP_DEFAULTS)) } as FPSettings))
+      setFp(prev => ({ ...prev, ...Object.fromEntries(Object.entries(d).filter(([k]) => FP_KEYS.includes(k))) } as FPSettings))
     }).catch(() => {})
   }, [])
 
@@ -77,12 +89,20 @@ export default function HomePage() {
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
   }, [])
 
+  // Start signage timer when video begins
+  useEffect(() => {
+    if (!isVideo) { setSignage(false); if (signageTimer.current) clearTimeout(signageTimer.current); return }
+    signageTimer.current = setTimeout(() => setSignage(true), 10_000)
+    return () => { if (signageTimer.current) clearTimeout(signageTimer.current) }
+  }, [isVideo])
+
   return (
     <>
       <style>{`
         @keyframes ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
         @keyframes mIn { from{opacity:0;transform:scale(.96) translateY(8px)} to{opacity:1;transform:none} }
         @keyframes fUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
+        @keyframes dtcPulse { 0%,100%{opacity:.9} 50%{opacity:1} }
         .ticker{animation:ticker 40s linear infinite}
         .manim{animation:mIn .22s ease both}
         .fu0{animation:fUp .5s ease both}
@@ -92,6 +112,9 @@ export default function HomePage() {
         html{scroll-behavior:smooth}
         .gc{background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.07)}
         .glow{box-shadow:0 0 0 1px rgba(59,130,246,.35),0 6px 28px rgba(59,130,246,.18)}
+        .ui-layer{transition:opacity 1.2s ease, visibility 1.2s ease}
+        .ui-layer.hidden{opacity:0;visibility:hidden;pointer-events:none}
+        .signage-title{animation:dtcPulse 4s ease-in-out infinite}
       `}</style>
 
       {/* Modal */}
@@ -109,10 +132,15 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="min-h-screen bg-[#070e1b] text-white">
+      <div
+        className="min-h-screen bg-[#070e1b] text-white"
+        onClick={isVideo ? wakeUp : undefined}
+        onMouseMove={isVideo ? wakeUp : undefined}
+        onTouchStart={isVideo ? wakeUp : undefined}
+      >
 
         {/* NAV */}
-        <nav className="fixed top-0 inset-x-0 z-40 border-b border-white/[0.06]" style={{ background: 'rgba(7,14,27,.92)', backdropFilter: 'blur(20px)' }}>
+        <nav className={`fixed top-0 inset-x-0 z-40 border-b border-white/[0.06] ui-layer${signage ? ' hidden' : ''}`} style={{ background: 'rgba(7,14,27,.92)', backdropFilter: 'blur(20px)' }}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between" style={{ height: 60 }}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl glow bg-gradient-to-br from-blue-500 to-indigo-700 flex items-center justify-center font-black text-xs tracking-wide">DTC</div>
@@ -136,10 +164,9 @@ export default function HomePage() {
           </div>
           {menuOpen && (
             <div className="md:hidden border-t border-white/[0.06] px-4 py-3 space-y-1" style={{ background: 'rgba(7,14,27,.98)' }}>
-              {[['#about','🏛️ About'],['#services','🛠️ Services'],['#events','📅 Events'],['#offices','📍 Offices'],['#about','📋 Rules→/rules']].map(([h,l]) => {
-                const [href, label] = h.startsWith('#') ? [h, l] : [h, l]
-                return <a key={href} href={href} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-gray-300 text-sm hover:bg-white/5">{label}</a>
-              })}
+              {[['#about','🏛️ About'],['#services','🛠️ Services'],['#events','📅 Events'],['#offices','📍 Offices']].map(([href,label]) => (
+                <a key={href} href={href} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-gray-300 text-sm hover:bg-white/5">{label}</a>
+              ))}
               <div className="border-t border-white/[0.06] pt-2 mt-1 space-y-1">
                 <Link href="/intern/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-violet-400 text-sm hover:bg-violet-500/5">🎓 Intern Portal</Link>
                 <Link href="/supervisor/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-indigo-400 text-sm hover:bg-indigo-500/5">👔 Supervisor Portal</Link>
@@ -149,95 +176,124 @@ export default function HomePage() {
           )}
         </nav>
 
-        {/* HERO */}
-        <section className="relative min-h-[100dvh] flex flex-col" style={{ paddingTop: 60 }}>
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-950/50 via-[#070e1b] to-[#070e1b]" />
-            <div className="absolute inset-0 opacity-[0.022]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px)', backgroundSize: '60px 60px' }} />
-            <div className="absolute -top-32 -left-32 w-[700px] h-[700px] rounded-full opacity-[0.06] blur-3xl" style={{ background: 'radial-gradient(circle,#3b82f6,transparent)' }} />
+        {/* HERO — full-screen */}
+        <section className="relative min-h-[100dvh] overflow-hidden" style={{ paddingTop: 60 }}>
+
+          {/* ── Full-screen media background ── */}
+          {hasMedia && (
+            <div className="absolute inset-0 z-0">
+              {isVideo ? (
+                <video
+                  src={fp.hero_media_url}
+                  autoPlay muted loop playsInline
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : (
+                <img
+                  src={fp.hero_media_url}
+                  alt="DTC"
+                  onLoad={() => setImgOk(true)}
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${imgOk ? 'opacity-100' : 'opacity-0'}`}
+                />
+              )}
+              {/* Dark overlay gradient */}
+              <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(7,14,27,.55) 0%, rgba(7,14,27,.2) 40%, rgba(7,14,27,.75) 100%)' }} />
+            </div>
+          )}
+
+          {/* ── Default dark bg when no media ── */}
+          {!hasMedia && (
+            <div className="absolute inset-0 z-0 pointer-events-none">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-950/50 via-[#070e1b] to-[#070e1b]" />
+              <div className="absolute inset-0 opacity-[0.022]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px)', backgroundSize: '60px 60px' }} />
+              <div className="absolute -top-32 -left-32 w-[700px] h-[700px] rounded-full opacity-[0.06] blur-3xl" style={{ background: 'radial-gradient(circle,#3b82f6,transparent)' }} />
+            </div>
+          )}
+
+          {/* ── Status bar (top-left, fades in signage) ── */}
+          <div className={`absolute top-[72px] left-4 sm:left-8 z-10 flex items-center gap-2 ui-layer${signage ? ' hidden' : ''}`}>
+            <span className="relative flex h-2 w-2">
+              <span className={`absolute inset-0 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-red-400'} opacity-60 animate-ping`} />
+              <span className={`relative h-2 w-2 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            </span>
+            <span className="text-white/60 text-xs backdrop-blur-sm">{isOpen ? 'Open · Mon–Fri 8AM–5PM' : 'Closed · Opens 8AM weekdays'}</span>
+            {time && <span className="hidden sm:block text-white/30 text-[10px] font-mono pl-2.5 border-l border-white/10">{time}</span>}
           </div>
 
-          <div className="relative z-10 flex-1 flex items-center">
-            <div className="max-w-7xl mx-auto px-6 sm:px-10 w-full py-16 lg:py-0">
-              <div className={`grid gap-12 lg:gap-16 items-center ${hasMedia ? 'lg:grid-cols-2' : 'max-w-3xl'}`}>
-                {/* Content */}
-                <div>
-                  <div className="flex items-center gap-3 mb-6 flex-wrap fu0">
-                    <span className="bg-blue-600/20 border border-blue-500/30 text-blue-300 text-[9px] font-black uppercase tracking-[.2em] px-3 py-1.5 rounded-full">{fp.hero_badge}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2"><span className={`absolute inset-0 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-red-400'} opacity-60 animate-ping`} /><span className={`relative h-2 w-2 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-red-400'}`} /></span>
-                      <span className="text-gray-400 text-xs">{isOpen ? 'Open · Mon–Fri 8AM–5PM' : 'Closed · Opens 8AM weekdays'}</span>
-                      {time && <span className="hidden sm:block text-gray-600 text-[10px] font-mono pl-2.5 border-l border-white/10">{time}</span>}
-                    </div>
-                  </div>
+          {/* ── Live stats strip (top-right, fades in signage) ── */}
+          {live && !signage && (
+            <div className="absolute top-[72px] right-4 sm:right-8 z-10 ui-layer hidden sm:flex items-center gap-3">
+              {[
+                { v: live.activeNow,    label: 'active now',    c: 'text-emerald-300' },
+                { v: cLogged,           label: 'logged today',  c: 'text-amber-300'   },
+                { v: cInterns,          label: 'interns',       c: 'text-violet-300'  },
+              ].map((s, i) => (
+                <span key={i} className="flex items-center gap-1.5 bg-black/40 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1">
+                  <span className={`font-bold text-xs ${s.c}`}>{s.v}</span>
+                  <span className="text-white/30 text-[10px]">{s.label}</span>
+                </span>
+              ))}
+            </div>
+          )}
 
-                  <h1 className="fu1 text-[2.6rem] sm:text-5xl lg:text-6xl xl:text-[4.2rem] font-black text-white leading-[1.05] mb-6 tracking-tight" style={{ whiteSpace: 'pre-line' }}>{fp.hero_title}</h1>
-                  <p className="fu2 text-gray-400 text-base sm:text-lg leading-relaxed mb-7 max-w-xl">{fp.hero_subtitle}</p>
+          {/* ── Fixed title — always visible (bottom-left) ── */}
+          <div className="absolute bottom-0 left-0 right-0 z-10 px-6 sm:px-10 pb-6 sm:pb-10">
+            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-end justify-between gap-6">
 
-                  {live && (
-                    <div className="fu2 flex items-center gap-4 mb-7 text-sm flex-wrap">
-                      {[
-                        { v: live.activeNow,      label: 'active now',    c: 'text-emerald-300' },
-                        { v: cLogged,             label: 'logged today',  c: 'text-amber-300'   },
-                        { v: cInterns,            label: 'active interns',c: 'text-violet-300'  },
-                      ].map((s, i) => (
-                        <span key={i} className="flex items-center gap-2">
-                          {i > 0 && <span className="w-px h-4 bg-white/10" />}
-                          <span className={`font-bold ${s.c}`}>{s.v}</span>
-                          <span className="text-gray-600">{s.label}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="fu3 flex flex-col sm:flex-row gap-3 mb-5">
-                    <Link href="/dtc-logbook" className="flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-white text-sm glow transition-all">🖥️ Open Logbook →</Link>
-                    <Link href="/intern-logbook" className="flex items-center justify-center gap-2 px-6 py-3.5 gc rounded-xl font-semibold text-gray-300 text-sm hover:bg-white/[.05] transition-all">🎓 Intern Logbook</Link>
-                    <a href="#events" className="flex items-center justify-center gap-2 px-6 py-3.5 gc rounded-xl font-semibold text-gray-300 text-sm hover:bg-white/[.05] transition-all">📅 Events</a>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-gray-700">Staff portal:</span>
-                    <Link href="/intern/login" className="text-violet-400/70 hover:text-violet-300 transition-colors underline underline-offset-2">Intern</Link>
-                    <span className="text-white/10">·</span>
-                    <Link href="/supervisor/login" className="text-indigo-400/70 hover:text-indigo-300 transition-colors underline underline-offset-2">Supervisor</Link>
-                    <span className="text-white/10">·</span>
-                    <Link href="/sign-in" className="text-gray-600 hover:text-gray-400 transition-colors underline underline-offset-2">Admin</Link>
-                  </div>
-                </div>
-
-                {/* Media panel */}
-                {hasMedia && (
-                  <div className="hidden lg:block">
-                    <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-white/10" style={{ boxShadow: '0 0 80px rgba(59,130,246,.1)' }}>
-                      {fp.hero_media_type === 'video'
-                        ? <video src={fp.hero_media_url} autoPlay muted loop playsInline className="absolute inset-0 w-full h-full object-cover" />
-                        : <img src={fp.hero_media_url} alt="DTC" onLoad={() => setImgOk(true)} className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${imgOk ? 'opacity-100' : 'opacity-0'}`} />
-                      }
-                      <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(7,14,27,.75) 0%, rgba(7,14,27,.15) 60%, transparent 100%)' }} />
-                      <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /><span className="text-white text-xs font-semibold">Live System</span>
-                      </div>
-                      {live && (
-                        <div className="absolute bottom-4 inset-x-4 grid grid-cols-3 gap-2">
-                          {[['Active Now', live.activeNow, 'text-emerald-300'],['Logged Today', live.todayCount, 'text-amber-300'],['Interns', live.activeInterns, 'text-violet-300']].map(([l,v,c]) => (
-                            <div key={l as string} className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-xl p-2.5 text-center">
-                              <p className={`text-lg font-black ${c}`}>{v}</p>
-                              <p className="text-gray-400 text-[9px] uppercase tracking-wide">{l}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+              {/* DTC title — non-editable, same font size as original h1 */}
+              <div>
+                <h1
+                  className={`text-[2.6rem] sm:text-5xl lg:text-6xl xl:text-[4.2rem] font-black text-white leading-[1.05] tracking-tight drop-shadow-2xl${signage ? ' signage-title' : ' fu1'}`}
+                  style={{ textShadow: '0 4px 32px rgba(0,0,0,.8)' }}
+                >
+                  Digital Transformation Center
+                </h1>
+                {/* Subtitle only when NOT in signage mode */}
+                {!signage && (
+                  <p className="fu2 mt-3 text-white/60 text-sm sm:text-base leading-relaxed max-w-xl drop-shadow">
+                    DICT Region V · Bicol — Free digital services for every Bicolano
+                  </p>
                 )}
+              </div>
+
+              {/* Buttons + portals — bottom-right, fade in signage */}
+              <div className={`flex flex-col items-end gap-3 ui-layer${signage ? ' hidden' : ''}`}>
+                <div className="fu3 flex flex-col sm:flex-row flex-wrap gap-2 justify-end">
+                  <Link href="/dtc-logbook"
+                    className="flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-white text-sm glow transition-all shadow-xl">
+                    🖥️ Open Logbook →
+                  </Link>
+                  <Link href="/intern-logbook"
+                    className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold text-gray-100 text-sm transition-all shadow-lg"
+                    style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.15)', backdropFilter: 'blur(8px)' }}>
+                    🎓 Intern Logbook
+                  </Link>
+                  <a href="#events"
+                    className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold text-gray-100 text-sm transition-all shadow-lg"
+                    style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.15)', backdropFilter: 'blur(8px)' }}>
+                    📅 Events
+                  </a>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-white/30">Staff portal:</span>
+                  <Link href="/intern/login" className="text-violet-300/80 hover:text-violet-200 transition-colors underline underline-offset-2">Intern</Link>
+                  <span className="text-white/15">·</span>
+                  <Link href="/supervisor/login" className="text-indigo-300/80 hover:text-indigo-200 transition-colors underline underline-offset-2">Supervisor</Link>
+                  <span className="text-white/15">·</span>
+                  <Link href="/sign-in" className="text-white/30 hover:text-white/60 transition-colors underline underline-offset-2">Admin</Link>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="relative z-10 flex justify-center pb-6">
-            <a href="#stats" className="flex flex-col items-center gap-1 text-gray-700 hover:text-gray-500 transition-colors text-xs uppercase tracking-widest">Scroll <span className="animate-bounce">↓</span></a>
-          </div>
+          {/* ── Scroll hint (hidden in signage) ── */}
+          {!signage && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 ui-layer">
+              <a href="#stats" className="flex flex-col items-center gap-1 text-white/20 hover:text-white/40 transition-colors text-[10px] uppercase tracking-widest">
+                Scroll <span className="animate-bounce">↓</span>
+              </a>
+            </div>
+          )}
         </section>
 
         {/* TICKER */}
