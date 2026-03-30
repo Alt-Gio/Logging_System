@@ -932,26 +932,14 @@ export default function AdminPage() {
     setMediaUploading(true)
     setMediaUploadErr(null)
     try {
-      const urlRes = await fetch('/api/settings/upload', { method: 'POST' })
-      if (!urlRes.ok) throw new Error('Failed to get upload URL')
-      const { uploadUrl } = await urlRes.json()
-
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      })
-      if (!uploadRes.ok) throw new Error('Upload failed')
-      const { storageId } = await uploadRes.json()
-
-      const mediaType = file.type.startsWith('video/') ? 'video' : 'image'
-      const saveRes = await fetch('/api/settings/save-media', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storageId, mediaType }),
-      })
-      if (!saveRes.ok) throw new Error('Failed to save media')
-      const { url } = await saveRes.json()
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/settings/upload', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Upload failed' }))
+        throw new Error(data.error || 'Upload failed')
+      }
+      const { url, mediaType } = await res.json()
       setSettings(s => ({ ...s, hero_media_url: url, hero_media_type: mediaType }))
       if (mediaFileRef.current) mediaFileRef.current.value = ''
     } catch (e) {
