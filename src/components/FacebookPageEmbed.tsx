@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const INFO_CARDS = [
   { icon: '🌐', title: 'Free Internet Access',     desc: 'High-speed internet access for all walk-in clients at the Digital Transformation Center.', color: 'from-blue-600/20 to-blue-800/10',    border: 'border-blue-500/20',    glow: 'hover:shadow-blue-500/10'    },
@@ -16,27 +16,23 @@ const FB_ICON = (
   </svg>
 )
 
+const APP_ID  = '3077260962663166'
+const PAGE_URL = 'https%3A%2F%2Fwww.facebook.com%2FDICTRegionVBicol'
+const HEIGHT   = 700
+
 export function FacebookPageEmbed() {
-  const [sdkReady, setSdkReady] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [embedWidth, setEmbedWidth] = useState(0)
 
   useEffect(() => {
-    const boot = () => {
-      if ((window as any).FB) {
-        (window as any).FB.XFBML.parse()
-        setSdkReady(true)
-      }
-    }
-    if ((window as any).FB) { boot(); return }
-    if (document.getElementById('fb-sdk')) {
-      window.addEventListener('fb-sdk-ready', boot, { once: true })
-      return
-    }
-    const s = document.createElement('script')
-    s.id  = 'fb-sdk'
-    s.src = 'https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v19.0&appId=3077260962663166'
-    s.async = true; s.defer = true
-    s.onload = () => { window.dispatchEvent(new Event('fb-sdk-ready')); boot() }
-    document.head.appendChild(s)
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const w = Math.floor(entry.contentRect.width)
+      if (w > 0) setEmbedWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
   return (
@@ -107,38 +103,26 @@ export function FacebookPageEmbed() {
                 {/* ── Blue separator rule ── */}
                 <div className="h-px" style={{ background: 'linear-gradient(90deg, #1877F2 0%, rgba(24,119,242,0.3) 60%, transparent 100%)' }} />
 
-                {/* ── FB plugin ── */}
-                <div id="fb-root" />
-                <style>{`
-                  #fb-page-wrap .fb-page,
-                  #fb-page-wrap .fb-page > span,
-                  #fb-page-wrap .fb-page iframe {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    min-width: 0 !important;
-                  }
-                `}</style>
-
-                {!sdkReady && (
-                  <div className="h-[680px] flex flex-col items-center justify-center gap-3">
-                    <div className="w-10 h-10 border-2 border-[#1877F2]/30 border-t-[#1877F2] rounded-full animate-spin" />
-                    <p className="text-gray-600 text-sm">Loading Facebook feed…</p>
-                  </div>
-                )}
-
-                <div id="fb-page-wrap" className="overflow-hidden">
-                  <div
-                    className="fb-page"
-                    data-href="https://www.facebook.com/DICTRegionVBicol"
-                    data-tabs="timeline"
-                    data-width=""
-                    data-height="680"
-                    data-small-header="true"
-                    data-adapt-container-width="true"
-                    data-hide-cover="false"
-                    data-show-facepile="false"
-                    data-colorscheme="dark"
-                  />
+                {/* ── Direct iframe embed — fills full measured width ── */}
+                <div ref={containerRef} className="w-full">
+                  {embedWidth === 0 ? (
+                    <div style={{ height: HEIGHT }} className="flex flex-col items-center justify-center gap-3">
+                      <div className="w-10 h-10 border-2 border-[#1877F2]/30 border-t-[#1877F2] rounded-full animate-spin" />
+                      <p className="text-gray-600 text-sm">Loading Facebook feed…</p>
+                    </div>
+                  ) : (
+                    <iframe
+                      key={embedWidth}
+                      src={`https://www.facebook.com/plugins/page.php?href=${PAGE_URL}&tabs=timeline&width=${embedWidth}&height=${HEIGHT}&small_header=true&adapt_container_width=true&hide_cover=false&show_facepile=false&appId=${APP_ID}`}
+                      width={embedWidth}
+                      height={HEIGHT}
+                      style={{ border: 'none', display: 'block', overflow: 'hidden', width: '100%', background: '#18191a' }}
+                      scrolling="no"
+                      frameBorder="0"
+                      allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                      title="DICT Region V Bicol Facebook Page"
+                    />
+                  )}
                 </div>
 
               </div>

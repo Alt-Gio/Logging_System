@@ -129,6 +129,7 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://api.qrserver.com https://*.mapbox.com https://demotiles.maplibre.org https://*.convex.cloud https://*.fbcdn.net https://*.cdninstagram.com https://scontent.xx.fbcdn.net https://*.xx.fbcdn.net",
     "connect-src 'self' https://res.cloudinary.com https://api.groq.com wss://localhost:3210 ws://localhost:3210 https://*.mapbox.com https://api.mapbox.com https://events.mapbox.com https://demotiles.maplibre.org https://*.convex.cloud https://graph.facebook.com",
+    "frame-src 'self' https://www.facebook.com https://web.facebook.com",
     "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",
