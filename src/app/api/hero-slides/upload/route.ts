@@ -19,6 +19,21 @@ function toInternalUrl(convexGeneratedUrl: string): string {
   }
 }
 
+function toPublicUrl(storageUrl: string): string {
+  const pub = process.env.NEXT_PUBLIC_CONVEX_URL
+  if (!pub) return storageUrl
+  try {
+    const p = new URL(pub)
+    const u = new URL(storageUrl)
+    u.protocol = p.protocol
+    u.hostname  = p.hostname
+    u.port      = p.port || ''
+    return u.toString()
+  } catch {
+    return storageUrl
+  }
+}
+
 const MAX_BYTES = 100 * 1024 * 1024 // 100 MB — videos can be large
 
 export async function POST(req: NextRequest) {
@@ -57,7 +72,8 @@ export async function POST(req: NextRequest) {
     if (!storageId)
       return NextResponse.json({ error: 'No storageId returned' }, { status: 502 })
 
-    const url = await convex.mutation(api.heroSlides.resolveStorageUrl, { storageId })
+    const rawStorageUrl = await convex.mutation(api.heroSlides.resolveStorageUrl, { storageId })
+    const url = toPublicUrl(rawStorageUrl)
     const mediaType = contentType.startsWith('video/') ? 'video' : 'image'
 
     return NextResponse.json({ url, storageId, mediaType })

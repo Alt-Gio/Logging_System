@@ -14,7 +14,6 @@ function toInternalUrl(convexGeneratedUrl: string): string {
   if (!base) return convexGeneratedUrl
   try {
     const b = new URL(base)
-    // new URL(url, base) handles both absolute and relative URLs correctly
     const u = new URL(convexGeneratedUrl, b.origin)
     u.protocol = b.protocol
     u.hostname  = b.hostname
@@ -22,6 +21,21 @@ function toInternalUrl(convexGeneratedUrl: string): string {
     return u.toString()
   } catch {
     return convexGeneratedUrl
+  }
+}
+
+function toPublicUrl(storageUrl: string): string {
+  const pub = process.env.NEXT_PUBLIC_CONVEX_URL
+  if (!pub) return storageUrl
+  try {
+    const p = new URL(pub)
+    const u = new URL(storageUrl)
+    u.protocol = p.protocol
+    u.hostname  = p.hostname
+    u.port      = p.port || ''
+    return u.toString()
+  } catch {
+    return storageUrl
   }
 }
 
@@ -79,10 +93,11 @@ export async function POST(req: NextRequest) {
 
     // 3. Resolve storageId → public URL and save to settings
     const mediaType = contentType.startsWith('video/') ? 'video' : 'image'
-    const url = await convex.mutation(api.settings.saveMediaUrl, {
+    const rawStorageUrl = await convex.mutation(api.settings.saveMediaUrl, {
       storageId: storageId as Id<'_storage'>,
       mediaType,
     })
+    const url = toPublicUrl(rawStorageUrl)
 
     return NextResponse.json({ url, mediaType })
   } catch (err: any) {
