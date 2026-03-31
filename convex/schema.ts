@@ -125,6 +125,19 @@ export default defineSchema({
     .index("by_active_expiresAt", ["active", "expiresAt"])
     .index("by_featured",         ["featured"]),
 
+  // ── Hero slideshow slides ────────────────────────────────────────────────
+  heroSlides: defineTable({
+    title:       v.string(),
+    description: v.optional(v.string()),
+    mediaUrl:    v.string(),
+    mediaType:   v.union(v.literal("image"), v.literal("video")),
+    storageId:   v.optional(v.string()),
+    order:       v.number(),
+    active:      v.boolean(),
+  })
+    .index("by_order",  ["order"])
+    .index("by_active", ["active"]),
+
   // ── App settings (key-value store) ───────────────────────────────────────
   settings: defineTable({
     key:   v.string(),
