@@ -49,7 +49,7 @@ export function FacebookPageEmbed() {
           <div className="lg:sticky lg:top-8 lg:col-span-3">
             <div className="relative group">
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl blur opacity-20 group-hover:opacity-30 transition-opacity duration-500" />
-              <div className="relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+              <div className="relative bg-white rounded-2xl overflow-hidden w-full">
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-white/5">
                   <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
                     <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
@@ -68,6 +68,12 @@ export function FacebookPageEmbed() {
                   </div>
                 </div>
                 <div id="fb-root" />
+                <style>{`
+                  .fb-page, .fb-page iframe[style], .fb-page span {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                  }
+                `}</style>
                 {!sdkReady && (
                   <div className="h-[600px] flex items-center justify-center">
                     <div className="text-center">
@@ -76,7 +82,7 @@ export function FacebookPageEmbed() {
                     </div>
                   </div>
                 )}
-                <div style={{filter: "invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9)"}} className="fb-page" data-href="https://www.facebook.com/DICTRegionVBicol" data-tabs="timeline" data-width="800" data-height="900" data-small-header="true" data-adapt-container-width="true" data-hide-cover="true" data-show-facepile="false" />
+                <div className="fb-page" data-href="https://www.facebook.com/DICTRegionVBicol" data-tabs="timeline" data-width="700" data-height="750" data-small-header="true" data-adapt-container-width="true" data-hide-cover="true" data-show-facepile="false" />
               </div>
             </div>
             <a href="https://www.facebook.com/DICTRegionVBicol" target="_blank" rel="noopener noreferrer"
