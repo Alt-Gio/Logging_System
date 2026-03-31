@@ -57,9 +57,9 @@ export function FacebookPageEmbed() {
 
           {/* FB embed — takes 3/5 columns */}
           <div className="lg:sticky lg:top-8 lg:col-span-3">
-            <div className="relative">
+            <div className="relative" style={{ width: "fit-content" }}>
               <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-b from-[#1877F2]/60 via-[#1877F2]/20 to-[#1877F2]/10 pointer-events-none" />
-              <div className="relative rounded-2xl overflow-hidden" style={{ background: '#18191a' }}>
+              <div className="relative rounded-2xl overflow-hidden" style={{ background: '#18191a', width: "fit-content" }}>
 
                 {/* Header */}
                 <div className="px-4 py-3.5 flex items-center gap-3"
@@ -89,7 +89,7 @@ export function FacebookPageEmbed() {
 
                 {/* SDK-based embed — CSS scale to fill container */}
                 <div id="fb-root" />
-                <div className="w-full overflow-hidden relative" style={{ height: 660 }}>
+                <div className="overflow-hidden relative" style={{ height: 660, width: "fit-content", maxWidth: "100%" }}>
                   <div style={{
                     position: 'absolute',
                     top: -90,
@@ -114,13 +114,12 @@ export function FacebookPageEmbed() {
                   </div>
                   {/* Transparent overlay to stretch fb visually */}
                   <style>{`
-                    .fb_iframe_widget,
-                    .fb_iframe_widget span,
                     .fb_iframe_widget iframe {
-                      width: 100% !important;
-                      min-width: 100% !important;
+                      scrollbar-width: none !important;
                     }
-                    #fb-root { display: none; }
+                    .fb_iframe_widget iframe::-webkit-scrollbar {
+                      display: none !important;
+                    }
                   `}</style>
                 </div>
               </div>
