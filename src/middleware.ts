@@ -62,6 +62,7 @@ const PUBLIC_PATHS = [
   '/api/supervisor-auth',
   '/api/notifications',
   '/api/facebook',
+  '/meeting-hall',
   '/intern-logbook',
   '/intern/login',
   '/intern/setup',

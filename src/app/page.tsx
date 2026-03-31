@@ -1,5 +1,4 @@
 'use client'
-'use client'
 import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { FacebookPageEmbed } from '@/components/FacebookPageEmbed'
@@ -396,18 +395,7 @@ export default function HomePage() {
           </div>
         </section>
 
-{/* Facebook Feed */}
-<section className="py-12 px-4 max-w-5xl mx-auto">
-  <div className="text-center mb-8">
-    <span className="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest mb-3">
-      Social Media
-    </span>
-    <h2 className="text-3xl font-bold text-gray-900">
-      DICT Region V Facebook
-    </h2>
-  </div>
-  <FacebookPageEmbed />
-</section>
+        <FacebookPageEmbed />
 
 
 
