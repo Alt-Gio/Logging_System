@@ -1,6 +1,8 @@
 'use client'
+'use client'
 import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { FacebookPageEmbed } from '@/components/FacebookPageEmbed'
 
 type Ann = { id: string; title: string; content: string; type?: string; urgent: boolean; createdAt: string; expiresAt?: string; imageUrl?: string; featured?: boolean; highlight?: string }
 type FPSettings = { hero_media_url: string; hero_media_type: 'image'|'video'|'none'; office_hours: string; office_location: string }
@@ -393,6 +395,21 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
+{/* Facebook Feed */}
+<section className="py-12 px-4 max-w-5xl mx-auto">
+  <div className="text-center mb-8">
+    <span className="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest mb-3">
+      Social Media
+    </span>
+    <h2 className="text-3xl font-bold text-gray-900">
+      DICT Region V Facebook
+    </h2>
+  </div>
+  <FacebookPageEmbed />
+</section>
+
+
 
         {/* EVENTS */}
         <section id="events" className="py-16 sm:py-24 px-4 sm:px-6">
