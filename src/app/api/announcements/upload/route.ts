@@ -14,7 +14,6 @@ function toInternalUrl(convexGeneratedUrl: string): string {
   if (!base) return convexGeneratedUrl
   try {
     const b = new URL(base)
-    // new URL(url, base) handles both absolute and relative URLs correctly
     const u = new URL(convexGeneratedUrl, b.origin)
     u.protocol = b.protocol
     u.hostname  = b.hostname
@@ -22,6 +21,25 @@ function toInternalUrl(convexGeneratedUrl: string): string {
     return u.toString()
   } catch {
     return convexGeneratedUrl
+  }
+}
+
+/**
+ * Convex's getUrl() may return an internal Docker hostname.
+ * Rewrite it to the public-facing URL so browsers can load the image.
+ */
+function toPublicUrl(storageUrl: string): string {
+  const pub = process.env.NEXT_PUBLIC_CONVEX_URL
+  if (!pub) return storageUrl
+  try {
+    const p = new URL(pub)
+    const u = new URL(storageUrl)
+    u.protocol = p.protocol
+    u.hostname  = p.hostname
+    u.port      = p.port || ''
+    return u.toString()
+  } catch {
+    return storageUrl
   }
 }
 
@@ -77,8 +95,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 3. Resolve storageId → public CDN URL
-    const url = await convex.mutation(api.announcements.resolveStorageUrl, { storageId })
+    // 3. Resolve storageId → public CDN URL (rewrite internal hostname for browser)
+    const rawStorageUrl = await convex.mutation(api.announcements.resolveStorageUrl, { storageId })
+    const url = toPublicUrl(rawStorageUrl)
 
     return NextResponse.json({ url, storageId })
   } catch (err: any) {
