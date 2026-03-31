@@ -45,8 +45,8 @@ export function FacebookPageEmbed() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          <div className="lg:sticky lg:top-8">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+          <div className="lg:sticky lg:top-8 lg:col-span-3">
             <div className="relative group">
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl blur opacity-20 group-hover:opacity-30 transition-opacity duration-500" />
               <div className="relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
@@ -76,7 +76,7 @@ export function FacebookPageEmbed() {
                     </div>
                   </div>
                 )}
-                <div className="fb-page" data-href="https://www.facebook.com/DICTRegionVBicol" data-tabs="timeline" data-width="600" data-height="600" data-small-header="true" data-adapt-container-width="true" data-hide-cover="false" data-show-facepile="false" />
+                <div className="fb-page" data-href="https://www.facebook.com/DICTRegionVBicol" data-tabs="timeline" data-width="800" data-height="800" data-small-header="true" data-adapt-container-width="true" data-hide-cover="false" data-show-facepile="false" />
               </div>
             </div>
             <a href="https://www.facebook.com/DICTRegionVBicol" target="_blank" rel="noopener noreferrer"
@@ -85,7 +85,7 @@ export function FacebookPageEmbed() {
             </a>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:col-span-2">
             {INFO_CARDS.map((card, i) => (
               <div key={i}
                 className={`group relative bg-gradient-to-br ${card.color} border ${card.border} rounded-2xl p-6 cursor-default transition-all duration-300 ease-out hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl ${card.glow}`}>
