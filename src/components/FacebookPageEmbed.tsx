@@ -1,5 +1,4 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
 
 const INFO_CARDS = [
   { icon: '🌐', title: 'Free Internet Access',     desc: 'High-speed internet access for all walk-in clients at the Digital Transformation Center.', color: 'from-blue-600/20 to-blue-800/10',    border: 'border-blue-500/20',    glow: 'hover:shadow-blue-500/10'    },
@@ -16,24 +15,12 @@ const FB_ICON = (
   </svg>
 )
 
-const APP_ID  = '3077260962663166'
+const APP_ID   = '3077260962663166'
 const PAGE_URL = 'https%3A%2F%2Fwww.facebook.com%2FDICTRegionVBicol'
 const HEIGHT   = 700
+const FB_DARK_BG = '#18191a'
 
 export function FacebookPageEmbed() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [embedWidth, setEmbedWidth] = useState(0)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(([entry]) => {
-      const w = Math.floor(entry.contentRect.width)
-      if (w > 0) setEmbedWidth(w)
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
 
   return (
     <section className="py-16 sm:py-20 relative overflow-hidden border-t border-white/[.04]">
@@ -103,27 +90,22 @@ export function FacebookPageEmbed() {
                 {/* ── Blue separator rule ── */}
                 <div className="h-px" style={{ background: 'linear-gradient(90deg, #1877F2 0%, rgba(24,119,242,0.3) 60%, transparent 100%)' }} />
 
-                {/* ── Direct iframe embed — fills full measured width ── */}
-                <div ref={containerRef} className="w-full">
-                  {embedWidth === 0 ? (
-                    <div style={{ height: HEIGHT }} className="flex flex-col items-center justify-center gap-3">
-                      <div className="w-10 h-10 border-2 border-[#1877F2]/30 border-t-[#1877F2] rounded-full animate-spin" />
-                      <p className="text-gray-600 text-sm">Loading Facebook feed…</p>
-                    </div>
-                  ) : (
-                    <iframe
-                      key={embedWidth}
-                      src={`https://www.facebook.com/plugins/page.php?href=${PAGE_URL}&tabs=timeline&width=${embedWidth}&height=${HEIGHT}&small_header=true&adapt_container_width=true&hide_cover=false&show_facepile=false&appId=${APP_ID}`}
-                      width={embedWidth}
-                      height={HEIGHT}
-                      style={{ border: 'none', display: 'block', overflow: 'hidden', width: '100%', background: '#18191a' }}
-                      scrolling="no"
-                      frameBorder="0"
-                      allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                      title="DICT Region V Bicol Facebook Page"
-                    />
-                  )}
-                </div>
+                {/* ── iframe: width:100% fills border; colorscheme=dark matches container bg ── */}
+                <iframe
+                  src={`https://www.facebook.com/plugins/page.php?href=${PAGE_URL}&tabs=timeline&width=800&height=${HEIGHT}&small_header=true&adapt_container_width=true&hide_cover=false&show_facepile=false&colorscheme=dark&appId=${APP_ID}`}
+                  height={HEIGHT}
+                  style={{
+                    border: 'none',
+                    display: 'block',
+                    width: '100%',
+                    overflow: 'hidden',
+                    background: FB_DARK_BG,
+                  }}
+                  scrolling="no"
+                  frameBorder="0"
+                  allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                  title="DICT Region V Bicol Facebook Page"
+                />
 
               </div>
             </div>
