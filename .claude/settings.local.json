@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "WebFetch(domain:barangaylink.com)",
+      "Bash(npx tsc:*)",
+      "Bash(gh pr:*)"
+    ]
+  }
+}

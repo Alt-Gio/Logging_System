@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { FacebookPageEmbed } from '@/components/FacebookPageEmbed'
+import { HeroSlideshow, type HeroSlide } from '@/components/HeroSlideshow'
 
 type Ann = { id: string; title: string; content: string; type?: string; urgent: boolean; createdAt: string; expiresAt?: string; imageUrl?: string; featured?: boolean; highlight?: string }
 type FPSettings = { hero_media_url: string; hero_media_type: 'image'|'video'|'none'; office_hours: string; office_location: string }
@@ -34,14 +35,15 @@ function useCount(target: number, dur: number, go: boolean) {
 }
 
 export default function HomePage() {
-  const [anns,      setAnns]      = useState<Ann[]>([])
-  const [expanded,  setExpanded]  = useState<Ann | null>(null)
-  const [fbPosts,   setFbPosts]   = useState<FBPost[]>([])
-  const [menuOpen,  setMenuOpen]  = useState(false)
-  const [time,      setTime]      = useState('')
-  const [sActive,   setSActive]   = useState(false)
-  const [live,      setLive]      = useState<LiveStats | null>(null)
-  const [fp,        setFp]        = useState<FPSettings>(FP_DEFAULTS)
+  const [anns,       setAnns]      = useState<Ann[]>([])
+  const [expanded,   setExpanded]  = useState<Ann | null>(null)
+  const [fbPosts,    setFbPosts]   = useState<FBPost[]>([])
+  const [menuOpen,   setMenuOpen]  = useState(false)
+  const [time,       setTime]      = useState('')
+  const [sActive,    setSActive]   = useState(false)
+  const [live,       setLive]      = useState<LiveStats | null>(null)
+  const [fp,         setFp]        = useState<FPSettings>(FP_DEFAULTS)
+  const [heroSlides, setHeroSlides] = useState<HeroSlide[]>([])
   const [imgOk,     setImgOk]     = useState(false)
   // Video signage mode — after 10 s of video playing, UI fades out
   const [signage,   setSignage]   = useState(false)
@@ -73,6 +75,7 @@ export default function HomePage() {
     fetch('/api/settings').then(r => r.json()).then((d: Record<string,string>) => {
       setFp(prev => ({ ...prev, ...Object.fromEntries(Object.entries(d).filter(([k]) => FP_KEYS.includes(k))) } as FPSettings))
     }).catch(() => {})
+    fetch('/api/hero-slides').then(r => r.json()).then(d => Array.isArray(d) && setHeroSlides(d)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -186,8 +189,10 @@ export default function HomePage() {
         {/* HERO — full-screen */}
         <section className="relative min-h-[100dvh] overflow-hidden" style={{ paddingTop: 60 }}>
 
-          {/* ── Full-screen media background ── */}
-          {hasMedia && (
+          {/* ── Hero background: slideshow if configured, else single media ── */}
+          {heroSlides.length > 0 ? (
+            <HeroSlideshow slides={heroSlides} />
+          ) : hasMedia ? (
             <div className="absolute inset-0 z-0">
               {isVideo ? (
                 <video
@@ -203,13 +208,9 @@ export default function HomePage() {
                   className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${imgOk ? 'opacity-100' : 'opacity-0'}`}
                 />
               )}
-              {/* Dark overlay gradient */}
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(7,14,27,.55) 0%, rgba(7,14,27,.2) 40%, rgba(7,14,27,.75) 100%)' }} />
             </div>
-          )}
-
-          {/* ── Default dark bg when no media ── */}
-          {!hasMedia && (
+          ) : (
             <div className="absolute inset-0 z-0 pointer-events-none">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-950/50 via-[#070e1b] to-[#070e1b]" />
               <div className="absolute inset-0 opacity-[0.022]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px)', backgroundSize: '60px 60px' }} />
@@ -342,6 +343,7 @@ export default function HomePage() {
               <p className="text-gray-400 max-w-2xl mx-auto text-base leading-relaxed">Bridging the digital divide for Bicolanos through free technology access, e-government services, and digital literacy programs.</p>
             </div>
             <div className="grid md:grid-cols-2 gap-6 mb-8">
+              {/* Mission card */}
               <div className="rounded-2xl p-8 border border-blue-500/20" style={{ background: 'linear-gradient(135deg,rgba(59,130,246,.08),rgba(99,102,241,.04))' }}>
                 <div className="text-3xl mb-4">🏛️</div>
                 <h3 className="text-xl font-bold text-white mb-3">Our Mission</h3>
@@ -352,18 +354,28 @@ export default function HomePage() {
                   ))}
                 </div>
               </div>
-              <div className="space-y-3">
-                {[
-                  ['🖥️','Free Computer Access','12 workstations for government transactions, research, and job applications.'],
-                  ['📶','High-Speed Internet','Free Wi-Fi and wired access. BYOD-friendly with no time limits.'],
-                  ['🏛️','E-Government Assistance','Staff-guided access to SSS, PhilHealth, Pag-IBIG, PhilSys, and more.'],
-                  ['📚','Digital Literacy','Regular free workshops on digital skills for all ages.'],
-                ].map(([icon, title, desc]) => (
-                  <div key={title} className="flex gap-3 items-start gc rounded-xl p-4 hover:bg-white/[.04] transition-colors">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/10 flex items-center justify-center text-xl flex-shrink-0">{icon}</div>
-                    <div><h4 className="font-semibold text-white text-sm mb-0.5">{title}</h4><p className="text-gray-500 text-xs leading-relaxed">{desc}</p></div>
+              {/* At a glance */}
+              <div className="flex flex-col gap-4">
+                <div className="gc rounded-2xl p-6 flex-1">
+                  <p className="text-[9px] text-gray-600 font-black uppercase tracking-widest mb-4">At a Glance</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { v: '12', label: 'Workstations', c: 'text-blue-400' },
+                      { v: '100%', label: 'Always Free', c: 'text-emerald-400' },
+                      { v: live ? `${cLogged}+` : '—', label: 'Logged Today', c: 'text-amber-400' },
+                      { v: live ? `${cInterns}` : '—', label: 'Active Interns', c: 'text-violet-400' },
+                    ].map(s => (
+                      <div key={s.label} className="rounded-xl bg-white/[.03] border border-white/[.05] p-3 text-center">
+                        <p className={`text-xl font-black ${s.c}`}>{s.v}</p>
+                        <p className="text-[10px] text-gray-600 mt-0.5">{s.label}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+                <a href="#services" className="gc rounded-2xl p-4 flex items-center justify-between group hover:bg-white/[.04] transition-colors">
+                  <span className="text-sm font-semibold text-white">See all our services</span>
+                  <span className="text-blue-400 group-hover:translate-x-1 transition-transform">→</span>
+                </a>
               </div>
             </div>
           </div>
@@ -394,10 +406,6 @@ export default function HomePage() {
             </div>
           </div>
         </section>
-
-        <FacebookPageEmbed />
-
-
 
         {/* EVENTS */}
         <section id="events" className="py-16 sm:py-24 px-4 sm:px-6">
@@ -510,18 +518,14 @@ export default function HomePage() {
           </div>
         </section>
 
+        <FacebookPageEmbed />
+
         {/* FACEBOOK FEED */}
         {fbPosts.length > 0 && (
-          <section className="py-16 sm:py-20 px-4 sm:px-6 border-t border-white/[.04]">
+          <section className="py-8 sm:py-12 px-4 sm:px-6 border-t border-white/[.04]">
             <div className="max-w-7xl mx-auto">
-              <div className="mb-10 flex items-end justify-between gap-4 flex-wrap">
-                <div>
-                  <p className="text-blue-400 text-[10px] font-black uppercase tracking-[.35em] mb-3">From Our Facebook Page</p>
-                  <h2 className="text-3xl sm:text-4xl font-black text-white flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-xl bg-[#1877F2] flex items-center justify-center text-white font-black text-lg flex-shrink-0">f</span>
-                    Latest Updates
-                  </h2>
-                </div>
+              <div className="mb-8 flex items-end justify-between gap-4 flex-wrap">
+                <p className="text-gray-400 text-sm font-semibold">Latest posts from Facebook</p>
                 {fbPosts[0]?.permalink_url && (
                   <a href={fbPosts[0].permalink_url.replace(/\/posts\/.*/, '')} target="_blank" rel="noopener noreferrer"
                     className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 font-semibold">

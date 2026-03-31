@@ -11,6 +11,7 @@
 import type * as adminLogs from "../adminLogs.js";
 import type * as admins from "../admins.js";
 import type * as announcements from "../announcements.js";
+import type * as heroSlides from "../heroSlides.js";
 import type * as backup from "../backup.js";
 import type * as cameras from "../cameras.js";
 import type * as certificates from "../certificates.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   admins: typeof admins;
   announcements: typeof announcements;
   backup: typeof backup;
+  heroSlides: typeof heroSlides;
   cameras: typeof cameras;
   certificates: typeof certificates;
   crons: typeof crons;

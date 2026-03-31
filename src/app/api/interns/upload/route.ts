@@ -13,7 +13,18 @@ export async function POST(req: NextRequest) {
     if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
 
     const convex  = getConvexClient()
-    const uploadUrl = await convex.mutation(api.interns.generateUploadUrl, {})
+    const rawUrl  = await convex.mutation(api.interns.generateUploadUrl, {})
+    // Convex may return a relative URL in Docker — resolve it against the internal base
+    const uploadUrl = (() => {
+      const base = process.env.CONVEX_URL ?? process.env.NEXT_PUBLIC_CONVEX_URL
+      if (!base) return rawUrl
+      try {
+        const b = new URL(base)
+        const u = new URL(rawUrl, b.origin)
+        u.protocol = b.protocol; u.hostname = b.hostname; u.port = b.port || ''
+        return u.toString()
+      } catch { return rawUrl }
+    })()
 
     const bytes = await file.arrayBuffer()
     const uploadRes = await fetch(uploadUrl, {

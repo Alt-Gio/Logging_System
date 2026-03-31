@@ -423,6 +423,14 @@ export default function AdminPage() {
   const [mediaUploading, setMediaUploading] = useState(false)
   const [mediaUploadErr, setMediaUploadErr] = useState<string|null>(null)
   const mediaFileRef = useRef<HTMLInputElement>(null)
+  // Hero slides state
+  type HeroSlideAdmin = { _id: string; title: string; description?: string; mediaUrl: string; mediaType: 'image'|'video'; storageId?: string; order: number; active: boolean }
+  const [heroSlides, setHeroSlides] = useState<HeroSlideAdmin[]>([])
+  const [slideForm, setSlideForm]   = useState({ title: '', description: '' })
+  const [slideUploading, setSlideUploading] = useState(false)
+  const [slideUploadErr, setSlideUploadErr] = useState<string|null>(null)
+  const [slideSaving, setSlideSaving] = useState(false)
+  const slideFileRef = useRef<HTMLInputElement>(null)
   const [sheetSyncing, setSheetSyncing] = useState(false)
   const [sheetResult, setSheetResult] = useState<{ok:boolean;msg:string}|null>(null)
   const [settingsTab, setSettingsTab] = useState<'general'|'frontpage'|'appearance'|'integrations'|'staff'|'pwa'|'schools'|'supervisors'>('general')
@@ -543,9 +551,87 @@ export default function AdminPage() {
     try { const r = await fetch('/api/stats/live'); if (r.ok) setLiveStats(await r.json()) } catch {}
   }, [])
 
+  const fetchHeroSlides = async () => {
+    try {
+      const r = await fetch('/api/hero-slides')
+      if (r.ok) {
+        const data = await r.json()
+        if (Array.isArray(data)) setHeroSlides(data)
+      }
+    } catch {}
+  }
+
+  const uploadSlideMedia = async (file: File): Promise<{ url: string; storageId: string; mediaType: 'image'|'video' } | null> => {
+    setSlideUploading(true); setSlideUploadErr(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await fetch('/api/hero-slides/upload', { method: 'POST', body: fd })
+      if (!r.ok) throw new Error((await r.json()).error || 'Upload failed')
+      return await r.json()
+    } catch (e) {
+      setSlideUploadErr(e instanceof Error ? e.message : 'Upload failed')
+      return null
+    } finally { setSlideUploading(false) }
+  }
+
+  const addSlide = async (file: File) => {
+    if (!slideForm.title.trim()) { setSlideUploadErr('Please enter a title first'); return }
+    if (heroSlides.length >= 5) { setSlideUploadErr('Maximum 5 slides reached'); return }
+    const media = await uploadSlideMedia(file)
+    if (!media) return
+    setSlideSaving(true)
+    try {
+      const r = await fetch('/api/hero-slides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title:       slideForm.title.trim(),
+          description: slideForm.description.trim() || undefined,
+          mediaUrl:    media.url,
+          mediaType:   media.mediaType,
+          storageId:   media.storageId,
+          order:       heroSlides.length,
+          active:      true,
+        }),
+      })
+      if (!r.ok) throw new Error((await r.json()).error || 'Save failed')
+      setSlideForm({ title: '', description: '' })
+      if (slideFileRef.current) slideFileRef.current.value = ''
+      await fetchHeroSlides()
+    } catch (e) { setSlideUploadErr(e instanceof Error ? e.message : 'Save failed') }
+    finally { setSlideSaving(false) }
+  }
+
+  const removeSlide = async (id: string) => {
+    try {
+      await fetch(`/api/hero-slides/${id}`, { method: 'DELETE' })
+      setHeroSlides(s => s.filter(x => x._id !== id))
+    } catch {}
+  }
+
+  const toggleSlideActive = async (id: string, active: boolean) => {
+    try {
+      await fetch(`/api/hero-slides/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) })
+      setHeroSlides(s => s.map(x => x._id === id ? { ...x, active } : x))
+    } catch {}
+  }
+
+  const moveSlide = async (id: string, dir: -1 | 1) => {
+    const idx = heroSlides.findIndex(x => x._id === id)
+    const newIdx = idx + dir
+    if (newIdx < 0 || newIdx >= heroSlides.length) return
+    const reordered = [...heroSlides]
+    ;[reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]]
+    setHeroSlides(reordered)
+    await Promise.all([
+      fetch(`/api/hero-slides/${reordered[idx]._id}`,    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: idx }) }),
+      fetch(`/api/hero-slides/${reordered[newIdx]._id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: newIdx }) }),
+    ])
+  }
+
   useEffect(() => {
     if (status !== 'authenticated') return
-    fetchStats(); fetchPcs(); fetchSettings(); fetchLogs(); fetchLiveStats()
+    fetchStats(); fetchPcs(); fetchSettings(); fetchLogs(); fetchLiveStats(); fetchHeroSlides()
     // Core stats + PCs every 15 s for real-time feel
     const fastPoll = setInterval(() => { fetchStats(); fetchPcs(); fetchLiveStats() }, 15_000)
     // Logs every 60 s (less frequent — Pusher handles real-time new entries)
@@ -2211,6 +2297,106 @@ export default function AdminPage() {
                         }
                       </div>
                       <p className="text-[10px] text-gray-400 break-all">{settings.hero_media_url}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Hero Slideshow ─────────────────────────────────────── */}
+                <div className="glass rounded-2xl p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-display font-semibold text-gray-800">Hero Slideshow</h3>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${heroSlides.length >= 5 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                      {heroSlides.length}/5 slides
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-5">
+                    Full-screen hero slides on the landing page. Images auto-advance after 8 s; videos play to completion. Max 5.
+                    {heroSlides.length > 0 && <span className="ml-1 text-blue-500 font-medium">Slideshow is ACTIVE — single media below is ignored.</span>}
+                  </p>
+
+                  {/* Existing slides list */}
+                  {heroSlides.length > 0 && (
+                    <div className="space-y-2 mb-5">
+                      {heroSlides.map((slide, idx) => (
+                        <div key={slide._id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                          {/* Thumbnail */}
+                          <div className="w-14 h-10 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0">
+                            {slide.mediaType === 'video'
+                              ? <div className="w-full h-full flex items-center justify-center text-gray-400 text-lg">▶</div>
+                              : <img src={slide.mediaUrl} alt="" className="w-full h-full object-cover" />
+                            }
+                          </div>
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{slide.title}</p>
+                            {slide.description && <p className="text-[11px] text-gray-400 truncate">{slide.description}</p>}
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${slide.mediaType === 'video' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                              {slide.mediaType}
+                            </span>
+                          </div>
+                          {/* Controls */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button onClick={() => moveSlide(slide._id, -1)} disabled={idx === 0}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-30 transition-colors text-xs">↑</button>
+                            <button onClick={() => moveSlide(slide._id, 1)} disabled={idx === heroSlides.length - 1}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-30 transition-colors text-xs">↓</button>
+                            <button onClick={() => toggleSlideActive(slide._id, !slide.active)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${slide.active ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200'}`}>
+                              {slide.active ? 'ON' : 'OFF'}
+                            </button>
+                            <button onClick={() => removeSlide(slide._id)}
+                              className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors text-xs">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add new slide */}
+                  {heroSlides.length < 5 && (
+                    <div className="border border-dashed border-gray-300 rounded-xl p-4 space-y-3">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add New Slide</p>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 font-semibold">Title <span className="text-red-400">*</span></label>
+                          <input
+                            value={slideForm.title}
+                            onChange={e => setSlideForm(f => ({ ...f, title: e.target.value }))}
+                            placeholder="e.g. Legazpi City Foundation Day"
+                            className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 font-semibold">Details (optional)</label>
+                          <input
+                            value={slideForm.description}
+                            onChange={e => setSlideForm(f => ({ ...f, description: e.target.value }))}
+                            placeholder="Short info shown on slide"
+                            className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                        </div>
+                      </div>
+                      <label
+                        className={`group flex flex-col items-center justify-center gap-2 w-full rounded-xl border-2 border-dashed transition-all cursor-pointer py-6 ${slideUploading || slideSaving ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/40'}`}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) addSlide(f) }}
+                      >
+                        <input ref={slideFileRef} type="file" accept="image/*,video/*" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) addSlide(f) }} />
+                        {slideUploading || slideSaving ? (
+                          <>
+                            <div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            <p className="text-xs text-blue-600 font-medium">{slideUploading ? 'Uploading…' : 'Saving…'}</p>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-2xl">🎬</span>
+                            <p className="text-xs text-gray-500 font-medium">Click or drag image / video here</p>
+                            <p className="text-[10px] text-gray-400">PNG, JPG, MP4, WebM · max 100 MB</p>
+                          </>
+                        )}
+                      </label>
+                      {slideUploadErr && <p className="text-xs text-red-500">{slideUploadErr}</p>}
                     </div>
                   )}
                 </div>

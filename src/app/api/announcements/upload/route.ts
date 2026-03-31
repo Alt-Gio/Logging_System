@@ -13,8 +13,9 @@ function toInternalUrl(convexGeneratedUrl: string): string {
   const base = process.env.CONVEX_URL ?? process.env.NEXT_PUBLIC_CONVEX_URL
   if (!base) return convexGeneratedUrl
   try {
-    const u = new URL(convexGeneratedUrl)
     const b = new URL(base)
+    // new URL(url, base) handles both absolute and relative URLs correctly
+    const u = new URL(convexGeneratedUrl, b.origin)
     u.protocol = b.protocol
     u.hostname  = b.hostname
     u.port      = b.port || ''
