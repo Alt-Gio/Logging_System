@@ -76,7 +76,7 @@ export function FacebookPageEmbed() {
                     </div>
                   </div>
                 )}
-                <div className="fb-page" data-href="https://www.facebook.com/DICTRegionVBicol" data-tabs="timeline" data-width="800" data-height="800" data-small-header="true" data-adapt-container-width="true" data-hide-cover="false" data-show-facepile="false" />
+                <div style={{filter: "invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9)"}} className="fb-page" data-href="https://www.facebook.com/DICTRegionVBicol" data-tabs="timeline" data-width="800" data-height="900" data-small-header="true" data-adapt-container-width="true" data-hide-cover="true" data-show-facepile="false" />
               </div>
             </div>
             <a href="https://www.facebook.com/DICTRegionVBicol" target="_blank" rel="noopener noreferrer"
