@@ -397,98 +397,111 @@ export default function HomePage() {
         {/* EVENTS */}
         <section id="events" className="py-16 sm:py-24 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto">
-            <div className="mb-10">
-              <p className="text-blue-400 text-[10px] font-black uppercase tracking-[.35em] mb-3">What&apos;s Happening</p>
-              <div className="flex items-end justify-between gap-4 flex-wrap">
-                <h2 className="text-3xl sm:text-4xl font-black text-white">Events &amp; Announcements</h2>
-                <p className="text-gray-600 text-sm">Click any card to read in full.</p>
+            {/* Section header — FB page style */}
+            <div className="mb-10 flex items-end justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-[#1877F2] text-[10px] font-black uppercase tracking-[.35em] mb-3">Official Updates</p>
+                <h2 className="text-3xl sm:text-4xl font-black text-white flex items-center gap-3">
+                  <span className="w-10 h-10 rounded-xl bg-[#1877F2] flex items-center justify-center text-white font-black text-lg flex-shrink-0">D</span>
+                  Events &amp; Announcements
+                </h2>
               </div>
+              <p className="text-gray-600 text-sm">Click any post to read in full.</p>
             </div>
+
             {active.length === 0 ? (
-              <div className="text-center py-16 gc rounded-2xl"><p className="text-4xl mb-3">📅</p><p className="text-gray-500 text-sm">No active announcements.</p></div>
-            ) : (() => {
-              const featured = active.filter(a => a.featured)
-              const regular  = active.filter(a => !a.featured)
-              const ACCENT: Record<string,{bar:string;badge:string}> = {
-                blue:   { bar:'from-blue-500 to-indigo-500',   badge:'bg-blue-500/20 text-blue-300 border-blue-500/20'   },
-                amber:  { bar:'from-amber-500 to-yellow-500',  badge:'bg-amber-500/20 text-amber-300 border-amber-500/20' },
-                red:    { bar:'from-red-500 to-rose-500',      badge:'bg-red-500/20 text-red-300 border-red-500/20'       },
-                green:  { bar:'from-emerald-500 to-green-500', badge:'bg-emerald-500/20 text-emerald-300 border-emerald-500/20' },
-                purple: { bar:'from-purple-500 to-violet-500', badge:'bg-purple-500/20 text-purple-300 border-purple-500/20' },
-                rose:   { bar:'from-rose-500 to-pink-500',     badge:'bg-rose-500/20 text-rose-300 border-rose-500/20'   },
-                teal:   { bar:'from-teal-500 to-cyan-500',     badge:'bg-teal-500/20 text-teal-300 border-teal-500/20'   },
-                gray:   { bar:'from-gray-500 to-slate-500',    badge:'bg-gray-500/20 text-gray-300 border-gray-500/20'   },
-              }
-              return (
-                <div className="space-y-6">
-                  {/* ── Featured cards ── */}
-                  {featured.length > 0 && (
-                    <div className={`grid gap-5 ${
-                      featured.length === 1 ? 'grid-cols-1 max-w-2xl' :
-                      featured.length === 2 ? 'md:grid-cols-2' :
-                      'md:grid-cols-2 lg:grid-cols-3'
-                    }`}>
-                      {featured.slice(0,6).map(a => {
-                        const ac = ACCENT[a.highlight||'blue'] || ACCENT.blue
-                        return (
-                          <div key={a.id} onClick={() => setExpanded(a)}
-                            className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-xl hover:shadow-2xl transition-all hover:-translate-y-0.5"
-                            style={{ minHeight: 300 }}>
-                            {/* Background image or gradient */}
-                            {a.imageUrl ? (
-                              <img src={a.imageUrl} alt={a.title} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"/>
-                            ) : (
-                              <div className={`absolute inset-0 bg-gradient-to-br ${ac.bar} opacity-20`}/>
+              <div className="text-center py-16 gc rounded-2xl">
+                <p className="text-4xl mb-3">📅</p>
+                <p className="text-gray-500 text-sm">No active announcements at this time.</p>
+              </div>
+            ) : (
+              <div className={`grid gap-5 ${
+                active.length === 1 ? 'max-w-md' :
+                active.length === 2 ? 'sm:grid-cols-2 max-w-2xl' :
+                'sm:grid-cols-2 lg:grid-cols-3'
+              }`}>
+                {active.slice(0, 6).map(a => {
+                  const TYPE_META: Record<string, { icon: string; label: string }> = {
+                    INFO:        { icon: 'ℹ️',  label: 'Info'        },
+                    WARNING:     { icon: '⚠️',  label: 'Warning'     },
+                    MAINTENANCE: { icon: '🔧', label: 'Maintenance'  },
+                    HOLIDAY:     { icon: '🎉', label: 'Holiday'      },
+                  }
+                  const meta = TYPE_META[a.type || 'INFO'] ?? TYPE_META.INFO
+                  const relDate = (() => {
+                    const diff = Date.now() - new Date(a.createdAt).getTime()
+                    const mins = Math.floor(diff / 60_000)
+                    if (mins < 60)  return `${Math.max(mins, 1)}m ago`
+                    const hrs = Math.floor(mins / 60)
+                    if (hrs < 24)   return `${hrs}h ago`
+                    const days = Math.floor(hrs / 24)
+                    if (days < 7)   return `${days}d ago`
+                    return new Date(a.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+                  })()
+
+                  return (
+                    <div key={a.id} onClick={() => setExpanded(a)}
+                      className="group gc rounded-2xl overflow-hidden cursor-pointer hover:bg-white/[.05] transition-all hover:-translate-y-0.5 hover:shadow-2xl flex flex-col">
+
+                      {/* FB-style post header */}
+                      <div className="px-4 pt-4 pb-3 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#1877F2] flex items-center justify-center flex-shrink-0 text-white font-black text-sm select-none">D</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-bold text-sm leading-tight">DICT DTC Region V</p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-gray-500 text-[11px]">{relDate}</span>
+                            <span className="text-gray-700 text-[10px]">·</span>
+                            <span className="text-[11px]">{meta.icon}</span>
+                            <span className="text-gray-500 text-[11px]">{meta.label}</span>
+                            {a.featured && (
+                              <><span className="text-gray-700 text-[10px]">·</span>
+                              <span className="text-[#1877F2] text-[11px] font-bold">⭐ Featured</span></>
                             )}
-                            {/* Dark overlay */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent"/>
-                            {/* Top accent bar */}
-                            <div className={`absolute top-0 inset-x-0 h-1 bg-gradient-to-r ${ac.bar}`}/>
-                            {/* Content */}
-                            <div className="absolute inset-0 flex flex-col justify-end p-5">
-                              <div className="flex items-center gap-2 mb-3">
-                                <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${ac.badge}`}>⭐ Featured</span>
-                                {a.urgent && <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-red-500/30 text-red-300 border border-red-500/30">⚠ Urgent</span>}
-                              </div>
-                              <h3 className="font-black text-white text-lg sm:text-xl leading-tight mb-2 group-hover:text-blue-200 transition-colors">{a.title}</h3>
-                              <p className="text-white/60 text-xs leading-relaxed line-clamp-2">{a.content}</p>
-                              <div className="flex items-center justify-between mt-4">
-                                <span className="text-white/40 text-[10px]">{new Date(a.createdAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-                                <span className="text-white/60 text-xs font-semibold group-hover:text-white transition-colors">Read more →</span>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {/* ── Regular cards ── */}
-                  {regular.length > 0 && (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {regular.slice(0,6).map(a => (
-                        <div key={a.id} onClick={() => setExpanded(a)} className="group gc rounded-2xl overflow-hidden cursor-pointer hover:bg-white/[.05] transition-all">
-                          <div className={`h-1 ${a.urgent ? 'bg-gradient-to-r from-red-500 to-amber-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`} />
-                          <div className="p-5">
-                            <div className="flex items-center gap-2 mb-3">
-                              <span className={`text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${a.urgent ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-blue-500/20 text-blue-400 border border-blue-500/20'}`}>{a.urgent ? '⚠ Urgent' : '📌 Notice'}</span>
-                              <span className="text-gray-600 text-[10px] ml-auto">{new Date(a.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                            </div>
-                            {a.imageUrl && (
-                              <div className="rounded-xl overflow-hidden mb-3 -mx-1" style={{height:120}}>
-                                <img src={a.imageUrl} alt={a.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>
-                              </div>
+                            {a.urgent && (
+                              <><span className="text-gray-700 text-[10px]">·</span>
+                              <span className="text-red-400 text-[11px] font-bold">⚠ Urgent</span></>
                             )}
-                            <h3 className="font-bold text-white text-sm mb-2 group-hover:text-blue-400 transition-colors line-clamp-2">{a.title}</h3>
-                            <p className="text-gray-500 text-xs leading-relaxed line-clamp-3">{a.content}</p>
-                            <p className="mt-4 text-[10px] font-semibold text-gray-600 group-hover:text-blue-400 transition-colors">Read full notice →</p>
                           </div>
                         </div>
-                      ))}
+                        {/* Globe icon — public post indicator */}
+                        <span className="text-gray-600 text-sm flex-shrink-0" title="Public post">🌐</span>
+                      </div>
+
+                      {/* Post title + body */}
+                      <div className="px-4 pb-3">
+                        <p className="text-white font-bold text-sm mb-1.5 leading-snug">{a.title}</p>
+                        <p className="text-gray-400 text-xs leading-relaxed line-clamp-3">{a.content}</p>
+                      </div>
+
+                      {/* Post image — full-bleed like Facebook */}
+                      {a.imageUrl && (
+                        <div className="relative overflow-hidden border-t border-white/[.05]" style={{ height: 220 }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={a.imageUrl} alt={a.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>
+                        </div>
+                      )}
+
+                      {/* Reaction bar — FB style */}
+                      <div className="px-4 py-3 mt-auto border-t border-white/[.05] flex items-center justify-between">
+                        <div className="flex items-center gap-4 text-gray-600 text-xs">
+                          <span className="flex items-center gap-1.5 hover:text-[#1877F2] transition-colors select-none">
+                            <span>👍</span><span>Like</span>
+                          </span>
+                          <span className="flex items-center gap-1.5 hover:text-[#1877F2] transition-colors select-none">
+                            <span>💬</span><span>Comment</span>
+                          </span>
+                          <span className="flex items-center gap-1.5 hover:text-[#1877F2] transition-colors select-none">
+                            <span>↗</span><span>Share</span>
+                          </span>
+                        </div>
+                        <span className="text-[#1877F2] text-xs font-semibold group-hover:underline">See more →</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              )
-            })()}
+                  )
+                })}
+              </div>
+            )}
           </div>
         </section>
 
