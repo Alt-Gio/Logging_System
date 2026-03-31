@@ -89,15 +89,15 @@ export function FacebookPageEmbed() {
 
                 {/* SDK-based embed — CSS scale to fill container */}
                 <div id="fb-root" />
-                <div className="w-full overflow-hidden relative" style={{ height: 700 }}>
+                <div className="w-full overflow-hidden relative" style={{ height: 660 }}>
                   <div style={{
                     position: 'absolute',
-                    top: 0,
+                    top: -90,
                     left: 0,
                     transformOrigin: 'top left',
-                    transform: 'scale(1.38)',
-                    width: '72%',
-                    height: '100%',
+                    transform: 'scale(1.25)',
+                    width: '80%',
+                    height: 'calc(100% + 90px)',
                   }}>
                     <div
                       className="fb-page"
