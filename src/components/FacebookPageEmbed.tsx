@@ -87,21 +87,41 @@ export function FacebookPageEmbed() {
 
                 <div className="h-px" style={{ background: 'linear-gradient(90deg,#1877F2,rgba(24,119,242,.3),transparent)' }} />
 
-                {/* SDK-based embed — fills 100% width automatically */}
+                {/* SDK-based embed — CSS scale to fill container */}
                 <div id="fb-root" />
-                <div className="w-full overflow-hidden" style={{ minHeight: 700 }}>
-                  <div
-                    className="fb-page"
-                    data-href="https://www.facebook.com/DICTRegionVBicol"
-                    data-tabs="timeline"
-                    data-width=""
-                    data-height="700"
-                    data-small-header="true"
-                    data-adapt-container-width="true"
-                    data-hide-cover="true"
-                    data-show-facepile="false"
-                    data-colorscheme="dark"
-                  />
+                <div className="w-full overflow-hidden relative" style={{ height: 700 }}>
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    transformOrigin: 'top left',
+                    transform: 'scale(1.38)',
+                    width: '72%',
+                    height: '100%',
+                  }}>
+                    <div
+                      className="fb-page"
+                      data-href="https://www.facebook.com/DICTRegionVBicol"
+                      data-tabs="timeline"
+                      data-width="500"
+                      data-height="700"
+                      data-small-header="true"
+                      data-adapt-container-width="true"
+                      data-hide-cover="true"
+                      data-show-facepile="false"
+                      data-colorscheme="dark"
+                    />
+                  </div>
+                  {/* Transparent overlay to stretch fb visually */}
+                  <style>{`
+                    .fb_iframe_widget,
+                    .fb_iframe_widget span,
+                    .fb_iframe_widget iframe {
+                      width: 100% !important;
+                      min-width: 100% !important;
+                    }
+                    #fb-root { display: none; }
+                  `}</style>
                 </div>
               </div>
             </div>
